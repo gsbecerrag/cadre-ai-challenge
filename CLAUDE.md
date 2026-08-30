@@ -44,3 +44,17 @@ Evaluation weights, for prioritizing effort: Claude Code proficiency 30%, system
 ## Commands & Architecture
 
 *Not yet applicable — no code exists. Once scaffolded, replace this section with: how to install deps, run the dev server, run tests (including a single test), lint, and deploy; plus the big-picture architecture (where the system prompt lives, how the chat API flows, what the data model is, how escalation works).*
+
+## Agent skills
+
+### Issue tracker
+
+Local markdown: specs and tickets live as files under `.scratch/<feature-slug>/` in this repo (no GitHub Issues). See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default five-role vocabulary (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`), recorded as a `Status:` line in each issue file. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: one `CONTEXT.md` plus `docs/adr/` at the repo root, created lazily by `/domain-modeling`. See `docs/agents/domain.md`.
