@@ -41,6 +41,15 @@ Cadre facts for the knowledge base: core services are AI Strategy, AI Leadership
 
 Evaluation weights, for prioritizing effort: Claude Code proficiency 30%, system design & architecture 25%, speed & scope 20%, code quality 15%, communication 10%. Architecture discussion in the review focuses on system prompt design, API structure, data model, and scaling trade-offs — make those decisions deliberately and be ready to defend them.
 
+## Git Workflow
+
+`main` is the deployed branch and only moves by pull request. Every change, however small, goes on a short-lived branch and lands via a PR:
+
+- **Branch** from up-to-date `main`, named `<type>/<short-slug>` — `feat/chat-api`, `fix/escalation-loop`, `chore/deploy-config`, `docs/plan-phase-2`.
+- **Commit** in [Conventional Commits](https://www.conventionalcommits.org) form (`type(scope?): imperative summary`), one logical change per commit; the body says *why*.
+- **Open the PR** with `gh pr create --base main`; the body names the plan.md phase or `.scratch/` ticket it delivers.
+- **Merge** with `gh pr merge --merge --delete-branch` — a merge commit keeps the granular commits and the branch shape visible in history.
+
 ## Commands & Architecture
 
 *Not yet applicable — no code exists. Once scaffolded, replace this section with: how to install deps, run the dev server, run tests (including a single test), lint, and deploy; plus the big-picture architecture (where the system prompt lives, how the chat API flows, what the data model is, how escalation works).*
