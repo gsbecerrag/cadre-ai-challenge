@@ -1,1 +1,23 @@
-README.md
+# Secrets — never commit real env files; keep a committed .env.example instead
+.env
+.env.*
+!.env.example
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Claude Code per-machine settings (shared config lives in .claude/settings.json)
+.claude/settings.local.json
+
+# Dependencies & build output — stack-agnostic baseline; extend when the stack is scaffolded
+node_modules/
+dist/
+build/
+.next/
+.vercel/
+__pycache__/
+.venv/
+*.log
