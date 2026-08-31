@@ -119,6 +119,8 @@ function handoverFrom(id: string, data: DocumentData): Handover {
     created_at: created?.toDate ? created.toDate().toISOString() : null,
     trace_id: typeof data.trace_id === 'string' ? data.trace_id : null,
     lead: leadFrom(text(data.session_id), (data.lead ?? {}) as DocumentData),
+    room_url: text(data.room_url),
+    strategist_name: text(data.strategist_name),
   }
 }
 

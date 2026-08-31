@@ -14,6 +14,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import './chat.css'
+import { CallFrame } from './CallFrame'
 import { FeedbackControl } from './FeedbackControl'
 import { type HandoverActions, MessageView } from './MessageView'
 import { useAvailability } from './presence'
@@ -58,6 +59,7 @@ export function ChatWidget() {
     acceptHandover,
     declineHandover,
     shareDetails,
+    leaveCall,
     handoverBusy,
     handoverFailed,
   } = useChat(chromeFor('en').greeting, chrome.connectionError)
@@ -237,26 +239,33 @@ export function ChatWidget() {
         </div>
       </header>
 
-      <div
-        ref={transcript}
-        role="log"
-        aria-live="polite"
-        className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto bg-[#faf9f6] px-4 pt-[18px] pb-2"
-      >
-        {state.messages.map((message) => (
-          <MessageView
-            key={message.id}
-            message={message}
-            chrome={chrome}
-            sectionTitles={state.sections}
-            onNavigate={followCard}
-            feedback={feedbackFor(message)}
-            handover={handover}
-          />
-        ))}
-      </div>
+      {/* A Live Hand-over takes the message area for as long as it lasts (docs/design §2.6):
+          the Visitor is in a call, not reading a transcript, and the transcript is still
+          there — with the line that says how the call ended — the moment it is over. */}
+      {state.call ? (
+        <CallFrame call={state.call} chrome={chrome} onLeave={leaveCall} />
+      ) : (
+        <div
+          ref={transcript}
+          role="log"
+          aria-live="polite"
+          className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto bg-[#faf9f6] px-4 pt-[18px] pb-2"
+        >
+          {state.messages.map((message) => (
+            <MessageView
+              key={message.id}
+              message={message}
+              chrome={chrome}
+              sectionTitles={state.sections}
+              onNavigate={followCard}
+              feedback={feedbackFor(message)}
+              handover={handover}
+            />
+          ))}
+        </div>
+      )}
 
-      {quickReplies.length > 0 && (
+      {!state.call && quickReplies.length > 0 && (
         <div className="flex flex-shrink-0 flex-wrap gap-2 bg-[#faf9f6] px-4 pt-2 pb-1">
           {quickReplies.map((quick) => (
             <button
@@ -272,8 +281,10 @@ export function ChatWidget() {
         </div>
       )}
 
+      {/* Daily's own controls are the only ones on screen during a call, so the composer
+          steps aside: a Visitor mid-call is talking, not typing. */}
       <form
-        className="flex flex-shrink-0 items-center gap-2.5 border-t border-[#eee] bg-white px-4 py-3"
+        className={`flex-shrink-0 items-center gap-2.5 border-t border-[#eee] bg-white px-4 py-3 ${state.call ? 'hidden' : 'flex'}`}
         onSubmit={(event) => {
           event.preventDefault()
           if (canSend) {

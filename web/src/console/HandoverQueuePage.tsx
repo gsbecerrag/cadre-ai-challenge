@@ -12,7 +12,14 @@
 
 import { useEffect, useState } from 'react'
 
-import { fetchHandover, type Handover, type HandoverDetail, type Lead } from './api'
+import {
+  endHandover,
+  fetchHandover,
+  type Handover,
+  type HandoverDetail,
+  joinHandover,
+  type Lead,
+} from './api'
 import { ONLINE_GREEN } from './chrome'
 import { useConsole } from './ConsoleLayout'
 import { LABEL_STYLE, labelOf } from './handoverFeed'
@@ -51,41 +58,70 @@ function scoreColor(score: number): string {
   return score >= 4 ? ONLINE_GREEN : '#8a8a3a'
 }
 
+const INK_PILL =
+  'rounded-[48px] bg-cadre-ink px-4 py-2 text-[12.5px] font-semibold text-white hover:bg-[#3a3236] disabled:opacity-60'
+
+const RED_PILL =
+  'rounded-[48px] bg-[#db4545] px-4 py-2 text-[12.5px] font-semibold text-white hover:bg-[#c33] disabled:opacity-60'
+
+/** A request a Strategist can walk into: a Live Hand-over the Visitor accepted, unclaimed. */
+export function canJoin(request: Handover): boolean {
+  return request.mode === 'video' && request.state === 'pending_strategist'
+}
+
+/** A call somebody is in, which is the only thing "End call" may end. */
+export function inCall(request: Handover): boolean {
+  return request.state === 'strategist_joined' || request.state === 'in_call'
+}
+
 function QueueCard({
   request,
   selected,
+  busy,
   onSelect,
+  onJoin,
 }: {
   request: Handover
   selected: boolean
+  busy: boolean
   onSelect: () => void
+  onJoin: () => void
 }) {
   return (
-    <button
-      type="button"
-      onClick={onSelect}
-      aria-current={selected}
-      className={`w-full rounded-2xl border bg-white p-3.5 text-left ${
+    <div
+      className={`rounded-2xl border bg-white ${
         selected ? 'border-cadre-ink' : 'border-[#e5e5e5] hover:border-[#ccc]'
       }`}
     >
-      <div className="mb-1.5 flex items-start justify-between gap-3">
-        <span className="text-sm font-semibold text-cadre-ink">
-          {request.lead.name || 'Unnamed Lead'}
-        </span>
-        <StateBadge request={request} />
-      </div>
-      <div className="mb-2 text-[12.5px] text-cadre-muted">{describe(request.lead)}</div>
-      <div className="flex items-center justify-between gap-3">
-        <span className="text-[11px] text-[#999]">{relativeTime(request.created_at)}</span>
-        <span
-          className="font-mono text-[11px] font-bold"
-          style={{ color: scoreColor(request.lead.score) }}
-        >
-          score {request.lead.score}/5
-        </span>
-      </div>
-    </button>
+      <button type="button" onClick={onSelect} aria-current={selected} className="w-full p-3.5 text-left">
+        <div className="mb-1.5 flex items-start justify-between gap-3">
+          <span className="text-sm font-semibold text-cadre-ink">
+            {request.lead.name || 'Unnamed Lead'}
+          </span>
+          <StateBadge request={request} />
+        </div>
+        <div className="mb-2 text-[12.5px] text-cadre-muted">{describe(request.lead)}</div>
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-[11px] text-[#999]">{relativeTime(request.created_at)}</span>
+          <span
+            className="font-mono text-[11px] font-bold"
+            style={{ color: scoreColor(request.lead.score) }}
+          >
+            score {request.lead.score}/5
+          </span>
+        </div>
+      </button>
+      {/* On the card and not only in the detail: a Visitor accepting is watching a spinner,
+          and the shortest path from hearing the notification to being in the room is one
+          click on the row that just arrived. */}
+      {canJoin(request) ? (
+        <div className="px-3.5 pb-3.5">
+          <button type="button" disabled={busy} onClick={onJoin} className={INK_PILL}>
+            Claim &amp; join call
+          </button>
+        </div>
+      ) : null}
+    </div>
   )
 }
 
@@ -107,19 +143,89 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   )
 }
 
-function RequestDetail({ detail }: { detail: HandoverDetail }) {
+/**
+ * The in-call banner and the buttons beside it — docs/design §3.1.
+ *
+ * The banner carries the room URL because a Strategist may need it somewhere this frame will
+ * not go: a second monitor, a phone, a colleague. The frame under it is the same room the
+ * Visitor is in, which is what makes "Join" mean joining rather than marking a state.
+ */
+function CallBanner({
+  handover,
+  busy,
+  onEnd,
+}: {
+  handover: Handover
+  busy: boolean
+  onEnd: () => void
+}) {
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-center gap-3 rounded-2xl bg-cadre-ink px-4 py-3 text-white">
+        <span className="cadre-livepulse inline-block size-[7px] shrink-0 rounded-full bg-[#db4545]" />
+        <span className="text-[13px] font-semibold">In call — Daily room open in the chat panel</span>
+        {handover.room_url ? (
+          <a
+            href={handover.room_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="truncate font-mono text-[12px] text-[#b3b3b3] underline hover:text-white"
+          >
+            {handover.room_url.replace(/^https?:\/\//, '')}
+          </a>
+        ) : (
+          <span className="font-mono text-[12px] text-[#b3b3b3]">no room on this request</span>
+        )}
+        <button type="button" disabled={busy} onClick={onEnd} className={`${RED_PILL} ml-auto`}>
+          End call
+        </button>
+      </div>
+      {handover.room_url ? (
+        <iframe
+          title="Cadre live hand-over"
+          src={handover.room_url}
+          allow="camera; microphone; fullscreen; display-capture; autoplay"
+          className="h-[420px] w-full rounded-2xl border border-[#e5e5e5] bg-black"
+        />
+      ) : null}
+    </div>
+  )
+}
+
+function RequestDetail({
+  detail,
+  busy,
+  onJoin,
+  onEnd,
+}: {
+  detail: HandoverDetail
+  busy: boolean
+  onJoin: () => void
+  onEnd: () => void
+}) {
   const { handover, lead, conversation } = detail
   const present = new Set(lead.present_signals)
   const contact = [lead.company, lead.role, lead.email, lead.phone].filter(Boolean)
 
   return (
     <div className="flex flex-col gap-4">
-      <header>
-        <h2 className="font-display text-2xl font-semibold tracking-tight text-cadre-ink">
-          {lead.name || 'Unnamed Lead'}
-        </h2>
-        <p className="mt-1 text-[13px] text-cadre-muted">{contact.join(' · ')}</p>
+      <header className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="font-display text-2xl font-semibold tracking-tight text-cadre-ink">
+            {lead.name || 'Unnamed Lead'}
+          </h2>
+          <p className="mt-1 text-[13px] text-cadre-muted">{contact.join(' · ')}</p>
+        </div>
+        {canJoin(handover) ? (
+          <button type="button" disabled={busy} onClick={onJoin} className={INK_PILL}>
+            Claim &amp; join call
+          </button>
+        ) : null}
       </header>
+
+      {inCall(handover) ? (
+        <CallBanner handover={handover} busy={busy} onEnd={onEnd} />
+      ) : null}
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Panel title={`Qualification · ${lead.score}/5`}>
@@ -169,6 +275,9 @@ function RequestDetail({ detail }: { detail: HandoverDetail }) {
             </span>
           </Field>
           <Field label="Requested">{relativeTime(handover.created_at)}</Field>
+          {handover.strategist_name ? (
+            <Field label="Claimed by">{handover.strategist_name}</Field>
+          ) : null}
         </Panel>
       </div>
 
@@ -205,6 +314,9 @@ export function HandoverQueuePage() {
   const [selectedId, setSelectedId] = useState<string>()
   const [detail, setDetail] = useState<HandoverDetail>()
   const [problem, setProblem] = useState<string>()
+  // One call action at a time: Join and End both move the state machine, and a double click
+  // on either is a 409 the Strategist should never have been able to send.
+  const [busy, setBusy] = useState(false)
 
   const openId = selectedId ?? queue[0]?.request_id
 
@@ -232,6 +344,49 @@ export function HandoverQueuePage() {
     // The request's own state changes as a Strategist works it, so the detail is re-read when
     // the feed delivers a new version of it.
   }, [authorize, openId, handovers])
+
+  /**
+   * Move one request through the machine and show the answer the server gave.
+   *
+   * The updated request is written straight into the open detail rather than waited for: the
+   * realtime feed will deliver the same document a moment later, but a Strategist who just
+   * pressed "Claim & join call" should be looking at the room by then, not at a button that
+   * still says the same thing.
+   */
+  async function act(
+    requestId: string,
+    move: (authorize: () => Promise<string>, id: string) => Promise<Handover>,
+    refusal: string,
+  ) {
+    if (busy) {
+      return
+    }
+    setBusy(true)
+    setProblem(undefined)
+    try {
+      const moved = await move(authorize, requestId)
+      setSelectedId(moved.request_id)
+      setDetail((open) =>
+        open && open.handover.request_id === moved.request_id
+          ? { ...open, handover: moved }
+          : open,
+      )
+    } catch {
+      setProblem(refusal)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const join = (requestId: string) =>
+    void act(
+      requestId,
+      joinHandover,
+      'Could not join that call — it may have been claimed or ended already.',
+    )
+
+  const end = (requestId: string) =>
+    void act(requestId, endHandover, 'Could not end that call. Reload the queue and try again.')
 
   return (
     <section>
@@ -267,13 +422,20 @@ export function HandoverQueuePage() {
                 key={request.request_id}
                 request={request}
                 selected={request.request_id === openId}
+                busy={busy}
                 onSelect={() => setSelectedId(request.request_id)}
+                onJoin={() => join(request.request_id)}
               />
             ))}
           </div>
           <div className="min-w-0 flex-1">
             {detail ? (
-              <RequestDetail detail={detail} />
+              <RequestDetail
+                detail={detail}
+                busy={busy}
+                onJoin={() => join(detail.handover.request_id)}
+                onEnd={() => end(detail.handover.request_id)}
+              />
             ) : (
               <p className="text-sm text-cadre-muted">Opening the request…</p>
             )}

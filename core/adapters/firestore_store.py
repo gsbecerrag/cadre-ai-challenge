@@ -52,6 +52,7 @@ from core.store import (
     Rating,
     TriageReport,
 )
+from core.video import Room
 
 SESSIONS = "sessions"
 MESSAGES = "messages"
@@ -383,24 +384,43 @@ class FirestoreConversationStore:
         state: HandoverState,
         mode: HandoverMode | None = None,
         lead: LeadSnapshot | None = None,
+        *,
+        room: Room | None = None,
+        strategist_name: str | None = None,
+        expected_state: HandoverState | None = None,
     ) -> HandoverRequest:
         """Write a transition the caller has already validated against the state machine.
 
-        `merge=True` and a field-by-field update, so a field this build does not know about —
-        the Daily room URL ticket 15 adds — is kept rather than dropped, and a `mode` the
-        caller did not decide is left exactly as it was.
+        `merge=True` and a field-by-field update, so a field this build does not know about is
+        kept rather than dropped, and an argument the caller did not decide — the `mode`, the
+        Daily room, who claimed it — is left exactly as it was.
+
+        One write per move, including the two that carry something with them: the acceptance
+        stores the room alongside `mode: video`, and the Console's Join stores the Strategist's
+        name alongside `in_call`. The Console's realtime listener reads this document, so a
+        move written in two parts would be a queue that flickered through a state nobody was
+        ever in.
+
+        `expected_state` turns the write into a compare-and-set, and needs a transaction rather
+        than a precondition on the set: Firestore has no "write if this field equals that", so
+        the state is re-read inside the transaction the write commits in.
         """
         document: dict[str, Any] = {"state": state, "updated_at": firestore.SERVER_TIMESTAMP}
         if mode is not None:
             document["mode"] = mode
         if lead is not None:
             document["lead"] = _lead_snapshot_document(lead)
-        await (
-            self._connect()
-            .collection(self._handovers_collection)
-            .document(request_id)
-            .set(document, merge=True)
-        )
+        if room is not None:
+            document["room_url"] = room.url
+            document["room_expires_at"] = room.expires_at
+        if strategist_name is not None:
+            document["strategist_name"] = strategist_name
+        client = self._connect()
+        reference = client.collection(self._handovers_collection).document(request_id)
+        if expected_state is None:
+            await reference.set(document, merge=True)
+        else:
+            await _set_if_still_in(client.transaction(), reference, document, expected_state)
         logger.info(
             "Handover Request updated", extra={"request_id": request_id, "handover_state": state}
         )
@@ -444,6 +464,25 @@ class FirestoreConversationStore:
         if not document.exists:
             return None
         return _handover(document.id, document.to_dict() or {})
+
+
+@firestore.async_transactional
+async def _set_if_still_in(
+    transaction: AsyncTransaction,
+    reference: AsyncDocumentReference,
+    document: dict[str, Any],
+    expected_state: HandoverState,
+) -> None:
+    """Write these fields only while the request is still in `expected_state`.
+
+    The read is inside the transaction, so a write that lands between it and the commit aborts
+    this one rather than being overwritten by it. A request that has moved on is left exactly
+    as it is: the caller re-reads and reports what it finds.
+    """
+    snapshot = await reference.get(transaction=transaction)
+    if not snapshot.exists or (snapshot.to_dict() or {}).get("state") != expected_state:
+        return
+    transaction.set(reference, document, merge=True)
 
 
 @firestore.async_transactional
@@ -607,6 +646,8 @@ def _handover_document(request: HandoverRequest) -> dict[str, Any]:
         "prompt": request.prompt,
         "trace_id": request.trace_id,
         "lead": _lead_snapshot_document(request.lead),
+        "room_url": request.room_url,
+        "strategist_name": request.strategist_name,
         "updated_at": firestore.SERVER_TIMESTAMP,
     }
 
@@ -635,6 +676,9 @@ def _handover(request_id: str, document: Mapping[str, Any]) -> HandoverRequest:
         created_at=document.get("created_at"),
         updated_at=document.get("updated_at"),
         trace_id=document.get("trace_id"),
+        room_url=str(document.get("room_url") or ""),
+        room_expires_at=document.get("room_expires_at"),
+        strategist_name=str(document.get("strategist_name") or ""),
     )
 
 

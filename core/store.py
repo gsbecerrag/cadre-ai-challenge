@@ -24,6 +24,7 @@ from typing import Literal, Protocol, get_args
 from core.auth import StrategistIdentity
 from core.handover import HandoverMode, HandoverRequest, HandoverState, LeadSnapshot
 from core.provider import ModelMessage
+from core.video import Room
 
 # The Contact Details a Lead carries, kept raw: a tokenised email is a Lead no Strategist can
 # call back (ADR-0006). These are `capture_lead`'s Contact Detail arguments, in the order the
@@ -317,14 +318,31 @@ class ConversationStore(Protocol):
         state: HandoverState,
         mode: HandoverMode | None = None,
         lead: LeadSnapshot | None = None,
+        *,
+        room: Room | None = None,
+        strategist_name: str | None = None,
+        expected_state: HandoverState | None = None,
     ) -> HandoverRequest:
         """Move a Handover Request to a state the caller has already validated, and return it.
 
         The state machine lives in `core.handover`, not here: a store that also decided which
         moves were legal would be a second copy of the rules, in the one place that cannot be
-        unit-tested without a database. `mode` and `lead` are written only when given — a
-        Callback that later runs out of Strategists is still a Callback, and a Contact Detail
-        the Visitor typed after accepting refreshes the snapshot a Strategist reads.
+        unit-tested without a database. Every argument after the state is written only when
+        given — a Callback that later runs out of Strategists is still a Callback, a Contact
+        Detail the Visitor typed after accepting refreshes the snapshot a Strategist reads,
+        and the Daily room survives the transitions that follow the one which opened it.
+
+        `room` and `strategist_name` are what make the Live Hand-over one write per move: the
+        acceptance stores the room in the same write that decides the mode, and the Console's
+        Join stores who claimed it in the same write that puts them in the call.
+
+        `expected_state` makes the write a compare-and-set: it lands only while the request is
+        still in the state the caller validated against, and otherwise nothing is written and
+        the request is returned as it now stands. Every move here is validated against a
+        snapshot, and two of them race for real — the Visitor's status poll deciding a
+        Hand-over has timed out, and a Strategist claiming that same request from the Console.
+        Without this the later write wins by arriving later, and two minutes of waiting plus a
+        Console notification are spent turning a live call into a Callback.
         """
         ...
 

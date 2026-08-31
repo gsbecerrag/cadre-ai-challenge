@@ -44,6 +44,7 @@ from core.store import ConversationStore
 from core.tools import default_tools
 from core.tracing import NoopTracer, TraceBoundary, Tracer
 from core.turn import TurnRunner
+from core.video import NoVideoRooms, VideoRooms
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_WEB_DIST = REPO_ROOT / "web" / "dist"
@@ -143,6 +144,31 @@ def build_notifier(settings: Settings) -> Notifier:
     return FirestoreNotifier()
 
 
+def build_video_rooms(settings: Settings) -> VideoRooms:
+    """The `VideoRooms` seam: where a Live Hand-over's call is held (ADR-0007).
+
+    Two conditions, both required, and neither of them a startup failure. The flag is the
+    switch a Cadre engineer throws when video is having a bad day; a blank `DAILY_API_KEY` is
+    the same situation arrived at by accident, and it deserves the same answer — because the
+    alternative, refusing to start, would take the whole Assistant down over the one feature
+    that already has a fallback. What both produce is `NoVideoRooms`, whose refusal degrades
+    an acceptance to a Callback with the Lead captured.
+    """
+    if not settings.live_handover_enabled:
+        return NoVideoRooms()
+    if not settings.daily_api_key.strip():
+        logger.warning(
+            "LIVE_HANDOVER_ENABLED is on but DAILY_API_KEY is not set; "
+            "every accepted Hand-over will be a Callback"
+        )
+        return NoVideoRooms()
+    # Imported here, not at the top: a deployment with no video should not pay for the import,
+    # and Daily is named in that module and nowhere else (constraint 7).
+    from core.adapters.daily_video import DailyVideoRooms
+
+    return DailyVideoRooms(api_key=settings.daily_api_key, domain=settings.daily_domain)
+
+
 def build_token_verifier(settings: Settings, allowlist: frozenset[str]) -> TokenVerifier:
     """The `TokenVerifier` seam: who the Console believes a request comes from (ADR-0010).
 
@@ -196,6 +222,7 @@ def create_app(
     tracer: Tracer | None = None,
     verifier: TokenVerifier | None = None,
     notifier: Notifier | None = None,
+    video_rooms: VideoRooms | None = None,
 ) -> FastAPI:
     """Wire the application. A missing required variable fails fast here, before serving."""
     resolved = load_settings() if settings is None else settings
@@ -282,9 +309,11 @@ def create_app(
             conversation_store,
             cookie_secret=cookie_secret,
             live_handover_enabled=resolved.live_handover_enabled,
+            video_rooms=video_rooms if video_rooms is not None else build_video_rooms(resolved),
             # The same threshold `capture_lead` scores against, for the same reason: one Lead
             # cannot be a Qualified Lead down one path and not down the other.
             qualification_threshold=resolved.qualification_threshold,
+            join_timeout_seconds=resolved.handover_join_timeout_seconds,
         ),
         prefix="/api",
     )

@@ -10,19 +10,25 @@ few happy paths.
 Every personal value here is obviously fake.
 """
 
+from dataclasses import replace
+from datetime import UTC, datetime, timedelta
+
 import pytest
 
 from core.handover import (
     HANDOVER_STATES,
     HandoverMode,
     HandoverRequest,
+    HandoverState,
     InvalidTransitionError,
     LeadSnapshot,
+    join_timed_out,
     may_transition,
     new_request_id,
     transition,
 )
 from core.store import Lead, lead_snapshot
+from core.video import room_name
 
 # The machine the spec names, written out again rather than imported: a test that reads the
 # production table would agree with any mistake made in it.
@@ -197,3 +203,102 @@ def test_a_lead_snapshot_records_what_the_strategist_reads_at_the_moment_of_the_
         score=3,
         qualified=True,
     )
+
+
+# ------------------------------------------------------ the join timeout and the room name
+
+
+def pending_video_since(moment: datetime) -> HandoverRequest:
+    """A video Hand-over the Visitor accepted at `moment`, waiting for a Strategist."""
+    return replace(accepted_in("video"), created_at=moment, updated_at=moment)
+
+
+def test_a_video_hand_over_nobody_joined_within_the_window_has_waited_too_long() -> None:
+    """The Visitor is looking at a spinner. Past the window the honest answer is a Callback
+    with the Lead already captured, not a room nobody is ever going to enter (ADR-0007)."""
+    accepted = datetime(2026, 8, 31, 9, 41, tzinfo=UTC)
+
+    timed_out = join_timed_out(
+        pending_video_since(accepted), accepted + timedelta(seconds=121), timeout_seconds=120
+    )
+
+    assert timed_out is True
+
+
+def test_a_video_hand_over_still_inside_the_window_is_left_alone() -> None:
+    """A Strategist reading the request before they claim it is the normal case, so the
+    window has to be a window and not a race with the Console's first paint."""
+    accepted = datetime(2026, 8, 31, 9, 41, tzinfo=UTC)
+
+    timed_out = join_timed_out(
+        pending_video_since(accepted), accepted + timedelta(seconds=119), timeout_seconds=120
+    )
+
+    assert timed_out is False
+
+
+def test_a_hand_over_exactly_at_the_window_has_not_waited_too_long_yet() -> None:
+    """The boundary, pinned: the comparison is strictly greater, so a request whose wait is
+    exactly the configured window is still waiting. One second either way changes nothing for
+    a Visitor, and an inequality nobody wrote a test for is the one that gets flipped."""
+    accepted = datetime(2026, 8, 31, 9, 41, tzinfo=UTC)
+
+    timed_out = join_timed_out(
+        pending_video_since(accepted), accepted + timedelta(seconds=120), timeout_seconds=120
+    )
+
+    assert timed_out is False
+
+
+def test_a_callback_hand_over_never_times_out() -> None:
+    """A Callback is already the fallback. Timing it out would move a request a Strategist
+    still owes a call to into a terminal state, hours after the Visitor closed the tab."""
+    accepted = datetime(2026, 8, 31, 9, 41, tzinfo=UTC)
+    waiting = replace(accepted_in("callback"), created_at=accepted, updated_at=accepted)
+
+    assert join_timed_out(waiting, accepted + timedelta(days=1), timeout_seconds=120) is False
+
+
+@pytest.mark.parametrize("state", ["strategist_joined", "in_call", "ended", "offered"])
+def test_only_a_request_still_waiting_for_a_strategist_can_time_out(state: HandoverState) -> None:
+    """A Strategist who joined at minute three is in the call, not late for it."""
+    accepted = datetime(2026, 8, 31, 9, 41, tzinfo=UTC)
+    moved = replace(pending_video_since(accepted), state=state)
+
+    assert join_timed_out(moved, accepted + timedelta(seconds=600), timeout_seconds=120) is False
+
+
+def test_a_request_with_no_timestamp_is_never_timed_out() -> None:
+    """Nothing to measure from is not evidence that nobody came: a request the store has not
+    stamped yet is left where it is rather than closed on a guess."""
+    now = datetime(2026, 8, 31, 9, 41, tzinfo=UTC)
+
+    assert join_timed_out(accepted_in("video"), now, timeout_seconds=120) is False
+
+
+def test_a_timestamp_without_a_timezone_is_read_as_utc() -> None:
+    """Everything this service writes is UTC. A store that hands back a naive datetime must
+    not make the comparison raise in the middle of a Visitor's status poll."""
+    accepted = datetime(2026, 8, 31, 9, 41)
+    waiting = replace(accepted_in("video"), created_at=accepted, updated_at=accepted)
+
+    assert join_timed_out(waiting, datetime(2026, 8, 31, 9, 45, tzinfo=UTC), 120) is True
+
+
+def test_a_room_name_is_the_request_id_in_a_form_a_daily_url_can_carry() -> None:
+    """The design draws the room as `daily.co/cadre-{id}` (docs/design §3.1), so the name is
+    the request id and not a second identifier a Strategist would have to look up."""
+    assert room_name("Ab3-_x9") == "cadre-ab3-_x9"
+
+
+def test_a_room_name_holds_nothing_a_url_would_have_to_escape() -> None:
+    """The room URL is handed to an iframe and read aloud from the Console's banner."""
+    assert room_name("hr/0001 é.9") == "cadre-hr-0001---9"
+
+
+def test_two_handover_requests_never_share_a_room() -> None:
+    """A shared room is two Visitors in one call. The names come from ids minted with 144
+    bits of randomness, so they differ for the same reason the ids do."""
+    names = {room_name(new_request_id()) for _ in range(200)}
+
+    assert len(names) == 200

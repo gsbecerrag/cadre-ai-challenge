@@ -41,6 +41,10 @@ export type Handover = {
   created_at: string | null
   trace_id: string | null
   lead: Lead
+  /** The Daily room, once the Visitor has accepted in `video` mode. Empty otherwise. */
+  room_url: string
+  /** Who claimed the request, once somebody has. Empty otherwise. */
+  strategist_name: string
 }
 
 /** One line of "Conversation so far" in the request detail. */
@@ -133,10 +137,28 @@ export function fetchHandover(authorize: Authorize, requestId: string): Promise<
   return consoleFetch(`/api/console/handovers/${encodeURIComponent(requestId)}`, authorize)
 }
 
-export function fetchTriageReports(
-  authorize: Authorize,
-): Promise<{ reports: TriageReport[] }> {
+export function fetchTriageReports(authorize: Authorize): Promise<{ reports: TriageReport[] }> {
   return consoleFetch('/api/console/triage', authorize)
+}
+
+/**
+ * "Claim & join call": the Strategist takes the request and enters the room.
+ *
+ * One call for both hops the server makes (`strategist_joined` then `in_call`), because it is
+ * one button — and the server is the one that decides whether the move is allowed at all: an
+ * out-of-order claim comes back 409, whatever this page believed about the state.
+ */
+export function joinHandover(authorize: Authorize, requestId: string): Promise<Handover> {
+  return consoleFetch(`/api/console/handovers/${encodeURIComponent(requestId)}/join`, authorize, {
+    method: 'POST',
+  })
+}
+
+/** "End call": the Hand-over is over, for both sides. */
+export function endHandover(authorize: Authorize, requestId: string): Promise<Handover> {
+  return consoleFetch(`/api/console/handovers/${encodeURIComponent(requestId)}/end`, authorize, {
+    method: 'POST',
+  })
 }
 
 export function fetchAvailability(authorize: Authorize): Promise<Availability> {

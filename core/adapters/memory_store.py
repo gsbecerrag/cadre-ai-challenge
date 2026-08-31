@@ -21,6 +21,7 @@ from core.store import (
     Lead,
     TriageReport,
 )
+from core.video import Room
 
 
 class InMemoryConversationStore:
@@ -124,13 +125,27 @@ class InMemoryConversationStore:
         state: HandoverState,
         mode: HandoverMode | None = None,
         lead: LeadSnapshot | None = None,
+        *,
+        room: Room | None = None,
+        strategist_name: str | None = None,
+        expected_state: HandoverState | None = None,
     ) -> HandoverRequest:
         request = self._handovers[request_id]
+        if expected_state is not None and request.state != expected_state:
+            # The compare half of a compare-and-set. Check-then-write is atomic enough here
+            # because this store is one process and there is no await between the two; the
+            # Firestore adapter does the same thing inside a transaction.
+            return request
         updated = replace(
             request,
             state=state,
             mode=mode if mode is not None else request.mode,
             lead=lead if lead is not None else request.lead,
+            room_url=room.url if room is not None else request.room_url,
+            room_expires_at=(room.expires_at if room is not None else request.room_expires_at),
+            strategist_name=(
+                strategist_name if strategist_name is not None else request.strategist_name
+            ),
             updated_at=datetime.now(tz=UTC),
         )
         self._handovers[request_id] = updated

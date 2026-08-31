@@ -48,9 +48,10 @@ Tickets are the unit of work (one branch, one PR, one TDD-driven subagent run ea
 | **P2 Leads & hand-over** | 08 Walkthrough Cards · 09 Lead capture + Qualification Score · 10 Strategist Console (Firebase Auth, Availability) · 11 Callback Hand-over + Console queue | 2 | A Qualified Lead appears in the Console the instant the Assistant creates it | ✅ done — [#13](https://github.com/gsbecerrag/cadre-ai-challenge/pull/13) · [#14](https://github.com/gsbecerrag/cadre-ai-challenge/pull/14) · [#17](https://github.com/gsbecerrag/cadre-ai-challenge/pull/17) · [#22](https://github.com/gsbecerrag/cadre-ai-challenge/pull/22) |
 | **P3 Evals & CI** | 13 50 Eval Cases, four metrics, judge, Langfuse datasets; CI stub subset | 1.5 | `make eval` prints the scorecard; PRs run lint + unit + stub-provider evals | ✅ done — [PR #18](https://github.com/gsbecerrag/cadre-ai-challenge/pull/18) |
 | **P4 Feedback loop** | 12 thumbs → Langfuse score · 14 Triage Agent (Firebase Function) + Console Triage tab | 1.5 | Thumbs-down → Triage Report with a suggested KB fix, no human in the loop | 🟡 in progress — 12 ✅ [PR #23](https://github.com/gsbecerrag/cadre-ai-challenge/pull/23) |
-| **P5 Live video** | 15 Daily.co Live Hand-over, Strategist join/end, Availability gate, `LIVE_HANDOVER_ENABLED` | 2 | Visitor accepts → video call opens inside the chat; Strategist joins from the Console | ⚪ |
+| **P5 Live video** | 15 Daily.co Live Hand-over, Strategist join/end, Availability gate, `LIVE_HANDOVER_ENABLED` | 2 | Visitor accepts → video call opens inside the chat; Strategist joins from the Console | ✅ done — [PR #24](https://github.com/gsbecerrag/cadre-ai-challenge/pull/24) |
 | **P6 If green** | 16 model benchmark · 17 capacity table + 200-VU stub smoke test · 18 in-app navigation · tldraw board | 3.5 | `docs/model-selection.md` with a real table | ⚪ optional |
 | **P7 Honesty pass** | 19 cut log, README, demo script, final deploy | 1 | This file tells the truth | ⚪ |
+| **P8 Scope add (31 Aug)** | 20 Console email/password sign-in for reviewers without a Google account | 0.5 | The demo credentials sign in to the Console | ✅ done — [PR #25](https://github.com/gsbecerrag/cadre-ai-challenge/pull/25) |
 
 **If forced to choose on Monday afternoon:** Triage Agent (P4) beats Live video (P5) — it's the better argument for the observability thesis, and Callback Hand-over still demos.
 
@@ -89,6 +90,7 @@ Model choice is asserted from priors today and **verified by a benchmark in P6**
 | 2026-08-30 | Voice, in-page navigation on cadreai.com → out | No surface / no destination today |
 | 2026-08-31 | Design's calendar picker and "Scheduled for" callback slot → Phase 2 | No scheduling concept in the spec; a Callback means a Strategist reaches out |
 | 2026-08-31 | Design's qualification labels ("Decision authority", "Team size stated", …) → replaced by the spec's five signals | The score must be computable from `capture_lead` arguments ([ADR-0009](docs/adr/0009-bant-lite-qualification.md)) |
+| 2026-08-31 | Scope ADDITION: Console email/password sign-in (ticket 20) | A reviewer may not have a Google account; a demo account with test credentials in Secret Manager is shareable without one |
 
 ## 8. Risks and fallbacks
 

@@ -25,7 +25,7 @@ data model keeps the eight names the spec uses and the screen keeps the five the
 import secrets
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Literal, get_args
 
 # One Handover Request type carries both modes rather than two entities (the design ruling):
@@ -59,6 +59,11 @@ TRANSITIONS: Mapping[str, tuple[HandoverState, ...]] = {
 # holding it is half of what proves the Session owns the request (the cookie is the other
 # half), so it is minted the way a Session id is rather than counted up.
 _REQUEST_ID_BYTES = 18
+
+# How long a Visitor watches a spinner before the Hand-over degrades to a Callback, when the
+# deployment configures nothing. Two minutes is longer than a Strategist with the Console open
+# needs to press one button, and short enough that a Visitor does not give up first.
+DEFAULT_JOIN_TIMEOUT_SECONDS = 120
 
 
 class InvalidTransitionError(ValueError):
@@ -103,6 +108,15 @@ class HandoverRequest:
     # Ticket 06 fills this in; it is here from the start because the Console's request detail
     # draws a Trace row whether or not there is a Trace to link yet.
     trace_id: str | None = None
+    # The Daily room this Hand-over is held in, created at acceptance in `video` mode and
+    # empty in every other mode and state. Both sides join the same URL: the Visitor through
+    # the iframe in the chat panel, the Strategist through the one in the Console.
+    room_url: str = ""
+    room_expires_at: datetime | None = None
+    # Who claimed it. The Visitor's panel says "You're being assisted by ..." with this name,
+    # so it is the Strategist's display name and not their uid or their email — the Visitor is
+    # meeting a person, not an account (docs/design/DESIGN-BRIEF.md §2.6).
+    strategist_name: str = ""
 
 
 def new_request_id() -> str:
@@ -131,3 +145,29 @@ def transition(
             f"A Handover Request in {request.state!r} cannot move to {target!r}."
         )
     return replace(request, state=target, mode=mode if mode is not None else request.mode)
+
+
+def join_timed_out(request: HandoverRequest, now: datetime, timeout_seconds: int) -> bool:
+    """Whether a video Hand-over has waited longer than a Visitor should for a Strategist.
+
+    The timeout is a question, not a scheduler: it is asked when the widget polls the
+    request's status, and the answer is what turns `pending_strategist` into
+    `no_strategist_available` with the mode flipped to `callback` (ADR-0007). No background
+    job, no second clock, and nothing to keep running between requests — a Visitor who closed
+    the tab is a Visitor nobody has to time out.
+
+    Only a `video` request in `pending_strategist` can time out. A Callback is already the
+    fallback, so closing one would take a call a Strategist still owes away from them; a
+    request somebody has joined is a call, not a wait.
+    """
+    if request.state != "pending_strategist" or request.mode != "video":
+        return False
+    waiting_since = request.updated_at or request.created_at
+    if waiting_since is None:
+        # Nothing to measure from is not evidence that nobody came.
+        return False
+    if waiting_since.tzinfo is None:
+        # Everything this service writes is UTC; a store that hands back a naive datetime must
+        # not make the comparison raise in the middle of a Visitor's status poll.
+        waiting_since = waiting_since.replace(tzinfo=UTC)
+    return (now - waiting_since).total_seconds() > timeout_seconds
