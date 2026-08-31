@@ -24,6 +24,20 @@ A thumbs-down in the chat writes a feedback document; a Firebase Function fires 
 - Boundary: the chat API and the triage agent share the core package (prompt builder, KB loader, provider, redactor) but no runtime state; Firestore is the only channel between them. The same pattern is reserved for the lead-enrichment and handover-timeout agents.
 - Fallback if Functions deployment is blocked on the day: the same handler as a FastAPI background task with CPU throttling disabled. Same code, different trigger.
 
+## Amendment (ticket 14, implemented)
+
+The trigger is `on_document_written("feedback/{feedback_id}")`, not the document's creation,
+and the handler's first decision is `rating == "down"`. Ticket 12 made a Feedback document one
+document per trace that a changed thumb *updates* — so a Visitor who presses 👍 and then 👎
+produces a creation carrying `up` and an update carrying `down`, and a create-only trigger
+would never see the thumbs-down at all. Watching writes moves that decision out of the
+subscription and into the handler, where it is a tested line rather than a property of an
+event filter; a thumbs-up (or an up-to-up update, which is the widget sending a comment after
+the rating) still returns before the model is reached, so the cost argument above is unchanged.
+
+Everything else in this decision stands as written: the report is keyed by the feedback ID, a
+redelivery overwrites it, and the model runs again on that redelivery.
+
 ## Considered Options
 
 - FastAPI background task in the API process — lost because CPU throttling and scale-down make completion unreliable, and it couples triage failures to the chat service.
