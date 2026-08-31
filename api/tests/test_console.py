@@ -26,7 +26,7 @@ from core.adapters.fake_verifier import ScriptedTokenVerifier
 from core.adapters.memory_store import InMemoryConversationStore
 from core.adapters.stub_provider import StubModelProvider
 from core.auth import StrategistIdentity
-from core.config import Settings
+from core.config import MissingConfigurationError, Settings
 from core.store import Lead
 
 # The Strategist Cadre employs, and a perfectly valid Google account that Cadre does not.
@@ -267,3 +267,24 @@ def test_setting_availability_is_refused_for_a_strategist_who_is_not_on_the_allo
 
     assert response.status_code == 403
     assert asyncio.run(store.any_strategist_online()) is False
+
+
+def test_the_demo_credential_mode_is_refused_outside_development(
+    settings: Settings, web_dist: Path, provider: StubModelProvider
+) -> None:
+    """`CONSOLE_AUTH=fake` admits anyone who can type `fake:<allowlisted-email>`.
+
+    It exists so the Console can be demonstrated and screenshotted without a Google Workspace
+    account, and it must never be what a deployed service is running: the Console shows every
+    Lead's raw Contact Details. So selecting it outside development is a startup failure —
+    loud, at boot, in the deploy log — rather than a quiet mode nobody notices until the data
+    is already public.
+    """
+    demo_mode = settings.model_copy(
+        update={"env": "production", "console_auth": "fake", "admin_allowed_emails": ALLOWED_EMAILS}
+    )
+
+    with pytest.raises(MissingConfigurationError) as refusal:
+        create_app(settings=demo_mode, web_dist=web_dist, provider=provider)
+
+    assert "CONSOLE_AUTH=fake" in str(refusal.value)
