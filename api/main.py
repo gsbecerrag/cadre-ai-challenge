@@ -230,6 +230,9 @@ def create_app(
             conversation_store,
             cookie_secret=cookie_secret,
             live_handover_enabled=resolved.live_handover_enabled,
+            # The same threshold `capture_lead` scores against, for the same reason: one Lead
+            # cannot be a Qualified Lead down one path and not down the other.
+            qualification_threshold=resolved.qualification_threshold,
         ),
         prefix="/api",
     )

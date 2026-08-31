@@ -24,6 +24,7 @@ from core.handover import (
     transition,
 )
 from core.logging import get_logger
+from core.qualification import DEFAULT_QUALIFICATION_THRESHOLD
 from core.store import ConversationStore, lead_snapshot
 from core.tools.capture_lead import merged_lead
 
@@ -104,12 +105,19 @@ def contact_of(request: HandoverRequest) -> LeadContact:
 
 
 def create_handover_router(
-    store: ConversationStore, *, cookie_secret: str, live_handover_enabled: bool
+    store: ConversationStore,
+    *,
+    cookie_secret: str,
+    live_handover_enabled: bool,
+    qualification_threshold: int = DEFAULT_QUALIFICATION_THRESHOLD,
 ) -> APIRouter:
-    """The Visitor's Hand-over routes, with the cookie secret and the feature flag closed over.
+    """The Visitor's Hand-over routes, with the cookie secret and the configuration closed over.
 
-    The flag is passed in rather than read from settings here, so the composition root stays
-    the only place that reads configuration and a test can build either deployment.
+    All three are passed in rather than read from settings here, so the composition root stays
+    the only place that reads configuration and a test can build either deployment. The
+    threshold in particular has to be the same number `capture_lead` scores against: `qualified`
+    is what unlocks the Hand-over offer, and two paths to one Lead that disagree about it would
+    make the offer depend on which of them wrote last.
     """
 
     router = APIRouter(tags=["handover"])
@@ -184,7 +192,8 @@ def create_handover_router(
             raise HTTPException(status.HTTP_404_NOT_FOUND, NO_SESSION)
         existing = await store.get_lead(session_id)
         lead = await store.upsert_lead(
-            session_id, merged_lead(existing, session_id, details.model_dump())
+            session_id,
+            merged_lead(existing, session_id, details.model_dump(), qualification_threshold),
         )
         # The Handover Request carries a copy of the Lead so the Console's queue is one read;
         # details typed after accepting would otherwise leave a Callback with no name on it.

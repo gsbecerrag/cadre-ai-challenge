@@ -91,8 +91,15 @@ def build_client(
     """A chat client whose deployment either has the Live Hand-over flag on or does not."""
     clients: list[TestClient] = []
 
-    def build(*, live_handover_enabled: bool = False) -> TestClient:
-        configured = settings.model_copy(update={"live_handover_enabled": live_handover_enabled})
+    def build(
+        *, live_handover_enabled: bool = False, qualification_threshold: int = 3
+    ) -> TestClient:
+        configured = settings.model_copy(
+            update={
+                "live_handover_enabled": live_handover_enabled,
+                "qualification_threshold": qualification_threshold,
+            }
+        )
         app = create_app(
             settings=configured,
             web_dist=web_dist,
@@ -403,6 +410,27 @@ def test_the_details_card_updates_the_handover_request_a_strategist_will_read(
     assert stored.lead.email == "jane@example.com"
     # The state the accept left it in is untouched by a Contact Detail arriving.
     assert stored.state == "pending_strategist"
+
+
+def test_the_details_card_scores_the_lead_against_the_configured_threshold(
+    build_client: ClientFor, provider: StubModelProvider, store: InMemoryConversationStore
+) -> None:
+    """`qualified` is what unlocks the Hand-over offer, so the form path and the tool path have
+    to answer the question the same way. This deployment asks for five signals; the Assistant
+    learned four, so a Visitor typing their name into the card must not become a Qualified Lead
+    on the way past — which is exactly what recomputing the flag at the built-in default would
+    do."""
+    client = build_client(qualification_threshold=5)
+    qualify(client, provider)
+    from_the_tool = asyncio.run(store.get_lead(session_id_of(client)))
+    assert from_the_tool is not None and from_the_tool.qualified is False
+
+    response = client.post("/api/leads", json={"name": "Jane Doe", "email": "jane@example.com"})
+
+    assert response.json()["score"] == 4
+    assert response.json()["qualified"] is False
+    from_the_form = asyncio.run(store.get_lead(session_id_of(client)))
+    assert from_the_form is not None and from_the_form.qualified is False
 
 
 def test_the_details_card_needs_a_session_of_its_own(client: TestClient) -> None:
