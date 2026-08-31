@@ -51,6 +51,7 @@ Tickets are the unit of work (one branch, one PR, one TDD-driven subagent run ea
 | **P5 Live video** | 15 Daily.co Live Hand-over, Strategist join/end, Availability gate, `LIVE_HANDOVER_ENABLED` | 2 | Visitor accepts → video call opens inside the chat; Strategist joins from the Console | ⚪ |
 | **P6 If green** | 16 model benchmark · 17 capacity table + 200-VU stub smoke test · 18 in-app navigation · tldraw board | 3.5 | `docs/model-selection.md` with a real table | ⚪ optional |
 | **P7 Honesty pass** | 19 cut log, README, demo script, final deploy | 1 | This file tells the truth | ⚪ |
+| **P8 Scope add (31 Aug)** | 20 Console email/password sign-in for reviewers without a Google account | 0.5 | The demo credentials sign in to the Console | 🟡 |
 
 **If forced to choose on Monday afternoon:** Triage Agent (P4) beats Live video (P5) — it's the better argument for the observability thesis, and Callback Hand-over still demos.
 
@@ -89,6 +90,7 @@ Model choice is asserted from priors today and **verified by a benchmark in P6**
 | 2026-08-30 | Voice, in-page navigation on cadreai.com → out | No surface / no destination today |
 | 2026-08-31 | Design's calendar picker and "Scheduled for" callback slot → Phase 2 | No scheduling concept in the spec; a Callback means a Strategist reaches out |
 | 2026-08-31 | Design's qualification labels ("Decision authority", "Team size stated", …) → replaced by the spec's five signals | The score must be computable from `capture_lead` arguments ([ADR-0009](docs/adr/0009-bant-lite-qualification.md)) |
+| 2026-08-31 | Scope ADDITION: Console email/password sign-in (ticket 20) | A reviewer may not have a Google account; a demo account with test credentials in Secret Manager is shareable without one |
 
 ## 8. Risks and fallbacks
 

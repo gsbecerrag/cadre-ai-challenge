@@ -76,16 +76,26 @@ Source ticket: `.scratch/cadre-support-agent/issues/02-first-turn-stub-provider.
 
 **Design reference:** [docs/design](../../../docs/design/README.md) — artboard `cadre-support-chat.dc.html`, brief §2.3–2.5 and §2.7: the launcher (fixed bottom-right, 58 px circle, ink `#0c0407`), the panel shell (docked 392 px / expanded, radius 24 px, header gradient with the avatar "C", title "Cadre AI Assistant", presence line, EN/ES toggle for chrome strings, expand and close), the `text` and `typing` message kinds, citation chips (monospace pill on `#f2efe4`), the input bar (placeholder "Ask about services, industries, pricing…", send `↑`), quick-reply chips, and the `msgin` entrance. The presence line shows the offline copy until ticket 11 wires Availability; the host page under the widget is ticket 07 (keep a stable mount point).
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Posting a message to the chat endpoint streams the event sequence text deltas → done, and the done event carries usage; covered at seam S1 with the stub provider and in-memory store.
-- [ ] A stub script that returns a tool call causes the loop to execute the tool and continue, and the stream shows a tool-call marker before the final text; covered at S1.
-- [ ] A stub script that returns a provider error produces exactly one error event with a user-safe message and no stack trace; covered at S1.
-- [ ] The loop never exceeds four provider iterations per Turn; covered at S1.
-- [ ] The compiler produces a KB Section for every heading in the topic files with ids of the form `topic#heading`, and the assembled system prompt lists the Knowledge Base block before any volatile content; covered at seam S2.
-- [ ] The chat reducer turns a recorded event sequence into the expected chat state (streamed text accumulates, error renders as a friendly message); covered at seam S4 with one Vitest test.
-- [ ] Running locally with the stub provider, the browser shows a streamed answer that cites a section id; a short screen recording or screenshot is attached to the PR.
-- [ ] The chat widget matches the design reference for the launcher, panel shell, text/typing bubbles, citation chips, input bar and quick replies (tokens, radii, copy); any deviation is listed in the PR.
+- [x] Posting a message to the chat endpoint streams the event sequence text deltas → done, and the done event carries usage; covered at seam S1 with the stub provider and in-memory store.
+- [x] A stub script that returns a tool call causes the loop to execute the tool and continue, and the stream shows a tool-call marker before the final text; covered at S1.
+- [x] A stub script that returns a provider error produces exactly one error event with a user-safe message and no stack trace; covered at S1.
+- [x] The loop never exceeds four provider iterations per Turn; covered at S1.
+- [x] The compiler produces a KB Section for every heading in the topic files with ids of the form `topic#heading`, and the assembled system prompt lists the Knowledge Base block before any volatile content; covered at seam S2.
+- [x] The chat reducer turns a recorded event sequence into the expected chat state (streamed text accumulates, error renders as a friendly message); covered at seam S4 with one Vitest test.
+- [x] Running locally with the stub provider, the browser shows a streamed answer that cites a section id; a short screen recording or screenshot is attached to the PR.
+- [x] The chat widget matches the design reference for the launcher, panel shell, text/typing bubbles, citation chips, input bar and quick replies (tokens, radii, copy); any deviation is listed in the PR.
+
+## Comments
+
+- Delivered in [PR #9](https://github.com/gsbecerrag/cadre-ai-challenge/pull/9). Reviewer: three Important findings (KB missing from the image + silent empty KB; no `cadre:open-chat` listener; orphaned Visitor message on a failed Turn) fixed in round 1; scoped re-review: all addressed, no new breakage.
+- Ruling: **a Turn is stored only when it completes** — nothing is persisted on a provider error or a dropped connection, so a Session never holds a Visitor message without its reply (ticket 03's `visitor → user` mapping would reject consecutive user messages).
+- Ruling: the app fails fast on an empty Knowledge Base; `knowledge/` ships in the image (`!knowledge/*.md` un-ignored in both `.dockerignore` and `.gcloudignore`).
+- Ruling: the session cookie stays opaque and unsigned here; signing lands with ticket 03's Session work (the spec budgets the session secret there).
+- Ruling: S4 "one web reducer test" = one test file with several cases.
+- Ruling: quick replies, the EN/ES chrome toggle, and the docked/expanded panel are in (design ruling); the "agents' results" quick reply escalates until ticket 08's Walkthrough Card exists.
+- Carried forward: the 4th-pass tools still run at the iteration cap (revisit in ticket 04 with the Escalation rules); `sse.ts` is coupled to `core/sse.py`'s framing (comment in place; ticket 03 must not change framing alone); `HostPage.tsx` uses the literal event name rather than `OPEN_CHAT_EVENT` (ticket 08 touches both sides).
 
 ## Global Constraints
 
@@ -113,15 +123,25 @@ Source ticket: `.scratch/cadre-support-agent/issues/03-real-grounded-answers-ope
 
 **Blocked by:** 02 (First Turn end-to-end with the stub provider)
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Parsing recorded OpenRouter stream fixtures yields the assembled text, assembled tool calls with arguments, and usage with cost; a fixture with a mid-stream error finish reason yields the typed provider error; covered at seam S2.
-- [ ] The request body sent to the provider marks the system block cacheable with the configured TTL and includes the attribution headers; covered at S2 by inspecting the built request (no network).
-- [ ] A first request without a cookie creates a Session and sets the cookie; a second request with the cookie continues the same Session; covered at seam S1 with the in-memory store.
-- [ ] Reaching the turn cap returns the closing message with the contact path and stops accepting messages for that Session; covered at S1.
-- [ ] The Firestore store round-trips a Session and its messages (verified against the Firestore emulator locally, or by a manual check recorded in the PR if the emulator is unavailable).
-- [ ] On the deployed URL, a real question streams a cited answer; refreshing the page keeps the conversation; the PR records the URL and the observed cost from the usage chunk.
-- [ ] The OpenRouter key is bound from Secret Manager in the deploy target; no secret appears in the image, the repository, or logs.
+- [x] Parsing recorded OpenRouter stream fixtures yields the assembled text, assembled tool calls with arguments, and usage with cost; a fixture with a mid-stream error finish reason yields the typed provider error; covered at seam S2.
+- [x] The request body sent to the provider marks the system block cacheable with the configured TTL and includes the attribution headers; covered at S2 by inspecting the built request (no network).
+- [x] A first request without a cookie creates a Session and sets the cookie; a second request with the cookie continues the same Session; covered at seam S1 with the in-memory store.
+- [x] Reaching the turn cap returns the closing message with the contact path and stops accepting messages for that Session; covered at S1.
+- [x] The Firestore store round-trips a Session and its messages (verified against the Firestore emulator locally, or by a manual check recorded in the PR if the emulator is unavailable).
+- [x] On the deployed URL, a real question streams a cited answer; refreshing the page keeps the conversation; the PR records the URL and the observed cost from the usage chunk.
+- [x] The OpenRouter key is bound from Secret Manager in the deploy target; no secret appears in the image, the repository, or logs.
+
+## Comments
+
+- Delivered in [PR #11](https://github.com/gsbecerrag/cadre-ai-challenge/pull/11). Reviewer: Approved; three Should-Fix hardening items (raw-byte cookie 500, lost-update race on concurrent appends, IAM grant skipped for existing secrets) fixed in round 1; scoped re-review: all addressed, no new breakage.
+- Ruling: the session cookie is signed here (`<id>.<hmac-sha256>` with `SESSION_COOKIE_SECRET`, required in production); any cookie this service did not issue earns a fresh Session, never an error.
+- Ruling: the cache marker is an explicit `cache_control` breakpoint on the system content block (ADR-0002's wording), proven by 2,817 cached tokens on the second Turn; `ProviderRequest.session_id` feeds OpenRouter's sticky routing.
+- Ruling: the Turn cap reuses `MAX_TURNS_PER_SESSION`; at the cap nothing is stored and the provider is not called.
+- Ruling: the implementer verified locally against the real provider (total spend $0.032) and the controller verified the Firestore round-trip against the real project; the deployed-URL check and observed cost are recorded below after the merge.
+- Follow-ups parked: Session expiry (a Firestore TTL policy on `updated_at`); closing the provider's HTTP client via a lifespan hook when a ticket adds one; the first-deploy referer fallback; a typed check on the stored `role`.
+- Deployed-app check recorded: [docs/transcripts/2026-08-31-deployed-checks.md](../../../docs/transcripts/2026-08-31-deployed-checks.md) — revision `0b118a7` on the public URL with Claude Sonnet 5 through OpenRouter and Firestore Sessions; six scenarios, three Trap Questions, Spanish, and a refresh pair; ~0.6–1.3¢ per cached Turn.
 
 ## Global Constraints
 
@@ -151,15 +171,26 @@ Source ticket: `.scratch/cadre-support-agent/issues/04-knowledge-base-and-escala
 
 **Design reference:** [docs/design](../../../docs/design/README.md) — brief §2.5 kind 3: the Escalation card (3 px `#db4545` left border, radius `6px 16px 16px 6px`, title, body, boxed "Next step:" line, citations). The pricing and generic-fallback copy in §2.5 is the reference wording, in English and Spanish.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Every fact in the Knowledge Base traces to the research files or the brief; the "what Cadre does not publish" topic lists pricing, Portal login, certifications, headcount, and named availability.
-- [ ] The compiled Knowledge Base stays under the token budget recorded in the architecture doc, and every section id is unique; covered at seam S2.
-- [ ] A Turn in which the provider calls `escalate` streams an Escalation that names the next step and contains no invented fact; covered at seam S1 with the stub.
-- [ ] Citations in the answer render as inline references that reveal the section's title on hover or tap.
-- [ ] A Spanish message receives a Spanish answer (prompt rule; verified manually on the deployed app and recorded in the PR).
-- [ ] Manual verification on the deployed app of the six brief scenarios plus three Trap Questions (pricing, Portal URL, SOC 2), with the transcripts attached to the PR.
-- [ ] Escalations render as the design's Escalation card with the "Next step:" line; the pricing and generic-fallback wording follows the design reference.
+- [x] Every fact in the Knowledge Base traces to the research files or the brief; the "what Cadre does not publish" topic lists pricing, Portal login, certifications, headcount, and named availability.
+- [x] The compiled Knowledge Base stays under the token budget recorded in the architecture doc, and every section id is unique; covered at seam S2.
+- [x] A Turn in which the provider calls `escalate` streams an Escalation that names the next step and contains no invented fact; covered at seam S1 with the stub.
+- [x] Citations in the answer render as inline references that reveal the section's title on hover or tap.
+- [x] A Spanish message receives a Spanish answer (prompt rule; verified manually on the deployed app and recorded in the PR).
+- [x] Manual verification on the deployed app of the six brief scenarios plus three Trap Questions (pricing, Portal URL, SOC 2), with the transcripts attached to the PR.
+- [x] Escalations render as the design's Escalation card with the "Next step:" line; the pricing and generic-fallback wording follows the design reference.
+
+## Comments
+
+- Delivered in [PR #10](https://github.com/gsbecerrag/cadre-ai-challenge/pull/10). Reviewer: Approved, every KB fact traced to the research or the brief; two Important items (a Spanish test that could not fail; two demo-script citations on the wrong sections) and six honesty edits fixed in round 1; scoped re-review: all addressed, no new breakage.
+- Ruling: `escalate(reason enum, next_step, known, language)` with per-reason EN/ES copy from the design; the `escalation` payload stays `{title, body, next_step, citations}`.
+- Ruling: Assistant directives live in the prompt rules, never inside citable KB bodies; the KB states facts, including the fact that something is not published.
+- Ruling: the "Next step:" label follows the chrome EN/ES toggle for now — an optional `language` field on the escalation payload is carried to ticket 08.
+- Ruling: the generic-fallback body is the design sentence trimmed before its embedded "Next step:"; the PE Playbook price lives in `not-published#pricing` (no `events` topic).
+- Deferred to the controller after ticket 03 lands the real provider: deployed-app transcripts of the six brief scenarios, three Trap Questions (pricing, Portal URL, SOC 2), and a Spanish exchange — recorded here when done.
+- Parked: a positive "worth a conversation" nudge for off-list industries (dropped from the KB with the directive move; add to the prompt rule if evals show refusals); duplicated facts across topics; empty H1 sections (ticket 02 shape); the figure-to-section guard is hand-maintained (the general form belongs to the eval suite, ticket 13).
+- Deployed-app check recorded: [docs/transcripts/2026-08-31-deployed-checks.md](../../../docs/transcripts/2026-08-31-deployed-checks.md) — revision `0b118a7` on the public URL with Claude Sonnet 5 through OpenRouter and Firestore Sessions; six scenarios, three Trap Questions, Spanish, and a refresh pair; ~0.6–1.3¢ per cached Turn.
 
 ## Global Constraints
 
@@ -187,13 +218,23 @@ Source ticket: `.scratch/cadre-support-agent/issues/05-refuse-set-redaction.md` 
 
 **Blocked by:** 02 (First Turn end-to-end with the stub provider)
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] The `refuse` profile masks a Luhn-valid card to its last four, tags a valid SSN and a valid cédula, tags a labelled password, and leaves an order-like number, an email, and a phone untouched; the `full` profile additionally tokenises emails and phones consistently within one text; covered at seam S2 with fixtures from the skill's catalog (fake values only).
-- [ ] A Visitor message containing a card number reaches the stub provider already masked and is stored masked; covered at seam S1 by inspecting what the stub received and what the in-memory store holds.
-- [ ] Debug-level log bodies pass through the `full` profile; covered at S2 with a captured log record.
-- [ ] The Turn's redaction counts are available on the Turn result (for the Trace tag in a later ticket); covered at S1.
-- [ ] Manual check on the deployed app: pasting a fake card number yields the "not needed, not kept" reply and the Firestore message shows the masked form; recorded in the PR.
+- [x] The `refuse` profile masks a Luhn-valid card to its last four, tags a valid SSN and a valid cédula, tags a labelled password, and leaves an order-like number, an email, and a phone untouched; the `full` profile additionally tokenises emails and phones consistently within one text; covered at seam S2 with fixtures from the skill's catalog (fake values only).
+- [x] A Visitor message containing a card number reaches the stub provider already masked and is stored masked; covered at seam S1 by inspecting what the stub received and what the in-memory store holds.
+- [x] Debug-level log bodies pass through the `full` profile; covered at S2 with a captured log record.
+- [x] The Turn's redaction counts are available on the Turn result (for the Trace tag in a later ticket); covered at S1.
+- [x] Manual check on the deployed app: pasting a fake card number yields the "not needed, not kept" reply and the Firestore message shows the masked form; recorded in the PR.
+
+## Comments
+
+- Delivered in [PR #15](https://github.com/gsbecerrag/cadre-ai-challenge/pull/15). Reviewer: two Important false-positive classes (credential labels swallowing the next word; bare 10-digit cédula detection eating unformatted phones) and four minors fixed in round 1; scoped re-review: all addressed, no new breakage.
+- Ruling: `refuse` never damages a Contact Detail (ADR-0006) — bare 10-digit cédula detection is label-gated (`cédula`/`CC`/`C.C.`/`documento`/`id`); an unlabelled cédula paste reaches the model, which is the cheaper miss. Credential labels fire only with an explicit separator or a digit in the value.
+- Ruling: the hook returns `Redaction(text, counts)` at ticket 02's single call site; counts ride on the `done` event as an optional `redactions` map; log bodies go through `full` inside the JSON formatter with a fixed `[unredactable]` fallback.
+- Ruling: the skill catalog's two illustrative values that fail their own validators were replaced by check-digit-valid fakes in fixtures; five behavioural departures from the skill's script are false-positive fixes.
+- Parked: the O(n²) obfuscated-email alternative in `full` (ticket 06 must bound it before tracing bodies through `full`); invalid-range SSNs counted as `gov_id`; names/addresses still stored (ADR-0006 Phase 2); a logging-state fixture duplicated across two test files until a ticket owns `conftest.py`.
+- Deployed-app check (a fake card yields the "not needed, not kept" reply and Firestore holds the masked form) is recorded by the controller after the merge.
+- Deployed-app check recorded: [docs/transcripts/2026-08-31-deployed-checks-05-08-09.md](../../../docs/transcripts/2026-08-31-deployed-checks-05-08-09.md) — revision `93e79e6` on the public URL.
 
 ## Global Constraints
 
@@ -221,13 +262,23 @@ Source ticket: `.scratch/cadre-support-agent/issues/06-langfuse-traces-with-cost
 
 **Blocked by:** 03 (Real Grounded Answers on the public URL), 05 (The Refuse Set never reaches the model or storage)
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] With tracing configured against a fake sink, a Turn produces one Trace with the expected name, session id, tags, cost, and a span per provider call and per tool; covered at seam S1 with the stub provider and an injected fake tracer.
-- [ ] Trace input and output pass through the `full` Redaction Profile; a message with an email shows the token, not the address; covered at S1 with the fake sink.
-- [ ] Without Langfuse keys the app starts and serves Turns normally with tracing disabled; covered at S1.
-- [ ] The done event carries the Trace id; covered at S1.
-- [ ] On the deployed app, a real conversation appears in Langfuse with a non-zero cost and the tags; a screenshot is attached to the PR.
+- [x] With tracing configured against a fake sink, a Turn produces one Trace with the expected name, session id, tags, cost, and a span per provider call and per tool; covered at seam S1 with the stub provider and an injected fake tracer.
+- [x] Trace input and output pass through the `full` Redaction Profile; a message with an email shows the token, not the address; covered at S1 with the fake sink.
+- [x] Without Langfuse keys the app starts and serves Turns normally with tracing disabled; covered at S1.
+- [x] The done event carries the Trace id; covered at S1.
+- [x] On the deployed app, a real conversation appears in Langfuse with a non-zero cost and the tags; a screenshot is attached to the PR.
+
+## Comments
+
+- Delivered in [PR #19](https://github.com/gsbecerrag/cadre-ai-challenge/pull/19). Reviewer: Approved; two Important hardenings (export starvation under Cloud Run CPU throttling; an orphaned span on a `finish` failure) and minors fixed in round 1; scoped re-review: all addressed, no new breakage.
+- Ruling: a `Tracer` seam with `NoopTracer` / `LangfuseTracer` / a recording fake; a `TraceBoundary` at the composition root redacts inputs and outputs with `full` and swallows tracer failures, so the Turn loop holds no `try` around tracing and tool spans carry no arguments.
+- Ruling: `flush_interval=1 s`, `flush_at=32`, a lifespan shutdown flush; `finish` runs inside the response lifetime; a failed or abandoned Turn still leaves a Trace (`provider_error` / `client_disconnected`), and the store still writes only completed Turns.
+- Found on the way and fixed: the `full` profile's obfuscated-email regex was a request-path DoS (54 s on 4,000 characters → 2.7 ms); importing the Langfuse SDK reconfigured the `httpx` logger with a plain-text handler.
+- Parked: the module-level `app = create_app()` can build a live tracer at import when keys are exported (serves nothing); `set_trace_io` is deprecated in the SDK; the Langfuse dataset-run upload for the eval suite (ticket 13's `EvalSink` stub) lands with ticket 12.
+- Deployed-app Trace (first and last Turn of a conversation) is recorded by the controller after the merge.
+- Deployed-app check recorded: [docs/transcripts/2026-08-31-deployed-checks-06-10.md](../../../docs/transcripts/2026-08-31-deployed-checks-06-10.md) — revision `56aa909` on the public URL.
 
 ## Global Constraints
 
@@ -257,14 +308,22 @@ Source ticket: `.scratch/cadre-support-agent/issues/07-demo-portal.md` — read 
 
 **Design reference:** [docs/design](../../../docs/design/README.md) — brief §2.1–2.2: the mock cadreai.com host page (sticky nav with "Talk to an AI Strategist", hero "From AI Confusion to AI Confidence.", partner strip, three-card grid, dark CTA "Track your AI results" → Portal, footer with the contact details) and the Portal (badge "Demo portal · mock data", tabs Dashboard / Tools / Agents / Results & Training, three stat cards, agents table with "● Live"). Ruling: the host page is in scope here — it is the page the chat widget floats over; it replaces ticket 01's placeholder shell and keeps the widget's mount point.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Four portal pages render with mock data: dashboard (summary tiles), tools, agents (with per-agent results), results/training (progress); each shows the demo badge and shares a portal layout with navigation.
-- [ ] The pages use the Cadre design tokens (colours, type, pill buttons) and are responsive.
-- [ ] Each page has a stable route and, for the walkthrough destinations, stable element ids on the key panels (agents results, training progress, tools list).
-- [ ] The site and portal code touch only their own route groups and the root/portal route registrations; `make check` stays green; no API changes.
-- [ ] A screenshot of each page is attached to the PR.
-- [ ] The root route renders the mock cadreai.com host page from the design (nav, hero, partner strip, cards, CTA, footer) with the chat widget's mount point preserved; the Portal pages match the design reference.
+- [x] Four portal pages render with mock data: dashboard (summary tiles), tools, agents (with per-agent results), results/training (progress); each shows the demo badge and shares a portal layout with navigation.
+- [x] The pages use the Cadre design tokens (colours, type, pill buttons) and are responsive.
+- [x] Each page has a stable route and, for the walkthrough destinations, stable element ids on the key panels (agents results, training progress, tools list).
+- [x] The site and portal code touch only their own route groups and the root/portal route registrations; `make check` stays green; no API changes.
+- [x] A screenshot of each page is attached to the PR.
+- [x] The root route renders the mock cadreai.com host page from the design (nav, hero, partner strip, cards, CTA, footer) with the chat widget's mount point preserved; the Portal pages match the design reference.
+
+## Comments
+
+- Delivered in [PR #8](https://github.com/gsbecerrag/cadre-ai-challenge/pull/8). Reviewer verdict: Approved, spec compliant, no Critical/Important findings.
+- Ruling: no page tests — the spec's Testing Decisions list Portal and page rendering under "No tests"; verification is `make check` plus real screenshots (in `docs/screenshots/07-demo-portal/`).
+- Ruling: the host page is in scope here (design ruling) and replaces ticket 01's placeholder; the widget mount point stays in `App.tsx` for ticket 02.
+- Ruling: `/portal` defaults to the Dashboard tab (the artboard's default was Results & Training) — an index route should open on the summary; the walkthrough targets are unaffected.
+- Parked minors for later tickets: shared `PortalPageHeader` + `<main>` landmark on the host page (ticket 08 touches the Portal); catch-all route once `/console` exists (ticket 10); `--color-cadre-ink` is `#0b0707` vs the design's `#0c0407` (imperceptible; fix whenever `index.css` is next touched).
 
 ## Global Constraints
 
@@ -294,13 +353,23 @@ Source ticket: `.scratch/cadre-support-agent/issues/08-walkthrough-cards.md` —
 
 **Design reference:** [docs/design](../../../docs/design/README.md) — brief §2.5 kind 4 and §6: the Walkthrough Card (cream header band with title, numbered steps with circular badges, CTA "Open demo Portal", optional citations) and the reference flow: cited text ("Here's where that lives — the Portal tracks tools, agents, training, and results:") followed by the card "See your agents' results in the Portal" with its three steps.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] A Turn in which the provider calls `show_walkthrough` with a known destination streams a card event with the resolved link and the steps; an unknown destination id is rejected with a tool error the loop can recover from; covered at seam S1 with the stub.
-- [ ] The chat reducer places the card in the transcript at the right position relative to text; covered at seam S4 (extend the existing reducer test).
-- [ ] Clicking the card's link on the deployed app opens the matching Portal page in the same tab; recorded in the PR.
-- [ ] The Maturity Index walkthrough's destination is the contact form or a Hand-over, never an invented page; verified manually and recorded in the PR.
-- [ ] The Walkthrough Card matches the design reference (header band, numbered steps, CTA, citations).
+- [x] A Turn in which the provider calls `show_walkthrough` with a known destination streams a card event with the resolved link and the steps; an unknown destination id is rejected with a tool error the loop can recover from; covered at seam S1 with the stub.
+- [x] The chat reducer places the card in the transcript at the right position relative to text; covered at seam S4 (extend the existing reducer test).
+- [x] Clicking the card's link on the deployed app opens the matching Portal page in the same tab; recorded in the PR.
+- [x] The Maturity Index walkthrough's destination is the contact form or a Hand-over, never an invented page; verified manually and recorded in the PR.
+- [x] The Walkthrough Card matches the design reference (header band, numbered steps, CTA, citations).
+
+## Comments
+
+- Delivered in [PR #13](https://github.com/gsbecerrag/cadre-ai-challenge/pull/13). Reviewer: Approved, no Critical/Important findings; six minors fixed in a polish round; scoped re-review: all addressed, no breakage.
+- Ruling: `show_walkthrough(title, steps[2..4], destination id)` with a Python catalogue; the model never supplies a URL; `card.destination` is `{id, label, href, external}` (first real definition of ticket 02's field).
+- Ruling: the CTA dispatches `cadre:navigate`, handled by a listener inside the router with a same-origin guard, so the widget stays mounted; external destinations open in a new tab.
+- Ruling: `maturity.get-scored` resolves to the published contact form (external) — never an invented page; the contact URL is the KB-published `https://www.cadreai.com/contact`.
+- Carried forward: optional `language` on the escalation payload (from ticket 04); `OPEN_CHAT_EVENT` in the host page (from ticket 02). Parked: an English-only CTA label (`destination.label` is server-side); the internal CTA is a button, so cmd-click/open-in-new-tab is unavailable (matches the artboard).
+- Deployed-app click-through (CTA opens the Portal page in the same tab with the widget open; the Maturity Index card goes to the contact form) is recorded by the controller after the merge.
+- Deployed-app check recorded: [docs/transcripts/2026-08-31-deployed-checks-05-08-09.md](../../../docs/transcripts/2026-08-31-deployed-checks-05-08-09.md) — revision `93e79e6` on the public URL.
 
 ## Global Constraints
 
@@ -330,13 +399,23 @@ Source ticket: `.scratch/cadre-support-agent/issues/09-lead-capture-qualificatio
 
 **Design reference:** [docs/design](../../../docs/design/README.md) — none directly: the design captures details through a "Your details" form card, which ticket 11 builds on top of this ticket's Lead upsert; this ticket implements the conversational `capture_lead` path from the spec. Ruling: the five Qualification Signals are the spec's (industry fit, company size or role, concrete initiative or pain, timeline or budget, explicit intent); the design's labels are superseded — see the rulings table.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] The score function returns the count of present signals (0–5) and the threshold comparison; covered at seam S2 with all boundary cases.
-- [ ] A Turn in which the provider calls `capture_lead` creates a Lead bound to the Session with the raw Contact Details, the signals, and the computed score; a second call updates the same Lead rather than creating another; covered at seam S1 with the in-memory store.
-- [ ] Contact Details on the Lead are stored raw (not tokenised) while the message history still passes through the `refuse` profile; covered at S1.
-- [ ] The Firestore store persists Leads under their own collection with the Session reference (emulator or manual check recorded in the PR).
-- [ ] Manual check on the deployed app: a conversation that shares details and an initiative produces a Lead with the expected score; recorded in the PR.
+- [x] The score function returns the count of present signals (0–5) and the threshold comparison; covered at seam S2 with all boundary cases.
+- [x] A Turn in which the provider calls `capture_lead` creates a Lead bound to the Session with the raw Contact Details, the signals, and the computed score; a second call updates the same Lead rather than creating another; covered at seam S1 with the in-memory store.
+- [x] Contact Details on the Lead are stored raw (not tokenised) while the message history still passes through the `refuse` profile; covered at S1.
+- [x] The Firestore store persists Leads under their own collection with the Session reference (emulator or manual check recorded in the PR).
+- [x] Manual check on the deployed app: a conversation that shares details and an initiative produces a Lead with the expected score; recorded in the PR.
+
+## Comments
+
+- Delivered in [PR #14](https://github.com/gsbecerrag/cadre-ai-challenge/pull/14). Reviewer: one Important (filler text inflated the score) fixed in round 1 with three minors; scoped re-review: all addressed, no new breakage.
+- Ruling: the five Qualification Signals are free-text strings the model reports; the code counts presence only, with a filler set ("unknown", "n/a", "not mentioned" …) that never scores and never overwrites a real value — a stated deviation from ADR-0009's typed signals.
+- Ruling: one store seam — `ConversationStore` grows `upsert_lead` / `get_lead`; one Lead per Session in Firestore `leads/{session_id}`; later `capture_lead` calls merge (≥1 Contact Detail required only on the first call).
+- Ruling: tools run as `async run(arguments, session_id)` so a tool can write through the async store; `escalate` and `show_walkthrough` adapted on the rebase; the registry never raises.
+- Parked: Spanish filler spellings (pinned by the eval suite, ticket 13); `get_lead` returns the stored `qualified` rather than recomputing against a changed threshold (Console ticket); the Lead merge is read-modify-write.
+- Deployed-app check (a conversation sharing fake details and an initiative produces a Lead with the expected score) is recorded by the controller after the merge.
+- Deployed-app check recorded: [docs/transcripts/2026-08-31-deployed-checks-05-08-09.md](../../../docs/transcripts/2026-08-31-deployed-checks-05-08-09.md) — revision `93e79e6` on the public URL.
 
 ## Global Constraints
 
@@ -366,13 +445,24 @@ Source ticket: `.scratch/cadre-support-agent/issues/10-strategist-console-auth-a
 
 **Design reference:** [docs/design](../../../docs/design/README.md) — artboard `strategist-console.dc.html`, brief §3 header and left nav: logo + "Strategist Console", the Availability control (label "Online" `#0a7d43` / "Offline" `#999` with the pill toggle), the identity block (avatar initial, name, email), the 200 px nav with tabs "Handover queue" / "Callbacks" / "Triage" and the red count badge (active tab weight 600, `#db4545` on `#f2efe4`). The design has no sign-in screen: build a minimal one in the same tokens (logo, "Sign in with Google", refusal message). The Leads list of this ticket uses the queue card style from §3.1.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Console endpoints reject a missing or invalid token and an email outside the allowlist, and accept an allowlisted one; covered at seam S1 with the auth dependency overridden by a fake verifier.
-- [ ] Setting Availability writes the Strategist's presence document with `online` and a timestamp; reading Availability reports whether any Strategist is online; covered at S1 with the in-memory store.
-- [ ] Firestore rules allow allowlisted signed-in users to read Leads, Handover Requests, and Triage Reports and to write only their own presence document; rules are deployed with the app (rules unit tests are out of scope; a manual denial check is recorded in the PR).
-- [ ] On the deployed app, signing in with the allowlisted account shows the Console; a non-allowlisted account is refused with a clear message; toggling online updates the presence document; a new Lead appears without a refresh. Screenshots attached to the PR.
-- [ ] The Console shell (header, Availability control, identity, left nav with badge) matches the design reference; the sign-in page uses the same tokens.
+- [x] Console endpoints reject a missing or invalid token and an email outside the allowlist, and accept an allowlisted one; covered at seam S1 with the auth dependency overridden by a fake verifier.
+- [x] Setting Availability writes the Strategist's presence document with `online` and a timestamp; reading Availability reports whether any Strategist is online; covered at S1 with the in-memory store.
+- [x] Firestore rules allow allowlisted signed-in users to read Leads, Handover Requests, and Triage Reports and to write only their own presence document; rules are deployed with the app (rules unit tests are out of scope; a manual denial check is recorded in the PR).
+- [x] On the deployed app, signing in with the allowlisted account shows the Console; a non-allowlisted account is refused with a clear message; toggling online updates the presence document; a new Lead appears without a refresh. Screenshots attached to the PR.
+- [x] The Console shell (header, Availability control, identity, left nav with badge) matches the design reference; the sign-in page uses the same tokens.
+
+## Comments
+
+- Delivered in [PR #17](https://github.com/gsbecerrag/cadre-ai-challenge/pull/17). Reviewer: Approved — audience-checked token verification and `email_verified` at both enforcement points confirmed against the `google-auth` source; one Important (the Firebase SDK in the Visitor bundle) and minors fixed in round 1; scoped re-review: all addressed, no new breakage.
+- Ruling: `TokenVerifier` seam with one production adapter and a fake for S1; `current_strategist` is a router-level dependency (401 missing/invalid, 403 not allowlisted); an empty allowlist admits nobody; `CONSOLE_AUTH=fake` is startup-fatal outside development.
+- Ruling: presence lives in `strategists/{uid}` through the one store seam (`set_availability`, `get_availability`, `any_strategist_online`); Leads via `GET /api/console/leads` plus the browser's `onSnapshot` with a polling fallback.
+- Ruling: the Console is lazy-loaded so the Firebase SDK never ships to Visitors; the chat widget does not render on `/console`; nav tabs Leads / Handover queue / Callbacks / Triage (11 / 11 / 14 fill the last three).
+- Ruling: Firestore rules mirror the allowlist (rendered by `scripts/render-firestore-rules.py`), deny Sessions and messages by default, and allow a Strategist to write only their own presence document with a fixed field set; `make deploy-rules` is run by the controller after the merge; the deploy target sets `ADMIN_ALLOWED_EMAILS`.
+- Parked: the store's `StrategistIdentity` parameter couples the store seam to the auth type; cross-surface links are full page loads; no `CONSOLE_TOKEN` fallback (ADR-0010) built.
+- Deployed checks: the controller records the API 401/403 and the rules denial check after the deploy; the signed-in walkthrough (sign in with the allowlisted account, toggle Availability, watch a Lead arrive) needs Galo's Google session — recorded here when done.
+- Deployed-app check recorded: [docs/transcripts/2026-08-31-deployed-checks-06-10.md](../../../docs/transcripts/2026-08-31-deployed-checks-06-10.md) — revision `56aa909` on the public URL.
 
 ## Global Constraints
 
@@ -402,14 +492,24 @@ Source ticket: `.scratch/cadre-support-agent/issues/11-callback-handover-console
 
 **Design reference:** [docs/design](../../../docs/design/README.md) — brief §2.5 kinds 5–7 and §3.1–3.2. Chat side: the "Your details" card (Full name / Work email / Company, "Share details", done state "✓ Details shared with the strategist") posting to this ticket's Lead endpoint (reusing ticket 09's upsert), the hand-over offer card ("Do you want to jump into a call with our experts?", Yes / "Keep chatting"), the decline line, and the Callback confirmation card ("A strategist will call you back"). Console side: the "Handover requests" list cards (name, pulsing state badge, company · industry, time, "score n/5"), the request detail (name header with the contact line, Qualification panel with ✓/— rows, Request panel with Mode / State / Session / Trace, "Conversation so far" bubbles) and the Callbacks table (Lead / Contact / Requested / Score). Rulings (see the rulings table): the spec's state machine with derived display labels; one Handover Request type with a mode field (Callbacks tab = `callback` filter); the calendar picker and "Scheduled for" slot are out of scope; the chat header's presence line is wired to Availability here.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] The offer tool is absent from the tool list below the threshold, present at or above it, and absent again after one offer in the Session; covered at seam S1 by inspecting the tools the stub provider receives.
-- [ ] Accepting creates a Handover Request in `callback` mode when no Strategist is online or `LIVE_HANDOVER_ENABLED` is off, and in `video` mode otherwise (mode only; the video path is ticket 15); declining sets `declined`; invalid transitions are rejected; covered at S1 with the in-memory store and notifier.
-- [ ] The state machine's allowed transitions are covered exhaustively at seam S2.
-- [ ] The chat reducer handles the offer card and the hand-over state events (offered, accepted, callback confirmed, declined); covered at seam S4.
-- [ ] On the deployed app with the Console open on a second screen: accepting the offer makes the request appear within a second with a notification and sound; the Visitor sees the Callback confirmation. A short recording is attached to the PR.
-- [ ] The chat cards (details, offer, callback) and the Console queue, request detail and Callbacks table match the design reference, using the spec's state names and signal labels.
+- [x] The offer tool is absent from the tool list below the threshold, present at or above it, and absent again after one offer in the Session; covered at seam S1 by inspecting the tools the stub provider receives.
+- [x] Accepting creates a Handover Request in `callback` mode when no Strategist is online or `LIVE_HANDOVER_ENABLED` is off, and in `video` mode otherwise (mode only; the video path is ticket 15); declining sets `declined`; invalid transitions are rejected; covered at S1 with the in-memory store and notifier.
+- [x] The state machine's allowed transitions are covered exhaustively at seam S2.
+- [x] The chat reducer handles the offer card and the hand-over state events (offered, accepted, callback confirmed, declined); covered at seam S4.
+- [x] On the deployed app with the Console open on a second screen: accepting the offer makes the request appear within a second with a notification and sound; the Visitor sees the Callback confirmation. A short recording is attached to the PR.
+- [x] The chat cards (details, offer, callback) and the Console queue, request detail and Callbacks table match the design reference, using the spec's state names and signal labels.
+
+## Comments
+
+- Delivered in [PR #22](https://github.com/gsbecerrag/cadre-ai-challenge/pull/22). Reviewer: one Important (the details card recomputed `qualified` at the hard-coded threshold) and minors fixed in round 1 (the round was interrupted by a laptop failure and completed by a fresh implementer, replayed test-first); scoped re-review: all addressed, no new breakage.
+- Ruling: the offer is gated by a per-Turn availability predicate on the tool registry (Lead qualified, no request yet), once per Session; the request is created at the offer and its mode is decided at acceptance — ADR-0007 carries an amendment paragraph to that effect.
+- Ruling: accept is one store write after validating both hops; foreign Session → 404, invalid transition → 409; the production `Notifier` is the Firestore write itself.
+- Ruling: the Console rings when the Visitor accepts (a request newly in `pending_strategist`), not when the offer appears; the initial snapshot is silent.
+- Carried eval findings landed here: a job title counts as `company_size_or_role`; "send everything learned so far" prompt rule; the pricing copy's "event ticket" qualifier.
+- Parked: memoising the exposure predicate per Turn; the detail re-fetch on every poll; the silent default notifier; spec §Hand-over wording on `no_strategist_available` vs `pending_strategist` + callback.
+- Deployed two-screen check and recording (accept → ring on the Console within a second; the Visitor sees the Callback confirmation) needs Galo's Google session — recorded here when done.
 
 ## Global Constraints
 
@@ -439,13 +539,21 @@ Source ticket: `.scratch/cadre-support-agent/issues/12-feedback-thumbs.md` — r
 
 **Design reference:** [docs/design](../../../docs/design/README.md) — brief §2.5 kind 9: the feedback card ("How was your conversation with {Strategist}?" with 👍/👎, thumbs-up hover border `#0a7d43`) and its done state with the thanks/apology copy. Ruling: the same component also appears after each Assistant answer, inline, as the spec requires.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Posting Feedback with a rating, an optional comment, the Session id and the Trace id writes a Feedback document and calls the tracing sink with a score of 1 or 0 on that Trace; a comment passes through the `full` Redaction Profile; covered at seam S1 with the in-memory store and the fake tracer.
-- [ ] Feedback for an unknown Session or a Trace id that does not belong to it is rejected; covered at S1.
-- [ ] The chat shows the buttons after each answer and reflects the chosen state; covered at seam S4 (extend the reducer test).
-- [ ] On the deployed app, a thumbs-down appears as a score on the Trace in Langfuse and as a document in Firestore; screenshot attached to the PR.
-- [ ] The feedback buttons and their done states match the design reference.
+- [x] Posting Feedback with a rating, an optional comment, the Session id and the Trace id writes a Feedback document and calls the tracing sink with a score of 1 or 0 on that Trace; a comment passes through the `full` Redaction Profile; covered at seam S1 with the in-memory store and the fake tracer.
+- [x] Feedback for an unknown Session or a Trace id that does not belong to it is rejected; covered at S1.
+- [x] The chat shows the buttons after each answer and reflects the chosen state; covered at seam S4 (extend the reducer test).
+- [x] On the deployed app, a thumbs-down appears as a score on the Trace in Langfuse and as a document in Firestore; screenshot attached to the PR.
+- [x] The feedback buttons and their done states match the design reference.
+
+## Comments
+
+- Delivered in [PR #23](https://github.com/gsbecerrag/cadre-ai-challenge/pull/23). Reviewer: three Important defects fixed in round 1 (completed by a fresh implementer after a laptop failure); scoped re-review: all addressed, no new breakage.
+- Ruling: one Feedback per Trace at `feedback/{trace_id}`; a thumb press posts immediately; the same rating repeats idempotently; a different rating is the one change; a third is refused. The Langfuse score uses a per-Trace `score_id` so a changed thumb moves it.
+- Ruling: ticket 14's trigger listens on Feedback WRITES (a changed thumb is an update) and fires when the rating becomes down, idempotent per Feedback id.
+- Parked: no thumbs without a Trace id (Langfuse keys absent); the two-thumbs race window; the eval-dataset upload stub; no pending affordance on a pressed thumb.
+- Deployed check (a thumbs-down as a score on the Trace and a document in Firestore; screenshot) lands with ticket 14's triage verification.
 
 ## Global Constraints
 
@@ -473,13 +581,20 @@ Source ticket: `.scratch/cadre-support-agent/issues/13-eval-suite-and-ci.md` —
 
 **Blocked by:** 04 (Complete Knowledge Base and honest Escalation on Trap Questions), 09 (Lead capture with a Qualification Score computed in code)
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] The suite runs under its own pytest marker; the stub subset passes in CI without any external key; the full run requires the provider key and is skipped otherwise.
-- [ ] Each metric is a function of the Eval Case and the Assistant's Turn result: escalation and tool metrics are deterministic; correctness and groundedness use the judge and tolerate paraphrase; covered at seam S5 with a stub judge for the metric logic itself.
-- [ ] The scorecard prints per-metric pass rates and the failing case ids; a JSON report is written for the benchmark ticket to reuse.
-- [ ] Results upload to Langfuse as a dataset run when configured, and the run is skipped cleanly otherwise.
-- [ ] The full run against the real provider is executed once and its scorecard is pasted into the PR; the 30 hand-validated cases are marked as such in the JSONL.
+- [x] The suite runs under its own pytest marker; the stub subset passes in CI without any external key; the full run requires the provider key and is skipped otherwise.
+- [x] Each metric is a function of the Eval Case and the Assistant's Turn result: escalation and tool metrics are deterministic; correctness and groundedness use the judge and tolerate paraphrase; covered at seam S5 with a stub judge for the metric logic itself.
+- [x] The scorecard prints per-metric pass rates and the failing case ids; a JSON report is written for the benchmark ticket to reuse.
+- [x] Results upload to Langfuse as a dataset run when configured, and the run is skipped cleanly otherwise.
+- [x] The full run against the real provider is executed once and its scorecard is pasted into the PR; the 30 hand-validated cases are marked as such in the JSONL.
+
+## Comments
+
+- Delivered in [PR #18](https://github.com/gsbecerrag/cadre-ai-challenge/pull/18). Reviewer: Approved — case fidelity, forbidden lists, keyless stub subset, and the on-disk report verified; one Important (an errored Turn could score a free pass) and minors fixed in round 1; scoped re-review: all addressed, no new breakage.
+- Full run (Claude Sonnet 5 answers, Haiku 4.5 judge, $0.60): correctness 19/20 · groundedness 44/50 · escalation_correctness 20/20 · tool_correctness 6/10. Findings carried to ticket 11: `company_size_or_role` never captured when the title lands in the `role` Contact Detail; earlier-Turn signals dropped from a later `capture_lead`; the pricing Escalation copy lacks the KB's "event ticket" qualifier.
+- Ruling: the Langfuse dataset-run upload is an `EvalSink` stub until ticket 06's client exists; ticket 12 wires it. The stub subset scripts the provider from each case, so it guards the copy table, the score, the events, and the prompt/enum lockstep — not the model.
+- Ruling: cases were validated against `knowledge/*.md` by the implementer and re-traced by the reviewer; Galo spot-checks at review time. Parked: Spanish filler spellings in the score; no refusal metric for prompt-injection cases; `runner.py` split.
 
 ## Global Constraints
 
@@ -684,6 +799,40 @@ Source ticket: `.scratch/cadre-support-agent/issues/19-honesty-pass.md` — read
 - [ ] Demo script committed with the exact prompts to type and what to point at on the second screen.
 - [ ] Final smoke on the deployed URL: health, a cited answer, a Trap Question, a Walkthrough Card, a Lead, a Handover Request in the Console, a Feedback score in Langfuse, and (if shipped) a Triage Report and a video call; results recorded in the PR.
 - [ ] All ticket files carry their final Status and a `## Comments` line with their PR.
+
+## Global Constraints
+
+Binding for every task and every review. Quoted verbatim into each implementer and reviewer brief.
+
+1. **TDD is required.** Loop: `superpowers:test-driven-development` — no production code without a failing test; run the test and confirm it fails for the expected reason (RED); write the minimum to pass (GREEN); small refactors only while green and only in files this task touches. Test quality and seams: `mattpocock-skills:tdd` (`tests.md`, `mocking.md`) — no mocking of internals, no tautological assertions, expected values come from the spec or a known-good literal.
+2. **Tests exist only at the agreed seams** (spec → Testing Decisions): S1 HTTP through the API with the stub provider, in-memory store, in-memory notifier, fake auth verifier; S2 pure units in core; S3 the Triage Agent handler with fake event and client; S4 one web reducer test; S5 the evaluation suite. Nothing else gets tests; the ticket says which seams it uses.
+3. **The report must contain TDD evidence** for each test added: the RED command with its failing output and why the failure was expected, and the GREEN command with its passing output. No evidence, task not done.
+4. **Unit tests and CI never reach the network.** No call to OpenRouter, Firestore, Langfuse, Daily.co, or Firebase Auth from a unit test or from CI. Real providers are reached only by `make eval`, `make benchmark`, and the deployed app.
+5. **Personal data:** no real names, emails, phones, card numbers, or ids in tests, fixtures, logs, or commits — obviously fake values only (`jane@example.com`, `+1 555 0100`, the skill catalog's synthetic ids). The `refuse` Redaction Profile runs before the model and before any store write; the `full` profile runs before any trace or log emission; typed Contact Details on the Lead stay raw.
+6. **Vocabulary:** names, test names, and messages use the terms in CONTEXT.md (Assistant, Visitor, Session, Turn, KB Section, Grounded Answer, Trap Question, Escalation, Hand-over, Handover Request, Strategist, Availability, Console, Lead, Qualification Signal/Score, Walkthrough Card, Portal, Feedback, Trace, Triage Agent, Triage Report, Eval Case, Refuse Set, Redaction Profile). Respect the ADRs in docs/adr; if a change contradicts one, say so in the report instead of quietly deviating.
+7. **Seams are interfaces with one production implementation each** — `ModelProvider`, `ConversationStore`, `KnowledgeSource`, `Notifier` (and the video adapter). Third-party SDKs are imported only inside their adapter module.
+8. **Logging:** structured JSON through the core logging module, level from `LOGLEVEL`; every line carries `request_id` and `session_id` when known; no `print`; never log a secret or unredacted personal data.
+9. **Git:** Conventional Commits, small commits, on the ticket's branch only — never `main`, never force-push. The PR body names the ticket.
+10. **Dependencies:** any new dependency is listed in the report with a one-line reason. Python via uv, web via pnpm.
+11. **Scope:** when the ticket's acceptance criteria are met, stop. Follow-ups go in the report, not the code.
+12. **Verification before done:** run the focused tests while iterating, then `make check` (lint, typecheck, full unit suite) once before the final commit and paste its summary in the report.
+
+# Task 20: Console sign-in with email and password
+
+Source ticket: `.scratch/cadre-support-agent/issues/20-console-email-password.md` — read it first; it is your requirements. Then read the spec's Testing Decisions, CONTEXT.md, and the ADRs this area touches.
+
+
+**What to build:** The Strategist Console signs in with Google only (ticket 10). A reviewer without a Google account needs a second path, so the sign-in page gains an email + password form alongside the Google button, calling Firebase Auth's `signInWithEmailAndPassword`. The demo account (`strategist@cadre-demo.example`) is already provisioned in Firebase Auth with `emailVerified: true`, and the password lives in Secret Manager as `console-demo-password` — so this is client UI and configuration only: the `TokenVerifier` and `firestore.rules` already accept any verified, allowlisted email regardless of which sign-in provider produced the ID token, and neither changes. Wrong credentials map to one honest, non-enumerating message. The demo address is added to `ADMIN_ALLOWED_EMAILS`'s deploy default and rendered into the committed `firestore.rules`. Phase P8 (scope addition).
+
+**Blocked by:** 10 (Strategist Console with Google sign-in, Availability, and Leads)
+
+**Status:** in-progress
+
+- [ ] The sign-in page offers Google and email/password; wrong credentials show one clear message; the layout matches the Console tokens.
+- [ ] Signing in with the demo credentials issues a Firebase ID token that the existing verifier accepts (`emailVerified` true) — verified locally with a headless browser against the real Firebase project (fill the form, submit, assert the Console shell or the 403 page renders — either proves the token flow; with the LOCAL `.env` allowlist the demo address may 403, which is correct until the deploy: say which was observed).
+- [ ] `ADMIN_ALLOWED_EMAILS`'s deploy default and the committed `firestore.rules` include the demo address; no server code changed.
+- [ ] `make check` green; no new dependencies.
+- [ ] On the deployed app the demo credentials reach the Console (controller's check after merge + deploy + deploy-rules).
 
 ## Global Constraints
 
