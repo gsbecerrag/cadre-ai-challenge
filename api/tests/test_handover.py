@@ -43,7 +43,7 @@ from core.adapters.recording_video import (
 from core.adapters.stub_provider import StubModelProvider
 from core.auth import StrategistIdentity
 from core.config import Settings
-from core.handover import DEFAULT_JOIN_TIMEOUT_SECONDS
+from core.handover import DEFAULT_JOIN_TIMEOUT_SECONDS, HandoverRequest
 from core.provider import ProviderRequest, TextDelta, ToolCall, Usage
 from core.tools.offer_live_handover import OFFER_TOOL_NAME
 from core.video import VideoRooms
@@ -756,3 +756,50 @@ def test_a_callback_waiting_for_a_strategist_is_never_timed_out(
 
     assert body["state"] == "pending_strategist"
     assert body["mode"] == "callback"
+
+
+def test_a_strategist_joining_just_before_the_timeout_write_keeps_the_call(
+    build_client: ClientFor,
+    provider: StubModelProvider,
+    store: InMemoryConversationStore,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The read that times a Hand-over out decides on a snapshot, and a Strategist can claim
+    the request between that decision and the write it produces. Two minutes of waiting and a
+    Console notification would then be spent turning a live call into a Callback.
+
+    So the write is conditional on the state the decision was made about: it lands only while
+    the request is still `pending_strategist`, and a read that loses the race reports the call
+    rather than replacing it.
+    """
+    client = build_client(live_handover_enabled=True, join_timeout_seconds=120)
+    go_online(store)
+    qualify(client, provider)
+    request_id = offer(client, provider)["request_id"]
+    client.post(f"/api/handover/{request_id}/accept")
+    monkeypatch.setattr(api.handover, "now", lambda: datetime.now(tz=UTC) + timedelta(seconds=121))
+
+    read = store.get_handover
+
+    async def a_strategist_claims_it_between_the_read_and_the_write(
+        wanted: str,
+    ) -> HandoverRequest | None:
+        """The Console's Join, landing in the window the status read opened."""
+        stored = await read(wanted)
+        if stored is not None and stored.state == "pending_strategist":
+            await store.update_handover(wanted, "strategist_joined")
+            await store.update_handover(wanted, "in_call", strategist_name="Angel M.")
+        return stored
+
+    monkeypatch.setattr(
+        store, "get_handover", a_strategist_claims_it_between_the_read_and_the_write
+    )
+
+    body = client.get(f"/api/handover/{request_id}").json()
+
+    assert body["state"] == "in_call"
+    assert body["mode"] == "video"
+    assert body["strategist_name"] == "Angel M."
+    stored = asyncio.run(read(request_id))
+    assert stored is not None
+    assert (stored.state, stored.mode) == ("in_call", "video")

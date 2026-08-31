@@ -85,8 +85,14 @@ class InMemoryConversationStore:
         *,
         room: Room | None = None,
         strategist_name: str | None = None,
+        expected_state: HandoverState | None = None,
     ) -> HandoverRequest:
         request = self._handovers[request_id]
+        if expected_state is not None and request.state != expected_state:
+            # The compare half of a compare-and-set. Check-then-write is atomic enough here
+            # because this store is one process and there is no await between the two; the
+            # Firestore adapter does the same thing inside a transaction.
+            return request
         updated = replace(
             request,
             state=state,

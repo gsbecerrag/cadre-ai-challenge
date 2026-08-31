@@ -271,11 +271,18 @@ def create_handover_router(
         stored = await owned_request(request, request_id)
         if join_timed_out(stored, now(), join_timeout_seconds):
             gave_up = validated(stored, "no_strategist_available", "callback")
-            stored = await store.update_handover(gave_up.id, gave_up.state, gave_up.mode)
-            logger.info(
-                "No Strategist joined in time; the Hand-over is a Callback",
-                extra={"request_id": stored.id},
+            # Conditional on the state this decision was made about. A Strategist can claim the
+            # request between the read above and this write, and an unconditional write would
+            # spend their Join turning a live call into a Callback. A lost race is not an
+            # error: the store hands back what the request actually is, and that is reported.
+            stored = await store.update_handover(
+                gave_up.id, gave_up.state, gave_up.mode, expected_state="pending_strategist"
             )
+            if stored.state == "no_strategist_available":
+                logger.info(
+                    "No Strategist joined in time; the Hand-over is a Callback",
+                    extra={"request_id": stored.id},
+                )
         return status_of(stored)
 
     @router.post("/handover/{request_id}/decline")

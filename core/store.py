@@ -170,6 +170,7 @@ class ConversationStore(Protocol):
         *,
         room: Room | None = None,
         strategist_name: str | None = None,
+        expected_state: HandoverState | None = None,
     ) -> HandoverRequest:
         """Move a Handover Request to a state the caller has already validated, and return it.
 
@@ -183,6 +184,14 @@ class ConversationStore(Protocol):
         `room` and `strategist_name` are what make the Live Hand-over one write per move: the
         acceptance stores the room in the same write that decides the mode, and the Console's
         Join stores who claimed it in the same write that puts them in the call.
+
+        `expected_state` makes the write a compare-and-set: it lands only while the request is
+        still in the state the caller validated against, and otherwise nothing is written and
+        the request is returned as it now stands. Every move here is validated against a
+        snapshot, and two of them race for real — the Visitor's status poll deciding a
+        Hand-over has timed out, and a Strategist claiming that same request from the Console.
+        Without this the later write wins by arriving later, and two minutes of waiting plus a
+        Console notification are spent turning a live call into a Callback.
         """
         ...
 

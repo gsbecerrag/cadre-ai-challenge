@@ -256,6 +256,7 @@ class FirestoreConversationStore:
         *,
         room: Room | None = None,
         strategist_name: str | None = None,
+        expected_state: HandoverState | None = None,
     ) -> HandoverRequest:
         """Write a transition the caller has already validated against the state machine.
 
@@ -268,6 +269,10 @@ class FirestoreConversationStore:
         name alongside `in_call`. The Console's realtime listener reads this document, so a
         move written in two parts would be a queue that flickered through a state nobody was
         ever in.
+
+        `expected_state` turns the write into a compare-and-set, and needs a transaction rather
+        than a precondition on the set: Firestore has no "write if this field equals that", so
+        the state is re-read inside the transaction the write commits in.
         """
         document: dict[str, Any] = {"state": state, "updated_at": firestore.SERVER_TIMESTAMP}
         if mode is not None:
@@ -279,12 +284,12 @@ class FirestoreConversationStore:
             document["room_expires_at"] = room.expires_at
         if strategist_name is not None:
             document["strategist_name"] = strategist_name
-        await (
-            self._connect()
-            .collection(self._handovers_collection)
-            .document(request_id)
-            .set(document, merge=True)
-        )
+        client = self._connect()
+        reference = client.collection(self._handovers_collection).document(request_id)
+        if expected_state is None:
+            await reference.set(document, merge=True)
+        else:
+            await _set_if_still_in(client.transaction(), reference, document, expected_state)
         logger.info(
             "Handover Request updated", extra={"request_id": request_id, "handover_state": state}
         )
@@ -328,6 +333,25 @@ class FirestoreConversationStore:
         if not document.exists:
             return None
         return _handover(document.id, document.to_dict() or {})
+
+
+@firestore.async_transactional
+async def _set_if_still_in(
+    transaction: AsyncTransaction,
+    reference: AsyncDocumentReference,
+    document: dict[str, Any],
+    expected_state: HandoverState,
+) -> None:
+    """Write these fields only while the request is still in `expected_state`.
+
+    The read is inside the transaction, so a write that lands between it and the commit aborts
+    this one rather than being overwritten by it. A request that has moved on is left exactly
+    as it is: the caller re-reads and reports what it finds.
+    """
+    snapshot = await reference.get(transaction=transaction)
+    if not snapshot.exists or (snapshot.to_dict() or {}).get("state") != expected_state:
+        return
+    transaction.set(reference, document, merge=True)
 
 
 @firestore.async_transactional
