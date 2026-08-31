@@ -147,8 +147,10 @@ HEADCOUNT_ESCALATION = _escalation(
     "demo-escalate-headcount",
     "headcount",
     known=(
-        "The About page names eight leaders and says 100+ use cases have been delivered across "
-        "50+ companies [contact#the-cadre-team]."
+        "The About page names eight leaders and publishes delivery numbers rather than a "
+        "headcount [not-published#company-size-founding-and-funding], and those numbers are "
+        "100+ high-ROI use cases across 50+ companies "
+        "[services#why-companies-bring-in-an-ai-partner]."
     ),
 )
 
@@ -165,9 +167,11 @@ GUARANTEE_ESCALATION = _escalation(
     "demo-escalate-guarantee",
     "guarantee",
     known=(
-        "The published results come from eight anonymised case studies — 220 hours a month "
-        "saved in one, $420,000 a year in another "
-        "[case-studies#how-cadre-publishes-its-case-studies]."
+        "The published results come from eight anonymised case studies "
+        "[case-studies#how-cadre-publishes-its-case-studies]: 220 hours a month saved on "
+        "supplier automation [case-studies#supplier-automation-manufacturing-logistics], "
+        "$420,000 a year on a housing visibility system "
+        "[case-studies#ai-powered-housing-visibility-system-hospitality]."
     ),
 )
 
