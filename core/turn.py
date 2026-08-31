@@ -68,7 +68,6 @@ class TurnRunner:
     async def run(self, session_id: str, message: str) -> AsyncIterator[ChatEvent]:
         visitor = ModelMessage(role="visitor", content=self.prepare_message(message))
         history = [*await self.store.load(session_id), visitor]
-        await self.store.append(session_id, [visitor])
 
         prompt = self.build_prompt()
         answered: list[ModelMessage] = []
@@ -111,13 +110,15 @@ class TurnRunner:
                 yield text_event(GRACEFUL_STOP)
                 answered.append(ModelMessage("assistant", GRACEFUL_STOP))
         except ProviderError as failure:
-            # The Visitor's message is already stored; the half-written answer is not, so a
-            # retry starts from what they actually said.
             logger.error("Turn failed", extra={"provider_error": failure.detail})
             yield error_event(PROVIDER_ERROR_MESSAGE)
             return
 
-        await self.store.append(session_id, answered)
+        # A Turn is stored when it completes, or not at all. Storing the Visitor message up
+        # front would leave it behind whenever the Turn failed or the browser walked away
+        # mid-stream, and the next Turn would send two Visitor messages back to back — which
+        # is not a conversation any provider accepts.
+        await self.store.append(session_id, [visitor, *answered])
         logger.info(
             "Turn finished",
             extra={

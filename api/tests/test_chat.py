@@ -1,5 +1,6 @@
 """One Turn through the chat endpoint — seam S1, with the stub provider and in-memory store."""
 
+import asyncio
 from pathlib import Path
 
 import pytest
@@ -9,6 +10,7 @@ from api.main import create_app
 from api.session import SESSION_COOKIE
 from api.tests.conftest import LogReader, sse_events
 from core.adapters.knowledge_files import FileKnowledgeSource
+from core.adapters.memory_store import InMemoryConversationStore
 from core.adapters.stub_provider import StubModelProvider
 from core.config import MissingConfigurationError, Settings
 from core.provider import ProviderError, TextDelta, ToolCall, Usage
@@ -172,6 +174,24 @@ def test_the_turn_is_logged_with_its_session_id(
     turn_lines = [record for record in captured_logs() if record["logger"] == "cadre.turn"]
     assert turn_lines and all(record["session_id"] for record in turn_lines)
     assert all(record["request_id"] for record in turn_lines)
+
+
+def test_a_failed_turn_leaves_no_orphan_visitor_message_in_the_session(
+    client: TestClient, provider: StubModelProvider, store: InMemoryConversationStore
+) -> None:
+    """A Turn is stored when it completes or not at all. A stored Visitor message with no
+    reply would put two Visitor messages back to back in the next Turn's history, which is
+    not a conversation any provider will accept."""
+    provider.script("break it", [TextDelta("Let me check that"), ProviderError("HTTP 502")])
+    provider.script("try again", [TextDelta(ANSWER), SPEND])
+
+    client.post("/api/chat", json={"message": "break it"})
+    client.post("/api/chat", json={"message": "try again"})
+
+    session_id = client.cookies[SESSION_COOKIE]
+    stored = asyncio.run(store.load(session_id))
+    assert [message.content for message in stored] == ["try again", ANSWER]
+    assert [message.content for message in provider.requests[-1].messages] == ["try again"]
 
 
 def test_the_assistant_refuses_to_start_without_a_knowledge_base(
