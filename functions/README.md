@@ -23,9 +23,17 @@ cache a conversation just paid to write.
 
 Prerequisites, once per project:
 
-- `make deploy-secrets` — creates and grants `OPENROUTER_API_KEY`, `LANGFUSE_PUBLIC_KEY` and
-  `LANGFUSE_SECRET_KEY` to the runtime service account. The function declares the same three
-  in `SECRETS`, and the Firebase CLI binds them as environment variables.
+- `make deploy-secrets` — the function declares `OPENROUTER_API_KEY`, `LANGFUSE_PUBLIC_KEY`
+  and `LANGFUSE_SECRET_KEY` in `SECRETS`; `firebase-functions` reads those as Secret Manager
+  secret **ids** and binds each to an environment variable of the same name, so the id has to
+  be spelled the way an environment variable is. Cloud Run's own bindings use hyphenated ids
+  (`openrouter-api-key`, …), which a function cannot name — so `deploy-secrets` copies each
+  one into a second secret under the function-shaped id when that id does not exist yet, and
+  grants the runtime service account read access to all of them. It never prints a value.
+
+  The copy is a copy, not a link: **rotating `openrouter-api-key` does not update
+  `OPENROUTER_API_KEY`.** Add a version to both, or delete the function-shaped secret and run
+  `make deploy-secrets` again.
 - The Firestore database and the function must share a region: both are `us-central1`
   (a `nam5` multi-region database serves `us-central1` triggers).
 - `firebase experiments:enable pythonfunctions` on Firebase CLI versions where Python

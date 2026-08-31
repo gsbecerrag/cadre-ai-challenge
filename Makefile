@@ -10,6 +10,18 @@ COOKIE_SECRET     := session-cookie-secret
 LANGFUSE_PUBLIC   := langfuse-public-key
 LANGFUSE_SECRET   := langfuse-secret-key
 
+# The same three secrets again, under a second set of ids — because the Triage Agent function
+# cannot name the ones above. `firebase-functions` takes `secrets=[...]` as Secret Manager
+# secret *ids* and binds each one to an environment variable of the same name, so the id has
+# to be spelled the way an environment variable is: `OPENROUTER_API_KEY`, not
+# `openrouter-api-key`. Rather than rename what Cloud Run already binds, `deploy-secrets`
+# keeps a copy under each function-shaped id. Source id first, function id second.
+FUNCTION_SECRET_PAIRS := \
+  $(OPENROUTER_SECRET):OPENROUTER_API_KEY \
+  $(LANGFUSE_PUBLIC):LANGFUSE_PUBLIC_KEY \
+  $(LANGFUSE_SECRET):LANGFUSE_SECRET_KEY
+FUNCTION_SECRETS := OPENROUTER_API_KEY LANGFUSE_PUBLIC_KEY LANGFUSE_SECRET_KEY
+
 # Where the Langfuse project lives. Not a secret, and the wrong region is an authentication
 # error rather than a redirect, so it is pinned here next to the keys it goes with.
 LANGFUSE_HOST     := https://us.cloud.langfuse.com
@@ -83,11 +95,17 @@ eval-stub:
 build-web:
 	cd web && pnpm build
 
-# What the deployed service reads at runtime. The cookie-signing key is generated here if it
-# does not exist yet — never printed, never in the repository, never in the image — and the
-# runtime service account is granted read access to every bound secret on every run, because
-# a grant that only happens the day a secret is created is a grant nobody can see is missing.
-# Both steps are idempotent.
+# What the deployed service and the Triage Agent function read at runtime. The cookie-signing
+# key is generated here if it does not exist yet — never printed, never in the repository,
+# never in the image — the three function-shaped copies are made from their sources when they
+# are missing, and the runtime service account is granted read access to every one of them on
+# every run, because a grant that only happens the day a secret is created is a grant nobody
+# can see is missing. Every step is idempotent.
+#
+# The copy is a copy, not a link: rotating `openrouter-api-key` does NOT update
+# `OPENROUTER_API_KEY`. Add a version to both, or delete the function-shaped one and run this
+# again. No secret value is ever echoed — it goes from `versions access` straight into
+# `create --data-file=-` down a pipe.
 deploy-secrets:
 	@sa="$$(gcloud projects describe $(PROJECT) --format='value(projectNumber)')-compute@developer.gserviceaccount.com"; \
 	gcloud secrets describe $(COOKIE_SECRET) --project $(PROJECT) >/dev/null 2>&1 || { \
@@ -96,7 +114,24 @@ deploy-secrets:
 	    | gcloud secrets create $(COOKIE_SECRET) --project $(PROJECT) \
 	        --replication-policy=automatic --data-file=- >/dev/null; \
 	}; \
-	for secret in $(OPENROUTER_SECRET) $(COOKIE_SECRET) $(LANGFUSE_PUBLIC) $(LANGFUSE_SECRET); do \
+	for pair in $(FUNCTION_SECRET_PAIRS); do \
+	  src="$${pair%%:*}"; dst="$${pair##*:}"; \
+	  gcloud secrets describe "$$dst" --project $(PROJECT) >/dev/null 2>&1 && continue; \
+	  gcloud secrets describe "$$src" --project $(PROJECT) >/dev/null 2>&1 || { \
+	    echo "Cannot create $$dst: its source $$src does not exist yet"; \
+	    continue; \
+	  }; \
+	  echo "Copying $$src to $$dst, the id the Triage Agent function can name"; \
+	  gcloud secrets versions access latest --secret="$$src" --project $(PROJECT) \
+	    | gcloud secrets create "$$dst" --project $(PROJECT) \
+	        --replication-policy=automatic --data-file=- >/dev/null; \
+	done; \
+	for secret in $(OPENROUTER_SECRET) $(COOKIE_SECRET) $(LANGFUSE_PUBLIC) $(LANGFUSE_SECRET) \
+	              $(FUNCTION_SECRETS); do \
+	  gcloud secrets describe "$$secret" --project $(PROJECT) >/dev/null 2>&1 || { \
+	    echo "Skipping the grant on $$secret: it does not exist"; \
+	    continue; \
+	  }; \
 	  echo "Granting $$sa read access to $$secret"; \
 	  gcloud secrets add-iam-policy-binding "$$secret" --project $(PROJECT) \
 	    --member="serviceAccount:$$sa" \
