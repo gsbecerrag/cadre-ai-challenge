@@ -21,6 +21,7 @@ known when the Turn ends: whether it escalated, captured a Lead, or failed at th
 the same public attribute keys are written straight onto the span, once, at the end.
 """
 
+import logging
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -33,6 +34,23 @@ from core.provider import Usage
 from core.tracing import TRACE_NAME, ProviderSpan, ToolSpan, TurnTrace
 
 logger = get_logger("tracing.langfuse")
+
+
+def _undo_the_sdks_logging_changes() -> None:
+    """Importing `langfuse` reconfigures this process's `httpx` logger (`langfuse/logger.py`):
+    it raises the level to WARNING and attaches a plain-text handler to stderr. The handler is
+    the serious half — a non-JSON line in Cloud Logging is a line nothing can query, and the
+    whole point of `core.logging` is that there is exactly one JSON object per line. The level
+    is put back too, so that importing this adapter cannot quietly change what another part of
+    the process logs. The import is ours, so the repair is ours.
+    """
+    httpx_logger = logging.getLogger("httpx")
+    for handler in tuple(httpx_logger.handlers):
+        httpx_logger.removeHandler(handler)
+    httpx_logger.setLevel(logging.NOTSET)
+
+
+_undo_the_sdks_logging_changes()
 
 # What one model call is called inside a Turn's Trace. The model id is on the generation
 # itself, so the name stays the same whichever model answered and the Traces of two models
@@ -69,8 +87,16 @@ def _set_trace_attributes(
     metadata: Mapping[str, str] | None = None,
 ) -> None:
     """Write the Trace's own attributes onto its root span, using the SDK's public keys."""
-    # The one private attribute this adapter touches; the keys it writes are public.
-    otel_span = span._otel_span
+    # The one private attribute this adapter touches; the keys it writes are public. Asked for
+    # by name rather than reached for, because an SDK upgrade that renames it should cost a
+    # Turn its tags and a line in the log, not its Trace.
+    otel_span = getattr(span, "_otel_span", None)
+    if otel_span is None:
+        logger.warning(
+            "This Langfuse SDK has no span attribute to write a Trace's tags on; "
+            "Traces will arrive without their session id and tags"
+        )
+        return
     if not otel_span.is_recording():
         return
     otel_span.set_attribute(LangfuseOtelSpanAttributes.TRACE_NAME, TRACE_NAME)
@@ -148,24 +174,29 @@ class LangfuseTurnTrace:
         tags: Sequence[str],
         metadata: Mapping[str, Any],
     ) -> None:
-        # The Turn's totals go on the root span as metadata, not as usage: Langfuse adds a
-        # Trace's cost up from its generations, and a root span that also reported the total
-        # would charge every Turn twice.
-        self.root.update(
-            output=output_text,
-            metadata={
-                **metadata,
-                "input_tokens": usage.input_tokens,
-                "output_tokens": usage.output_tokens,
-                "cached_tokens": usage.cached_tokens,
-                "cost_usd": usage.cost_usd,
-            },
-        )
-        _set_trace_attributes(self.root, tags=tags)
-        # Trace-level input and output as well as the root span's own, because that is what
-        # the Traces table and the Langfuse evaluators read.
-        self.root.set_trace_io(input=self.input_text, output=output_text)
-        self.root.end()
+        # Whatever happens on the way, the span is ended. A span left open is worse than a
+        # missing one: the Trace never arrives, and the Turn reads as one that never ended.
+        # The failure itself still travels out to the boundary, which logs it.
+        try:
+            # The Turn's totals go on the root span as metadata, not as usage: Langfuse adds
+            # a Trace's cost up from its generations, and a root span that also reported the
+            # total would charge every Turn twice.
+            self.root.update(
+                output=output_text,
+                metadata={
+                    **metadata,
+                    "input_tokens": usage.input_tokens,
+                    "output_tokens": usage.output_tokens,
+                    "cached_tokens": usage.cached_tokens,
+                    "cost_usd": usage.cost_usd,
+                },
+            )
+            _set_trace_attributes(self.root, tags=tags)
+            # Trace-level input and output as well as the root span's own, because that is
+            # what the Traces table and the Langfuse evaluators read.
+            self.root.set_trace_io(input=self.input_text, output=output_text)
+        finally:
+            self.root.end()
 
 
 class LangfuseTracer:
