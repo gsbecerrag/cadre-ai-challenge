@@ -18,6 +18,13 @@ from core.config import LogLevel
 
 _ROOT_LOGGER_NAME = "cadre"
 
+# Uvicorn's startup and error lines go through its own loggers; they must be JSON too.
+_MANAGED_LOGGER_NAMES = (_ROOT_LOGGER_NAME, "uvicorn", "uvicorn.error")
+
+# The request middleware is the access log, with the request id and duration on it.
+# Uvicorn's access log is plain text and would break the one-JSON-object-per-line contract.
+_SILENCED_LOGGER_NAME = "uvicorn.access"
+
 # Correlation ids for the request being served, bound by the API middleware.
 _request_id: ContextVar[str | None] = ContextVar("request_id", default=None)
 _session_id: ContextVar[str | None] = ContextVar("session_id", default=None)
@@ -27,6 +34,8 @@ _STANDARD_RECORD_KEYS = frozenset(logging.LogRecord("", 0, "", 0, "", None, None
     "message",
     "asctime",
     "taskName",
+    # Uvicorn's ANSI-escaped copy of its own message — noise once the line is JSON.
+    "color_message",
 }
 
 
@@ -53,17 +62,27 @@ class JsonFormatter(logging.Formatter):
         return json.dumps(payload, default=str)
 
 
-def configure_logging(level: LogLevel = "INFO", stream: TextIO | None = None) -> None:
-    """Point the application logger at one JSON stream handler. Safe to call again."""
-    logger = logging.getLogger(_ROOT_LOGGER_NAME)
-    for handler in list(logger.handlers):
+def _detach_handlers(logger: logging.Logger) -> None:
+    for handler in tuple(logger.handlers):
         logger.removeHandler(handler)
-        handler.close()
+
+
+def configure_logging(level: LogLevel = "INFO", stream: TextIO | None = None) -> None:
+    """Point every logger the process uses at one JSON stream handler. Safe to call again."""
     handler = logging.StreamHandler(stream if stream is not None else sys.stdout)
     handler.setFormatter(JsonFormatter())
-    logger.addHandler(handler)
-    logger.setLevel(level)
-    logger.propagate = False
+
+    for name in _MANAGED_LOGGER_NAMES:
+        logger = logging.getLogger(name)
+        _detach_handlers(logger)
+        logger.addHandler(handler)
+        logger.setLevel(level)
+        logger.propagate = False
+
+    access_logger = logging.getLogger(_SILENCED_LOGGER_NAME)
+    _detach_handlers(access_logger)
+    access_logger.propagate = False
+    access_logger.disabled = True
 
 
 def get_logger(name: str) -> logging.Logger:

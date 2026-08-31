@@ -2,6 +2,7 @@
 
 import io
 import json
+import logging
 from datetime import UTC, datetime
 from typing import Any
 
@@ -85,3 +86,41 @@ def test_debug_lines_are_emitted_only_when_the_level_is_debug() -> None:
     configure_logging(level="DEBUG", stream=verbose)
     get_logger(__name__).debug("prompt assembled")
     assert [record["message"] for record in _emitted(verbose)] == ["prompt assembled"]
+
+
+def test_the_servers_own_lines_are_json_too() -> None:
+    """Uvicorn logs its startup and errors through its own logger; those lines count."""
+    stream = io.StringIO()
+    configure_logging(level="INFO", stream=stream)
+
+    logging.getLogger("uvicorn.error").info("Application startup complete.")
+
+    (record,) = _emitted(stream)
+    assert record["severity"] == "INFO"
+    assert record["message"] == "Application startup complete."
+
+
+def test_the_servers_plain_text_access_log_is_silenced() -> None:
+    """The request middleware is the access log; uvicorn's plain-text one is not JSON."""
+    stream = io.StringIO()
+    configure_logging(level="INFO", stream=stream)
+
+    logging.getLogger("uvicorn.access").info('127.0.0.1 - "GET /healthz HTTP/1.1" 200')
+
+    assert _emitted(stream) == []
+
+
+def test_the_servers_ansi_coloured_duplicate_is_dropped() -> None:
+    """Uvicorn attaches an ANSI-escaped copy of its message; it is noise in a log store."""
+    stream = io.StringIO()
+    configure_logging(level="INFO", stream=stream)
+
+    logging.getLogger("uvicorn.error").info(
+        "Started server process [%d]",
+        4242,
+        extra={"color_message": "Started server process [<esc>[36m%d<esc>[0m]"},
+    )
+
+    (record,) = _emitted(stream)
+    assert record["message"] == "Started server process [4242]"
+    assert "color_message" not in record
