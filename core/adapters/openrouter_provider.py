@@ -167,11 +167,18 @@ class _PendingToolCalls:
             slot["arguments"] += function.get("arguments") or ""
 
     def drain(self) -> list[ToolCall]:
-        calls = [
-            ToolCall(id=slot["id"], name=slot["name"], arguments=_arguments(slot))
-            for _index, slot in sorted(self._slots.items())
-            if slot["name"]
-        ]
+        calls: list[ToolCall] = []
+        for index, slot in sorted(self._slots.items()):
+            if not slot["name"]:
+                # The name arrives once, on the first fragment of its index. A slot without
+                # one means the layout is not what we read it to be, and dropping it in
+                # silence would look exactly like a model that chose not to call a tool.
+                logger.warning(
+                    "Dropped a tool-call fragment that never named its tool",
+                    extra={"tool_call_index": index, "tool_call_id": slot["id"]},
+                )
+                continue
+            calls.append(ToolCall(id=slot["id"], name=slot["name"], arguments=_arguments(slot)))
         self._slots.clear()
         return calls
 
