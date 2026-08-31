@@ -29,6 +29,7 @@ const ESCALATED_ANSWER: ChatEvent[] = [
       body: 'Cadre does not publish pricing for its engagements.',
       next_step: 'Write hello@gocadre.ai or call (619) 324-3223.',
       citations: ['contact#how-to-reach-cadre'],
+      language: 'en',
     },
   },
   { event: 'tool', data: { name: 'escalate', status: 'finished' } },
@@ -38,6 +39,46 @@ const ESCALATED_ANSWER: ChatEvent[] = [
     data: {
       trace_id: null,
       usage: { input_tokens: 900, output_tokens: 12, cached_tokens: 800, cost_usd: 0.0004 },
+    },
+  },
+]
+
+/** Recorded from `POST /api/chat` with the stub provider (api/tests/test_walkthrough.py). */
+const WALKTHROUGH_ANSWER: ChatEvent[] = [
+  {
+    event: 'text',
+    data: {
+      delta:
+        "Here's where that lives — the Portal tracks tools, agents, training, and results " +
+        '[portal#what-the-portal-tracks]:',
+    },
+  },
+  { event: 'tool', data: { name: 'show_walkthrough', status: 'started' } },
+  {
+    event: 'card',
+    data: {
+      title: "See your agents' results in the Portal",
+      steps: [
+        'Open the Cadre Portal from the link your Cadre contact gave you',
+        'Go to Agents in the left menu',
+        'Pick an agent to see its runs, hours saved and status',
+      ],
+      destination: {
+        id: 'portal.agents',
+        label: 'Open demo Portal',
+        href: '/portal/agents#portal-agents-results',
+        external: false,
+      },
+      citations: ['portal#how-to-access-the-portal'],
+    },
+  },
+  { event: 'tool', data: { name: 'show_walkthrough', status: 'finished' } },
+  { event: 'text', data: { delta: 'Anything else I can look up for you?' } },
+  {
+    event: 'done',
+    data: {
+      trace_id: null,
+      usage: { input_tokens: 13100, output_tokens: 96, cached_tokens: 12800, cost_usd: 0.0042 },
     },
   },
 ]
@@ -123,8 +164,51 @@ describe('the chat reducer', () => {
       body: 'Cadre does not publish pricing for its engagements.',
       nextStep: 'Write hello@gocadre.ai or call (619) 324-3223.',
       citations: ['contact#how-to-reach-cadre'],
+      language: 'en',
     })
     expect(state.messages[3]).toMatchObject({ text: 'Happy to help with anything else.' })
+    expect(state.activeTool).toBeNull()
+  })
+
+  it('places a Walkthrough Card between the text before it and the text after it', () => {
+    const state = replay("How do I see my agents' results?", WALKTHROUGH_ANSWER)
+
+    expect(state.messages.map((message) => message.kind)).toEqual([
+      'text',
+      'text',
+      'text',
+      'walkthrough',
+      'text',
+    ])
+    expect(state.messages[2]).toMatchObject({
+      text:
+        "Here's where that lives — the Portal tracks tools, agents, training, and results:",
+      citations: ['portal#what-the-portal-tracks'],
+    })
+    expect(state.messages[4]).toMatchObject({ text: 'Anything else I can look up for you?' })
+  })
+
+  it('keeps the destination the server resolved, so the card links where it was told to', () => {
+    const state = replay("How do I see my agents' results?", WALKTHROUGH_ANSWER)
+
+    expect(state.messages[3]).toMatchObject({
+      kind: 'walkthrough',
+      role: 'assistant',
+      title: "See your agents' results in the Portal",
+      steps: [
+        'Open the Cadre Portal from the link your Cadre contact gave you',
+        'Go to Agents in the left menu',
+        'Pick an agent to see its runs, hours saved and status',
+      ],
+      destination: {
+        id: 'portal.agents',
+        label: 'Open demo Portal',
+        href: '/portal/agents#portal-agents-results',
+        external: false,
+      },
+      citations: ['portal#how-to-access-the-portal'],
+    })
+    expect(state.pending).toBe(false)
     expect(state.activeTool).toBeNull()
   })
 

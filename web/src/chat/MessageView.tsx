@@ -6,7 +6,8 @@
 
 import { useState } from 'react'
 
-import type { Message } from './types'
+import { chromeFor } from './strings'
+import type { CardDestination, Message } from './types'
 
 const CHIP =
   'rounded-[48px] border border-[#e5e5e5] bg-[#f2efe4] px-2.5 py-[3px] font-mono text-[10px] text-[#666]'
@@ -50,17 +51,51 @@ function Citations({ ids, titles }: { ids: string[]; titles: Record<string, stri
   )
 }
 
+const CTA =
+  'self-start rounded-[48px] bg-[#0c0407] px-[18px] py-2.5 text-[13px] font-semibold text-white hover:bg-[#3a3236]'
+
+/**
+ * The Walkthrough Card's call to action. A Portal destination is a route in this app, so it
+ * announces itself on the window and the listener inside the router navigates — a plain `<a>`
+ * would reload the document and take the chat panel, its transcript and the Session with it.
+ * Anything external is an ordinary link, opened in a new tab for the same reason.
+ */
+function WalkthroughCta({
+  destination,
+  onNavigate,
+}: {
+  destination: CardDestination
+  onNavigate: (href: string) => void
+}) {
+  if (destination.external) {
+    return (
+      <a href={destination.href} target="_blank" rel="noopener" className={`${CTA} inline-block`}>
+        {destination.label} →
+      </a>
+    )
+  }
+  return (
+    <button type="button" onClick={() => onNavigate(destination.href)} className={CTA}>
+      {destination.label} →
+    </button>
+  )
+}
+
 export function MessageView({
   message,
   typingLabel,
   nextStepLabel,
   sectionTitles,
+  onNavigate,
 }: {
   message: Message
   typingLabel: string
-  /** The Escalation card's "Next step:" label, localised with the rest of the chrome. */
+  /** The Escalation card's "Next step:" label when the Escalation names no language of its
+   * own; localised with the rest of the chrome. */
   nextStepLabel: string
   sectionTitles: Record<string, string>
+  /** Follow a Walkthrough Card into the app, without unmounting the panel. */
+  onNavigate: (href: string) => void
 }) {
   const alignment = message.role === 'visitor' ? 'items-end' : 'items-start'
 
@@ -97,9 +132,43 @@ export function MessageView({
           <div className="mb-1.5 font-semibold text-[#0c0407]">{message.title}</div>
           <div className="mb-2 whitespace-pre-line text-[#4c4c4c]">{message.body}</div>
           <div className="rounded-[10px] bg-[#faf9f6] px-3 py-2.5 text-[12.5px] text-[#666]">
-            <b className="text-[#0c0407]">{nextStepLabel}</b> {message.nextStep}
+            {/* The copy above was looked up in the Escalation's own language, so its label
+                follows the card rather than the widget's EN/ES toggle. */}
+            <b className="text-[#0c0407]">
+              {message.language ? chromeFor(message.language).nextStep : nextStepLabel}
+            </b>{' '}
+            {message.nextStep}
           </div>
           <Citations ids={message.citations} titles={sectionTitles} />
+        </div>
+      )}
+
+      {message.kind === 'walkthrough' && (
+        <div className="max-w-[88%] overflow-hidden rounded-[16px] border border-[#e5e5e5] bg-white">
+          <div className="bg-[#f2efe4] px-4 py-[11px] text-[13.5px] font-semibold text-[#0c0407]">
+            {message.title}
+          </div>
+          <div className="flex flex-col items-start gap-[9px] px-4 py-3">
+            <ol className="flex flex-col gap-[9px]">
+              {message.steps.map((step, index) => (
+                <li
+                  key={step}
+                  className="flex items-start gap-2.5 text-[13.5px] leading-[1.45] text-[#4c4c4c]"
+                >
+                  <span className="mt-px flex size-5 flex-shrink-0 items-center justify-center rounded-full bg-[#0c0407] text-[11px] font-bold text-white">
+                    {index + 1}
+                  </span>
+                  {step}
+                </li>
+              ))}
+            </ol>
+            <WalkthroughCta destination={message.destination} onNavigate={onNavigate} />
+          </div>
+          {message.citations.length > 0 && (
+            <div className="px-4 pb-3">
+              <Citations ids={message.citations} titles={sectionTitles} />
+            </div>
+          )}
         </div>
       )}
 
