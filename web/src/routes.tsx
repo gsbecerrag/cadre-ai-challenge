@@ -2,6 +2,9 @@ import { useEffect } from 'react'
 import { Outlet, createBrowserRouter, useNavigate } from 'react-router-dom'
 
 import { NAVIGATE_EVENT } from './chat/ChatWidget'
+import { ConsoleLayout } from './console/ConsoleLayout'
+import { LeadsPage } from './console/LeadsPage'
+import { CallbacksPage, HandoverQueuePage, TriagePage } from './console/PlannedTabPage'
 import { AgentsPage } from './portal/AgentsPage'
 import { DashboardPage } from './portal/DashboardPage'
 import { PortalLayout } from './portal/PortalLayout'
@@ -59,10 +62,11 @@ function Root() {
 }
 
 /**
- * The app's route table (ticket 07): `/` is the mock cadreai.com host page the chat
- * widget floats over; `/portal/*` is the demo Portal, sharing `PortalLayout` for its
- * header, "Demo portal · mock data" badge, and left nav. Client-side navigation only —
- * the server already falls back to the SPA for any non-`/api` path.
+ * The app's route table: `/` is the mock cadreai.com host page the chat widget floats
+ * over; `/portal/*` is the demo Portal, sharing `PortalLayout` for its header, "Demo
+ * portal · mock data" badge, and left nav (ticket 07); `/console/*` is the Strategist
+ * Console behind Google sign-in and the allowlist (ticket 10). Client-side navigation
+ * only — the server already falls back to the SPA for any non-`/api` path.
  */
 export const router = createBrowserRouter([
   {
@@ -80,6 +84,16 @@ export const router = createBrowserRouter([
           { path: 'tools', element: <ToolsPage /> },
           { path: 'agents', element: <AgentsPage /> },
           { path: 'results', element: <ResultsTrainingPage /> },
+        ],
+      },
+      {
+        path: '/console',
+        element: <ConsoleLayout />,
+        children: [
+          { index: true, element: <LeadsPage /> },
+          { path: 'handover', element: <HandoverQueuePage /> },
+          { path: 'callbacks', element: <CallbacksPage /> },
+          { path: 'triage', element: <TriagePage /> },
         ],
       },
     ],
