@@ -141,3 +141,33 @@ def test_an_escalation_without_a_next_step_is_sent_back_to_the_assistant(
     names = [name for name, _ in sse_events(response)]
     assert "escalation" not in names
     assert names == ["tool", "tool", "text", "done"]
+
+
+def test_every_kb_section_has_a_title_the_widget_can_show_on_a_citation(
+    client: TestClient,
+) -> None:
+    """A citation chip reads `[not-published#pricing]`, which is honest and unhelpful. The
+    widget fetches the titles once and shows the heading behind the id instead."""
+    response = client.get("/api/knowledge/sections")
+
+    assert response.status_code == 200
+    sections = response.json()["sections"]
+    by_id = {section["id"]: section for section in sections}
+    assert len(by_id) == len(sections)
+    assert by_id["not-published#pricing"] == {
+        "id": "not-published#pricing",
+        "title": "Pricing",
+        "topic": "not-published",
+    }
+    assert by_id["services#what-cadre-does"]["title"] == "What Cadre does"
+
+
+def test_the_titles_are_served_in_the_order_the_knowledge_base_compiles(
+    client: TestClient,
+) -> None:
+    """Same order as the prompt's cached block, so the endpoint and the prompt can never
+    disagree about what the Knowledge Base contains."""
+    served = [section["id"] for section in client.get("/api/knowledge/sections").json()["sections"]]
+
+    compiled = [section.id for section in compile_knowledge_base(FileKnowledgeSource().documents())]
+    assert served == compiled

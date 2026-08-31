@@ -15,6 +15,7 @@ from fastapi import FastAPI
 
 from api.chat import create_chat_router
 from api.health import create_health_router
+from api.knowledge import create_knowledge_router
 from api.middleware import RequestContextMiddleware
 from api.web import mount_web_app
 from core.adapters.knowledge_files import FileKnowledgeSource
@@ -96,6 +97,7 @@ def create_app(
         create_chat_router(runner, secure_cookie=resolved.env == "production"),
         prefix="/api",
     )
+    app.include_router(create_knowledge_router(sections), prefix="/api")
     mount_web_app(app, DEFAULT_WEB_DIST if web_dist is None else web_dist)
     return app
 
