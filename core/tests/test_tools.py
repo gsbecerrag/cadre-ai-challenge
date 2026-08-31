@@ -10,8 +10,11 @@ from datetime import date
 from pathlib import Path
 
 from core.adapters.knowledge_files import FileKnowledgeSource
+from core.adapters.stub_demo_script import demo_fallback, demo_scripts
 from core.knowledge import compile_knowledge_base
 from core.prompt import build_system_prompt
+from core.provider import ToolCall
+from core.tools import default_tools
 from core.tools.show_walkthrough import DEFINITION
 from core.tools.walkthroughs import (
     CONTACT_FORM_URL,
@@ -92,3 +95,22 @@ def test_the_tools_block_describes_the_show_walkthrough_tool_as_it_is_actually_d
         assert argument in tools, argument
     for destination_id in WALKTHROUGH_DESTINATIONS:
         assert destination_id in tools, destination_id
+
+
+def test_every_tool_call_in_the_demo_script_is_one_the_registry_accepts() -> None:
+    """`make dev` and every review of it run on this script. A destination that no longer
+    resolves, or a step count the tool rejects, would show the reviewer a Turn with the card
+    silently missing from it — the tool's own recovery path hides the mistake."""
+    registry = default_tools()
+    calls = [
+        event
+        for script in [*demo_scripts().values(), demo_fallback()]
+        for response in script
+        for event in response
+        if isinstance(event, ToolCall)
+    ]
+
+    assert calls, "the demo script calls no tool, so this guard proves nothing"
+    for call in calls:
+        outcome = registry.run(call)
+        assert outcome.events, f"{call.id} produced no card: {outcome.result}"
