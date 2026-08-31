@@ -69,14 +69,14 @@ function rateable(messages: Message[], traceId: string): Message[] {
 /** The state a control is in before anything has been pressed. */
 const UNRATED: FeedbackEntry = { rating: null, status: 'none' }
 
-/** Whether a thumb may still be pressed, and pressing it would mean something new. */
-function acceptsAThumb(entry: FeedbackEntry, rating: FeedbackEntry['rating']): boolean {
-  if (entry.status === 'chosen' || entry.status === 'none') {
-    return true
-  }
-  // Submitted: one change is allowed, and only a change — pressing the thumb that already
-  // stands would spend it on the rating the server already holds.
-  return entry.status === 'submitted' && entry.rating !== rating
+/**
+ * Whether this answer's rating is settled for good: the one change is spent, or the server has
+ * refused a further one. Both are terminal, so a reply that crossed them — a request from
+ * another tab, a retry that was slow to come back — cannot reopen a control the Visitor has
+ * already watched close.
+ */
+function isFinal(status: FeedbackStatus): boolean {
+  return status === 'changed' || status === 'locked'
 }
 
 function withFeedback(state: ChatState, traceId: string, entry: FeedbackEntry): ChatState {
@@ -213,22 +213,23 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
         ),
       }
 
-    case 'feedback_chosen': {
-      const entry = state.feedback[action.traceId] ?? UNRATED
-      if (!acceptsAThumb(entry, action.rating)) {
-        return state
-      }
-      return withFeedback(state, action.traceId, { rating: action.rating, status: 'chosen' })
-    }
-
     case 'feedback_sent': {
       const entry = state.feedback[action.traceId] ?? UNRATED
-      const status: FeedbackStatus = action.changed ? 'changed' : 'submitted'
-      return withFeedback(state, action.traceId, { rating: entry.rating, status })
+      if (isFinal(entry.status)) {
+        return state
+      }
+      // The same rating arriving twice is one opinion sent twice — the thumb on the press and
+      // the sentence a moment later — so it leaves the control in `sent` with the change still
+      // to spend, exactly as the server leaves the document.
+      const status: FeedbackStatus = action.changed ? 'changed' : 'sent'
+      return withFeedback(state, action.traceId, { rating: action.rating, status })
     }
 
     case 'feedback_locked': {
       const entry = state.feedback[action.traceId] ?? UNRATED
+      if (isFinal(entry.status)) {
+        return state
+      }
       return withFeedback(state, action.traceId, { rating: entry.rating, status: 'locked' })
     }
   }

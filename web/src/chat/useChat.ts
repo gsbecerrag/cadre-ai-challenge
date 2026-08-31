@@ -21,10 +21,12 @@ export interface Chat {
   /** Fetch the KB Section titles the citation chips reveal. Idempotent; called when the
    * panel first opens, so a Visitor who never opens it never pays for the request. */
   loadSections: () => Promise<void>
-  /** A thumb was pressed: open the comment box. Nothing is sent until the Visitor sends it. */
-  chooseFeedback: (traceId: string, rating: FeedbackRating) => void
-  /** Post the Feedback for one Trace. */
-  sendFeedback: (traceId: string, rating: FeedbackRating, comment: string) => Promise<void>
+  /**
+   * Post the Feedback for one Trace — the rating on the press, and again with the Visitor's
+   * sentence if they add one. Resolves to whether the server took it, which is what tells the
+   * control it may clear the note box rather than leave the Visitor retyping.
+   */
+  sendFeedback: (traceId: string, rating: FeedbackRating, comment: string) => Promise<boolean>
 }
 
 export function useChat(greeting: string, connectionError: string): Chat {
@@ -89,12 +91,8 @@ export function useChat(greeting: string, connectionError: string): Chat {
     }
   }, [])
 
-  const chooseFeedback = useCallback((traceId: string, rating: FeedbackRating) => {
-    dispatch({ type: 'feedback_chosen', traceId, rating })
-  }, [])
-
   const sendFeedback = useCallback(
-    async (traceId: string, rating: FeedbackRating, comment: string) => {
+    async (traceId: string, rating: FeedbackRating, comment: string): Promise<boolean> => {
       try {
         const response = await fetch(FEEDBACK_ENDPOINT, {
           method: 'POST',
@@ -106,22 +104,26 @@ export function useChat(greeting: string, connectionError: string): Chat {
           // Already rated and changed once — another tab, or a reload that lost what this
           // one knew. The rating that stands is the server's, so the control locks.
           dispatch({ type: 'feedback_locked', traceId })
-          return
+          return true
         }
         if (!response.ok) {
-          // Any other refusal leaves the control as it is, with the thumb still chosen: the
-          // Visitor can press send again, and a rating is not worth an error bubble in the
-          // middle of a conversation.
-          return
+          // Any other refusal leaves the control as it is, with what the Visitor typed still
+          // in the box: they can send it again, and a rating is not worth an error bubble in
+          // the middle of a conversation.
+          return false
         }
-        const body = (await response.json()) as { changed: boolean }
-        dispatch({ type: 'feedback_sent', traceId, changed: body.changed })
+        // The rating comes back from the receipt rather than being assumed from the request:
+        // the server is the one that knows which thumb now stands, and on a repeat it may be
+        // holding the sentence this request did not carry.
+        const body = (await response.json()) as { rating: FeedbackRating; changed: boolean }
+        dispatch({ type: 'feedback_sent', traceId, rating: body.rating, changed: body.changed })
+        return true
       } catch {
-        return
+        return false
       }
     },
     [],
   )
 
-  return { state, send, loadSections, chooseFeedback, sendFeedback }
+  return { state, send, loadSections, sendFeedback }
 }

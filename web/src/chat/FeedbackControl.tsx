@@ -7,9 +7,12 @@
  * answer, so it is rendered inline and compact — the same copy, colours and radii, without the
  * card around them, because a full card under every paragraph would be louder than the answer.
  *
- * The comment box appears only after a thumb is pressed. Asking for a sentence before the
- * rating would put a form in front of the one-click thing, and the rating is what the Triage
- * Agent runs on; the sentence is a bonus.
+ * The press is the Feedback. A thumb goes to the server the moment it is pressed — the
+ * artboard closes its card on the press, and a Visitor who rates an answer and walks away has
+ * still rated it. Only then does the note box appear, and sending a sentence from it is the
+ * same rating again with the sentence attached: an update of the Feedback that already stands,
+ * not a second one. Asking for the sentence first would put a form in front of the one-click
+ * thing, and the rating is what the Triage Agent runs on; the sentence is a bonus.
  */
 
 import { useState } from 'react'
@@ -37,24 +40,31 @@ export function FeedbackControl({
   traceId,
   entry,
   chrome,
-  onChoose,
   onSend,
 }: {
   /** The Trace of the Turn this rates — the key the Feedback is stored under. */
   traceId: string
   entry: FeedbackEntry | undefined
   chrome: Chrome
-  onChoose: (traceId: string, rating: FeedbackRating) => void
-  onSend: (traceId: string, rating: FeedbackRating, comment: string) => void
+  /** Post the rating, and resolve to whether the server took it. */
+  onSend: (traceId: string, rating: FeedbackRating, comment: string) => Promise<boolean>
 }) {
   const [comment, setComment] = useState('')
 
   const status = entry?.status ?? 'none'
   const rating = entry?.rating ?? null
-  const done = status === 'submitted' || status === 'changed' || status === 'locked'
-  // A thumb already sent may be changed exactly once, so the buttons stay up while the
-  // Feedback is merely `submitted` and go away once that change has been spent.
-  const canPress = status === 'none' || status === 'chosen' || status === 'submitted'
+  const done = status !== 'none'
+  // A rating already sent may be changed exactly once, so the buttons stay up while the
+  // Feedback is merely `sent` and go away once that change has been spent.
+  const canPress = status === 'none' || status === 'sent'
+
+  async function send(option: FeedbackRating, note: string) {
+    if (await onSend(traceId, option, note)) {
+      // Only on success: a send that failed leaves the sentence in the box, because retyping
+      // it is a worse outcome than seeing it sit there.
+      setComment('')
+    }
+  }
 
   function thumb(option: FeedbackRating, label: string, glyph: string) {
     return (
@@ -62,7 +72,9 @@ export function FeedbackControl({
         type="button"
         aria-label={label}
         aria-pressed={rating === option}
-        onClick={() => onChoose(traceId, option)}
+        // The thumb that already stands is the rating the server holds, so pressing it again
+        // would be a request that says nothing new; the note box is how that opinion grows.
+        onClick={() => option !== rating && void send(option, '')}
         className={`${THUMB} ${rating === option ? CHOSEN : RESTING[option]}`}
       >
         {glyph}
@@ -87,12 +99,16 @@ export function FeedbackControl({
         </div>
       )}
 
-      {status === 'chosen' && rating !== null && (
+      {status === 'sent' && rating !== null && (
         <form
           className="flex w-[88%] items-center gap-2 rounded-[48px] border border-[#e5e5e5] bg-white py-1 pr-1 pl-3.5"
           onSubmit={(event) => {
             event.preventDefault()
-            onSend(traceId, rating, comment.trim())
+            // An empty box is nothing to say, not a sentence to erase: the rating is already
+            // with the server, so there is no request to make.
+            if (comment.trim()) {
+              void send(rating, comment.trim())
+            }
           }}
         >
           <input

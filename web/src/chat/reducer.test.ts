@@ -314,58 +314,59 @@ describe('the chat reducer', () => {
     expect(state.messages.every((message) => !('traceId' in message && message.traceId))).toBe(true)
   })
 
-  it('opens the comment box on the thumb the Visitor pressed, and sends nothing yet', () => {
+  it('records the rating the moment the server takes it, and offers the one change', () => {
     const answered = replay('What does Cadre AI do?', traced(GROUNDED_ANSWER, TRACE))
 
     expect(answered.feedback).toEqual({})
 
-    const chosen = chatReducer(answered, {
-      type: 'feedback_chosen',
+    const rated = chatReducer(answered, {
+      type: 'feedback_sent',
       traceId: TRACE,
       rating: 'down',
+      changed: false,
     })
 
-    expect(chosen.feedback[TRACE]).toEqual({ rating: 'down', status: 'chosen' })
+    expect(rated.feedback[TRACE]).toEqual({ rating: 'down', status: 'sent' })
   })
 
-  it('lets the Visitor change their mind once, and ignores every thumb after that', () => {
-    const rated = [
-      { type: 'feedback_chosen', traceId: TRACE, rating: 'up' },
-      { type: 'feedback_sent', traceId: TRACE, changed: false },
-      { type: 'feedback_chosen', traceId: TRACE, rating: 'down' },
-      { type: 'feedback_sent', traceId: TRACE, changed: true },
+  it('takes a note on the rating that stands without spending the change', () => {
+    // The widget sends the thumb first and the sentence after it, so the same rating arrives
+    // twice for one opinion. The server calls that unchanged, and so does this.
+    const noted = [
+      { type: 'feedback_sent', traceId: TRACE, rating: 'down', changed: false },
+      { type: 'feedback_sent', traceId: TRACE, rating: 'down', changed: false },
     ].reduce(
       (state, action) => chatReducer(state, action as ChatAction),
       replay('What does Cadre AI do?', traced(GROUNDED_ANSWER, TRACE)),
     )
 
-    expect(rated.feedback[TRACE]).toEqual({ rating: 'down', status: 'changed' })
+    expect(noted.feedback[TRACE]).toEqual({ rating: 'down', status: 'sent' })
+  })
 
-    const pressedAgain = chatReducer(rated, {
-      type: 'feedback_chosen',
+  it('closes the control once the other thumb has spent the one change', () => {
+    const changed = [
+      { type: 'feedback_sent', traceId: TRACE, rating: 'up', changed: false },
+      { type: 'feedback_sent', traceId: TRACE, rating: 'down', changed: true },
+    ].reduce(
+      (state, action) => chatReducer(state, action as ChatAction),
+      replay('What does Cadre AI do?', traced(GROUNDED_ANSWER, TRACE)),
+    )
+
+    expect(changed.feedback[TRACE]).toEqual({ rating: 'down', status: 'changed' })
+
+    const pressedAgain = chatReducer(changed, {
+      type: 'feedback_sent',
       traceId: TRACE,
       rating: 'up',
+      changed: true,
     })
 
     expect(pressedAgain.feedback[TRACE]).toEqual({ rating: 'down', status: 'changed' })
   })
 
-  it('does not reopen the comment box for the thumb that already stands', () => {
-    const submitted = [
-      { type: 'feedback_chosen', traceId: TRACE, rating: 'up' },
-      { type: 'feedback_sent', traceId: TRACE, changed: false },
-      { type: 'feedback_chosen', traceId: TRACE, rating: 'up' },
-    ].reduce(
-      (state, action) => chatReducer(state, action as ChatAction),
-      replay('What does Cadre AI do?', traced(GROUNDED_ANSWER, TRACE)),
-    )
-
-    expect(submitted.feedback[TRACE]).toEqual({ rating: 'up', status: 'submitted' })
-  })
-
   it('locks the control when the server says this answer has been rated once too often', () => {
     const locked = [
-      { type: 'feedback_chosen', traceId: TRACE, rating: 'up' },
+      { type: 'feedback_sent', traceId: TRACE, rating: 'up', changed: false },
       { type: 'feedback_locked', traceId: TRACE },
     ].reduce(
       (state, action) => chatReducer(state, action as ChatAction),
@@ -373,13 +374,24 @@ describe('the chat reducer', () => {
     )
 
     expect(locked.feedback[TRACE]).toEqual({ rating: 'up', status: 'locked' })
-  })
 
-  it('keeps each Turn\'s Feedback to its own Trace', () => {
-    const first = chatReducer(replay('What does Cadre AI do?', traced(GROUNDED_ANSWER, TRACE)), {
-      type: 'feedback_chosen',
+    // Terminal: a late reply from a request that crossed the lock cannot reopen it.
+    const late = chatReducer(locked, {
+      type: 'feedback_sent',
       traceId: TRACE,
       rating: 'down',
+      changed: true,
+    })
+
+    expect(late.feedback[TRACE]).toEqual({ rating: 'up', status: 'locked' })
+  })
+
+  it("keeps each Turn's Feedback to its own Trace", () => {
+    const first = chatReducer(replay('What does Cadre AI do?', traced(GROUNDED_ANSWER, TRACE)), {
+      type: 'feedback_sent',
+      traceId: TRACE,
+      rating: 'down',
+      changed: false,
     })
 
     const second = [
@@ -389,7 +401,7 @@ describe('the chat reducer', () => {
       ),
     ].reduce(chatReducer, first)
 
-    expect(second.feedback[TRACE]).toEqual({ rating: 'down', status: 'chosen' })
+    expect(second.feedback[TRACE]).toEqual({ rating: 'down', status: 'sent' })
     expect(second.feedback[SECOND_TRACE]).toBeUndefined()
   })
 

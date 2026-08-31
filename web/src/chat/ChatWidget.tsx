@@ -47,7 +47,7 @@ export function ChatWidget() {
   const [usedQuickReplies, setUsedQuickReplies] = useState<string[]>([])
 
   const chrome = chromeFor(language)
-  const { state, send, loadSections, chooseFeedback, sendFeedback } = useChat(
+  const { state, send, loadSections, sendFeedback } = useChat(
     chromeFor('en').greeting,
     chrome.connectionError,
   )
@@ -57,9 +57,9 @@ export function ChatWidget() {
   const launcher = useRef<HTMLButtonElement>(null)
   const wasOpen = useRef(false)
 
-  // Also on `state.feedback`: pressing a thumb opens a comment box under the answer, and at
-  // the bottom of a full transcript that box would otherwise open below the fold — the Visitor
-  // would press 👎 and watch nothing happen.
+  // Also on `state.feedback`: a thumb turns into the done copy and a comment box under the
+  // answer, and at the bottom of a full transcript those would otherwise appear below the fold
+  // — the Visitor would press 👎 and watch nothing happen.
   useEffect(() => {
     transcript.current?.scrollTo({ top: transcript.current.scrollHeight })
   }, [state.messages, state.feedback])
@@ -132,8 +132,7 @@ export function ChatWidget() {
         traceId={traceId}
         entry={state.feedback[traceId]}
         chrome={chrome}
-        onChoose={chooseFeedback}
-        onSend={(id, rating, comment) => void sendFeedback(id, rating, comment)}
+        onSend={sendFeedback}
       />
     )
   }

@@ -69,13 +69,18 @@ export type MessageRole = 'visitor' | 'assistant'
 export type FeedbackRating = 'up' | 'down'
 
 /**
- * How far one answer's Feedback has got. `none` is the two thumbs on their own; `chosen` is a
- * thumb pressed and the comment box open, before anything has been sent; `submitted` is a
- * Feedback the server has, which the Visitor may still change once; `changed` is that one
- * change spent; `locked` is the server refusing a further change — a second tab, or a reload
- * that lost what this one knew. The last two both render as a control nobody can press again.
+ * How far one answer's Feedback has got. `none` is the two thumbs on their own; `sent` is a
+ * rating the server has taken and stored — the note box is open beneath it and the other thumb
+ * is still on offer, because one change is allowed; `changed` is that one change spent;
+ * `locked` is the server refusing a further change — a second tab, or a reload that lost what
+ * this one knew. The last two are terminal, and both render as a control nobody can press
+ * again.
+ *
+ * There is deliberately no state for "a thumb pressed but not yet sent": the press *is* the
+ * Feedback, so it goes to the server at once and the sentence follows it as an update. A
+ * Visitor who presses 👍 and walks away has still rated the answer.
  */
-export type FeedbackStatus = 'none' | 'chosen' | 'submitted' | 'changed' | 'locked'
+export type FeedbackStatus = 'none' | 'sent' | 'changed' | 'locked'
 
 export interface FeedbackEntry {
   rating: FeedbackRating | null
@@ -176,9 +181,11 @@ export type ChatAction =
   | { type: 'event'; event: ChatEvent }
   | { type: 'stream_failed'; message: string }
   | { type: 'sections_loaded'; sections: KBSectionTitle[] }
-  /** A thumb was pressed: the comment box opens and nothing has been sent yet. */
-  | { type: 'feedback_chosen'; traceId: string; rating: FeedbackRating }
-  /** The server took it. `changed` is its answer to whether this replaced an earlier thumb. */
-  | { type: 'feedback_sent'; traceId: string; changed: boolean }
+  /**
+   * The server took a rating and holds it. The rating is the receipt's, not the browser's —
+   * the server is the one that knows which thumb now stands — and `changed` is its answer to
+   * whether that thumb replaced an earlier one, which is the Visitor's one change spent.
+   */
+  | { type: 'feedback_sent'; traceId: string; rating: FeedbackRating; changed: boolean }
   /** The server refused a further change (409): this answer's rating is final. */
   | { type: 'feedback_locked'; traceId: string }
