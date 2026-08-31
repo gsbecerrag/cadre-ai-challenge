@@ -90,7 +90,7 @@ def _steps(value: object) -> list[str]:
     return steps
 
 
-def run_show_walkthrough(arguments: Mapping[str, Any]) -> ToolOutcome:
+async def run_show_walkthrough(arguments: Mapping[str, Any], session_id: str) -> ToolOutcome:
     destination_id = str(arguments.get("destination") or "")
     destination = resolve_destination(destination_id)
     if destination is None:

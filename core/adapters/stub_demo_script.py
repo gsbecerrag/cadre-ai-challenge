@@ -263,20 +263,20 @@ def _deltas(answer: str) -> list[StubEvent]:
     ]
 
 
-def _deltas(answer: str) -> list[StubEvent]:
+def _streamed(answer: str) -> list[StubEvent]:
     return [*_deltas(answer), DEMO_USAGE]
 
 
 def _after(escalation: ToolCall, closing: str) -> list[StubResponse]:
     """A Turn that escalates and then carries on talking, which is what the prompt asks for:
     an Escalation is not the end of the conversation."""
-    return [[escalation], _deltas(closing)]
+    return [[escalation], _streamed(closing)]
 
 
 def _walkthrough(intro: str, card: ToolCall, closing: str) -> list[StubResponse]:
     """The reference flow from the design artboard: a short cited sentence, then the card.
     Nothing repeats the steps afterwards — once the card is shown, they have been said."""
-    return [[*_deltas(intro), card], _deltas(closing)]
+    return [[*_deltas(intro), card], _streamed(closing)]
 
 
 def demo_scripts() -> dict[str, Sequence[StubResponse]]:
@@ -288,21 +288,21 @@ def demo_scripts() -> dict[str, Sequence[StubResponse]]:
     anything_else = "Anything else I can look up for you?"
     return {
         # Grounded answers.
-        "cadre ai do": [_deltas(SERVICES_ANSWER)],
-        "services": [_deltas(SERVICES_ANSWER)],
-        "industries": [_deltas(INDUSTRIES_ANSWER)],
-        "strategist": [_deltas(CONTACT_ANSWER)],
-        "contact": [_deltas(CONTACT_ANSWER)],
-        "maturity": [_deltas(MATURITY_ANSWER)],
-        "security": [_deltas(SECURITY_ANSWER)],
-        "results": [_deltas(PORTAL_ANSWER)],
+        "cadre ai do": [_streamed(SERVICES_ANSWER)],
+        "services": [_streamed(SERVICES_ANSWER)],
+        "industries": [_streamed(INDUSTRIES_ANSWER)],
+        "strategist": [_streamed(CONTACT_ANSWER)],
+        "contact": [_streamed(CONTACT_ANSWER)],
+        "maturity": [_streamed(MATURITY_ANSWER)],
+        "security": [_streamed(SECURITY_ANSWER)],
+        "results": [_streamed(PORTAL_ANSWER)],
         # Walkthrough Cards. Both triggers are narrower than the grounded answers above, and
         # the stub matches the longest one, so "what is the Maturity Index" still reads as
         # prose while "how do I get scored" gets the card.
         "my agents": _walkthrough(PORTAL_WALKTHROUGH_INTRO, PORTAL_WALKTHROUGH, anything_else),
         "get scored": _walkthrough(MATURITY_WALKTHROUGH_INTRO, MATURITY_WALKTHROUGH, anything_else),
         # Lead capture: a Contact Detail and an initiative in one message.
-        "email is": [[LEAD_CAPTURE], _deltas(LEAD_ACKNOWLEDGEMENT)],
+        "email is": [[LEAD_CAPTURE], _streamed(LEAD_ACKNOWLEDGEMENT)],
         # Trap Questions.
         "cost": _after(PRICING_ESCALATION, anything_else),
         "price": _after(PRICING_ESCALATION, anything_else),

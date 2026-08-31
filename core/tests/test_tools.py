@@ -6,11 +6,13 @@ hold that table against the two things it has to agree with — the demo Portal'
 the published contact URL in the Knowledge Base — because both live in other people's files.
 """
 
+import asyncio
 import re
 from datetime import date
 from pathlib import Path
 
 from core.adapters.knowledge_files import FileKnowledgeSource
+from core.adapters.memory_store import InMemoryConversationStore
 from core.adapters.stub_demo_script import demo_fallback, demo_scripts
 from core.knowledge import compile_knowledge_base
 from core.prompt import build_system_prompt
@@ -127,7 +129,7 @@ def test_every_tool_call_in_the_demo_script_is_one_the_registry_accepts() -> Non
     """`make dev` and every review of it run on this script. A destination that no longer
     resolves, or a step count the tool rejects, would show the reviewer a Turn with the card
     silently missing from it — the tool's own recovery path hides the mistake."""
-    registry = default_tools()
+    registry = default_tools(InMemoryConversationStore())
     calls = [
         event
         for script in [*demo_scripts().values(), demo_fallback()]
@@ -138,5 +140,9 @@ def test_every_tool_call_in_the_demo_script_is_one_the_registry_accepts() -> Non
 
     assert calls, "the demo script calls no tool, so this guard proves nothing"
     for call in calls:
-        outcome = registry.run(call)
-        assert outcome.events, f"{call.id} produced no card: {outcome.result}"
+        outcome = asyncio.run(registry.run(call, "demo-session"))
+        if call.name == "capture_lead":
+            # A Lead is recorded, not shown: the tool answers the model, it emits no event.
+            assert "recorded" in outcome.result.lower(), f"{call.id} was rejected: {outcome.result}"
+        else:
+            assert outcome.events, f"{call.id} produced no card: {outcome.result}"
