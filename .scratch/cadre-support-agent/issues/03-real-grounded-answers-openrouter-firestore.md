@@ -4,7 +4,7 @@
 
 **Blocked by:** 02 (First Turn end-to-end with the stub provider)
 
-**Status:** ready-for-agent
+**Status:** in-progress
 
 - [ ] Parsing recorded OpenRouter stream fixtures yields the assembled text, assembled tool calls with arguments, and usage with cost; a fixture with a mid-stream error finish reason yields the typed provider error; covered at seam S2.
 - [ ] The request body sent to the provider marks the system block cacheable with the configured TTL and includes the attribution headers; covered at S2 by inspecting the built request (no network).
