@@ -204,6 +204,14 @@ _STRONG_CREDENTIAL = re.compile(
     rf"(?i)\b({_STRONG_CREDENTIAL_LABEL})\b(\s*(?:is|es|:|=)?\s*)([^\s,;]+)"
 )
 
+# A strong label marks a secret only when something is actually being handed over: either an
+# explicit separator ("password: …", "the OTP is …") or a value that looks like a code ("the
+# OTP 482913 arrived"). Otherwise the label is the subject of the sentence and the words after
+# it are the Visitor's question — "api key rotation", "password policy", "security code
+# review" are the brief's own data-security questions, and eating a word out of one of them
+# corrupts what the model is asked.
+_CREDENTIAL_SEPARATORS = frozenset({"is", "es", ":", "="})
+
 # A label that names a secret only sometimes: "el factor clave es la velocidad" is a sentence
 # about latency. The value has to look like a code — that is, contain a digit — to count.
 _WEAK_CREDENTIAL = re.compile(r"(?i)\b(pin|clave|c[oó]digo)\b(\s*(?:is|es|:|=)\s*)([^\s,;]+)")
@@ -238,7 +246,17 @@ _IBAN_LABEL_BEFORE = re.compile(r"(?i)\biban\b\W*(?:is|es|:|=)?\W*$")
 
 _CARD = re.compile(r"\b(?:\d[ -]?){12,18}\d\b")
 _THIRTEEN_DIGITS = re.compile(r"\b\d{13}\b")
-_TEN_DIGITS = re.compile(r"\b\d{10}\b")
+
+# A bare ten-digit number is not evidence of a cédula. The check digit is one digit, so about
+# one unformatted phone number in ten passes it by chance — and `refuse` runs before the
+# provider call and before the store, which makes a wrongly tagged number a Contact Detail
+# destroyed with no way back (ADR-0006: `refuse` does not touch Contact Details). So a label
+# has to say the number is an id first; the check digit then still decides whether it is a
+# cédula or some other id.
+_LABELLED_CEDULA = re.compile(
+    r"(?i)(\b(?:c[ée]dula(?:\s+de\s+ciudadan[ií]a)?|c\.?c\.?|documento(?:\s+de\s+identidad)?"
+    r"|id)[\s.:=#-]*(?:es|is|no\.?|n[o°º]\.?|number|n[uú]mero)?[\s.:=#-]*)(\d{10})\b"
+)
 _SSN = re.compile(r"\b\d{3}-\d{2}-\d{4}\b")
 _CPF = re.compile(r"\b\d{3}\.\d{3}\.\d{3}-\d{2}\b|\b\d{11}\b")
 _RUT = re.compile(r"\b\d{1,2}\.?\d{3}\.?\d{3}-[\dkK]\b")
@@ -251,9 +269,9 @@ _UK_NI = re.compile(
 # An id whose only validation is the word in front of it — a Colombian cédula de ciudadanía, a
 # passport, a licence. Everything with a check digit has already been taken by the rules above.
 _LABELLED_GOV_ID = re.compile(
-    r"(?i)\b(c[ée]dula(?:\s+de\s+ciudadan[ií]a)?|documento\s+de\s+identidad|pasaporte|passport"
+    r"(?i)\b((?:c[ée]dula(?:\s+de\s+ciudadan[ií]a)?|documento\s+de\s+identidad|pasaporte|passport"
     r"|driver'?s\s+licen[cs]e|licencia\s+de\s+conducir|social\s+security(?:\s+number)?|ssn"
-    r"|nit|dni|nie)\b"
+    r"|nit|dni|nie)\b|c\.?c\.?)"
     r"(\s*(?:es|is|no\.?|n[o°º]\.?|number|n[uú]mero|:|=)?\s*)"
     r"([A-Za-z]?\d[\d.\- ]{4,14}\d)"
 )
@@ -276,12 +294,19 @@ class _Redactor:
     """One pass over one text. Token tables live here, so numbering is per text."""
 
     def __init__(self, profile: RedactionProfile) -> None:
-        self._profile: RedactionProfile = profile
+        # What this profile may redact. `run` asks this rather than restating the profile's
+        # definition, so the two constants above cannot drift away from the behaviour.
+        self._categories = frozenset(
+            REFUSE_SET + CONTACT_DETAILS if profile == "full" else REFUSE_SET
+        )
         self._counts: dict[str, int] = {}
         self._tokens: dict[str, dict[str, int]] = {"email": {}, "phone": {}}
         self._protected: list[str] = []
 
     # -- helpers
+
+    def _handles(self, category: str) -> bool:
+        return category in self._categories
 
     def _count(self, category: str) -> None:
         self._counts[category] = self._counts.get(category, 0) + 1
@@ -316,6 +341,19 @@ class _Redactor:
             return match.group(0)
         return self._credential(match)
 
+    def _credential_if_a_value_is_being_handed_over(self, match: re.Match[str]) -> str:
+        separated = match.group(2).strip().lower() in _CREDENTIAL_SEPARATORS
+        looks_like_a_code = any(char.isdigit() for char in match.group(3))
+        if not (separated or looks_like_a_code):
+            return match.group(0)
+        return self._credential(match)
+
+    def _cedula(self, match: re.Match[str]) -> str:
+        """The label has already been read; the check digit decides what it is."""
+        if not cedula_ok(match.group(2)):
+            return match.group(0)
+        return f"{match.group(1)}{self._tag('cedula', '[CEDULA]')}"
+
     def _sensitive(self, match: re.Match[str]) -> str:
         return f"{match.group(1)}{self._tag('sensitive', '[SENSITIVE]')}"
 
@@ -348,19 +386,17 @@ class _Redactor:
     # -- the pass itself
 
     def run(self, text: str) -> Redaction:
-        tokenise_contact_details = self._profile == "full"
-
         text = _INVOICE_NUMBER.sub(self._protect, text)
-        text = _STRONG_CREDENTIAL.sub(self._credential, text)
+        text = _STRONG_CREDENTIAL.sub(self._credential_if_a_value_is_being_handed_over, text)
         text = _WEAK_CREDENTIAL.sub(self._credential_if_it_looks_like_a_code, text)
         text = _HIGH_ENTROPY_KEY.sub(lambda _: self._tag("credential", "[CREDENTIAL]"), text)
         text = _SENSITIVE.sub(self._sensitive, text)
-        if tokenise_contact_details:
+        if self._handles("email"):
             text = _EMAIL.sub(lambda match: self._token("email", match.group(0)), text)
         text = _IBAN.sub(self._iban, text)
         text = _CARD.sub(self._card, text)
         text = _THIRTEEN_DIGITS.sub(self._checked("ruc", "[RUC]", ruc_ok), text)
-        text = _TEN_DIGITS.sub(self._checked("cedula", "[CEDULA]", cedula_ok), text)
+        text = _LABELLED_CEDULA.sub(self._cedula, text)
         text = _SSN.sub(self._checked("ssn", "[SSN]", ssn_ok), text)
         text = _CPF.sub(self._checked("gov_id", "[GOV_ID]", cpf_ok), text)
         text = _RUT.sub(self._checked("gov_id", "[GOV_ID]", rut_ok), text)
@@ -368,7 +404,7 @@ class _Redactor:
         text = _DNI.sub(self._checked("gov_id", "[GOV_ID]", dni_ok), text)
         text = _UK_NI.sub(lambda _: self._tag("gov_id", "[GOV_ID]"), text)
         text = _LABELLED_GOV_ID.sub(self._labelled_gov_id, text)
-        if tokenise_contact_details:
+        if self._handles("phone"):
             text = _PHONE.sub(lambda match: self._token("phone", match.group(0)), text)
         text = _IPV4.sub(lambda _: self._tag("ip", "[IP]"), text)
 

@@ -10,12 +10,17 @@ rejects proves nothing.
 
 import io
 import json
+import logging
+from collections.abc import Iterator
 from typing import Any
 
 import pytest
 
 from core import redaction
 from core.logging import configure_logging, get_logger, request_context
+
+# Every logger `configure_logging` reaches into.
+MANAGED_LOGGERS = ("", "cadre", "uvicorn", "uvicorn.error", "uvicorn.access")
 
 # Luhn-valid, and the most obviously fake card number in existence.
 CARD = "4111 1111 1111 1111"
@@ -32,6 +37,35 @@ IBAN = "ES91 2100 0418 4502 0005 1332"
 EMAIL = "jane@example.com"
 OTHER_EMAIL = "rob@example.com"
 PHONE = "+1 555 0100"
+# Ten digits that pass the cédula check digit by chance and are plainly phone numbers: one
+# unformatted number in ten does, which is why the check digit alone cannot be the evidence.
+COLOMBIAN_MOBILE = "3005550003"
+US_NUMBER = "2125550000"
+# Ten digits that fail it: labelled, so still an id, but not a cédula.
+NOT_A_CEDULA = "2125551234"
+
+
+@pytest.fixture(autouse=True)
+def restored_logging() -> Iterator[None]:
+    """`configure_logging` reaches into the process's loggers, so these tests put the state
+    back. A `StringIO` handler left attached makes every later assertion about logging depend
+    on the order the tests happened to run in."""
+    saved = [
+        (
+            logging.getLogger(name),
+            list(logging.getLogger(name).handlers),
+            logging.getLogger(name).level,
+            logging.getLogger(name).propagate,
+            logging.getLogger(name).disabled,
+        )
+        for name in MANAGED_LOGGERS
+    ]
+    yield
+    for logger, handlers, level, propagate, disabled in saved:
+        logger.handlers = handlers
+        logger.setLevel(level)
+        logger.propagate = propagate
+        logger.disabled = disabled
 
 
 def test_the_refuse_profile_masks_a_payment_card_to_its_last_four() -> None:
@@ -94,6 +128,69 @@ def test_the_refuse_profile_replaces_a_labelled_credential_with_a_typed_tag() ->
     assert redacted.counts == {"credential": 2}
 
 
+@pytest.mark.parametrize(
+    ("message", "expected"),
+    [
+        ("password: Hunter2", "password: [CREDENTIAL]"),
+        ("clave = Hunter2", "clave = [CREDENTIAL]"),
+        ("the OTP 482913 arrived", "the OTP [CREDENTIAL] arrived"),
+        ("cvv 847", "cvv [CREDENTIAL]"),
+    ],
+)
+def test_the_refuse_profile_still_tags_a_label_that_is_introducing_a_value(
+    message: str, expected: str
+) -> None:
+    """Either an explicit separator or a value that looks like a code is enough; what is not
+    enough is a label with an ordinary English word after it."""
+    redacted = redaction.refuse(message)
+
+    assert redacted.text == expected
+    assert redacted.counts == {"credential": 1}
+
+
+@pytest.mark.parametrize("message", [f"call me at {COLOMBIAN_MOBILE}", f"my number is {US_NUMBER}"])
+def test_the_refuse_profile_leaves_an_unlabelled_ten_digit_number_alone(message: str) -> None:
+    """`refuse` runs before the provider and before the store, so a phone number tagged as a
+    cédula is a Contact Detail destroyed with no way back — and a cédula's check digit is one
+    digit, which a tenth of unformatted phone numbers match by chance (ADR-0006: `refuse` does
+    not touch Contact Details)."""
+    redacted = redaction.refuse(message)
+
+    assert redacted.text == message
+    assert redacted.counts == {}
+
+
+@pytest.mark.parametrize(
+    "message",
+    [f"mi cédula es {CEDULA}", f"CC {CEDULA}", f"C.C. {CEDULA}", f"cédula: {CEDULA}"],
+)
+def test_a_ten_digit_cedula_is_tagged_once_a_label_says_it_is_one(message: str) -> None:
+    """The label is the evidence and the check digit is still the test: both have to hold."""
+    redacted = redaction.refuse(message)
+
+    assert redacted.text == message.replace(CEDULA, "[CEDULA]")
+    assert redacted.counts == {"cedula": 1}
+
+
+def test_a_labelled_number_that_fails_the_cedula_check_digit_is_not_a_cedula() -> None:
+    """It is still an id by its label, so it is tagged as one — just not as a cédula."""
+    redacted = redaction.refuse(f"CC {NOT_A_CEDULA}")
+
+    assert redacted.text == "CC [GOV_ID]"
+    assert redacted.counts == {"gov_id": 1}
+
+
+def test_the_refuse_profile_reports_no_category_outside_the_refuse_set() -> None:
+    """The profile's category list is what `run` is driven by, so this fails the day a rule
+    that touches Contact Details is added without being gated on the profile."""
+    redacted = redaction.refuse(
+        f"card {CARD}, ssn {SSN}, password: Hunter2, mail {EMAIL}, call {PHONE}"
+    )
+
+    assert set(redacted.counts) <= set(redaction.REFUSE_SET)
+    assert not set(redacted.counts) & set(redaction.CONTACT_DETAILS)
+
+
 def test_the_refuse_profile_tags_a_sensitive_category_the_visitor_states_about_themselves() -> None:
     redacted = redaction.refuse("my diagnosis is type 2 diabetes, can Cadre help with that?")
 
@@ -109,6 +206,12 @@ def test_the_refuse_profile_tags_a_sensitive_category_the_visitor_states_about_t
         "our token budget is 200000 tokens a month",
         "el factor clave es la velocidad de respuesta",
         "our diagnosis workflow triages support tickets with AI",
+        # The brief's own data-security questions. A label is not a secret: what follows
+        # "api key" here is the Visitor's question, not somebody's key.
+        "how do you handle api key rotation for the agents you build?",
+        "what is your password policy for the portal?",
+        "our access token expires weekly",
+        "the security code review is scheduled",
         "invoice INV-100234 for $420,000, dated 2026-08-31",
         "we are a team of 45 in Quito and we ship on 2026-09-15",
     ],
@@ -189,6 +292,35 @@ def test_a_log_message_is_a_body_too() -> None:
 
     (record,) = _emitted(stream)
     assert record["message"] == "upstream refused the Turn for [EMAIL_1]"
+
+
+def test_a_nested_log_field_is_redacted_leaf_by_leaf() -> None:
+    """A body does not stop being a body because it arrived inside a dict."""
+    stream = io.StringIO()
+    configure_logging(level="INFO", stream=stream)
+
+    get_logger("turn").info(
+        "Handover requested",
+        extra={"lead": {"mail": EMAIL, "cards": [CARD], "score": 4}},
+    )
+
+    (record,) = _emitted(stream)
+    assert record["lead"] == {"mail": "[EMAIL_1]", "cards": [MASKED_CARD], "score": 4}
+
+
+def test_a_field_that_cannot_be_redacted_is_replaced_rather_than_written_raw() -> None:
+    """A line is never dropped for the sake of one field, and the fallback is never the raw
+    value: unredacted is the one outcome worse than losing the field."""
+    stream = io.StringIO()
+    configure_logging(level="INFO", stream=stream)
+    cyclic: list[Any] = [EMAIL]
+    cyclic.append(cyclic)
+
+    get_logger("turn").info("Turn finished", extra={"body": cyclic})
+
+    (record,) = _emitted(stream)
+    assert record["message"] == "Turn finished"
+    assert record["body"] == "[unredactable]"
 
 
 def test_the_correlation_ids_are_not_bodies_and_survive_intact() -> None:
