@@ -8,7 +8,7 @@ A take-home challenge for Cadre AI: build a **customer support chatbot for Cadre
 
 **Start with [plan.md](./plan.md)** — phases, scope decisions, status, and the document map. Then [CONTEXT.md](./CONTEXT.md) for the vocabulary every name and test must use, the super spec at `.scratch/cadre-support-agent/spec.md`, and [docs/architecture.md](./docs/architecture.md). Decisions with reasoning live in `docs/adr/`; evidence in `docs/research/`.
 
-Application code is not scaffolded yet. When it is, replace the "Commands & Architecture" placeholder below with the real commands and architecture.
+The scaffold is in place (ticket 01). Keep "Commands & Architecture" below current as each slice lands.
 
 ## Hard Deliverables
 
@@ -65,7 +65,24 @@ Work is tracked as tickets: the spec is `.scratch/cadre-support-agent/spec.md`, 
 
 ## Commands & Architecture
 
-*Not yet applicable — no code exists. Once scaffolded, replace this section with: how to install deps, run the dev server, run tests (including a single test), lint, and deploy; plus the big-picture architecture (where the system prompt lives, how the chat API flows, what the data model is, how escalation works).*
+Python is managed with `uv` (3.12, pinned in `.python-version`), the web app with `pnpm` (Node 24). Everything runs through the root `Makefile`:
+
+```
+make install    # uv sync + pnpm install
+make dev        # API with reload on :8080 and Vite on :5173 (Vite proxies /api and /healthz)
+make check      # ruff check, ruff format --check, mypy, pytest, eslint, tsc, vitest — what CI runs
+make test       # pytest + vitest only
+make build-web  # build web/dist so the API can serve it
+make deploy     # gcloud run deploy --source . to cadre-support-agent in us-central1, then curl the health endpoint
+```
+
+One test: `uv run pytest api/tests/test_healthz.py::test_healthz_names_the_service_and_version`, or `cd web && pnpm vitest run src/App.test.tsx`.
+
+Layout: `api/` (FastAPI), `web/` (React + Vite + Tailwind), `core/` (shared config, logging, and later the seams and redaction), `knowledge/`, `evals/`, `functions/` (Triage Agent). One root `pyproject.toml` covers `api` and `core` — one lockfile, one venv, one install step in the container.
+
+Architecture: **one Cloud Run container** serves the API and the built SPA from the same origin (ADR-0003), so there is no CORS and one deploy. `api/main.py` is the composition root: it loads settings, configures logging, adds the request-id middleware, registers routes, then mounts `web/dist` at `/` with a single-page fallback — routes are registered before the mount, so the API always wins. Configuration is typed in `core/config.py`, read from environment variables with `.env.example` as the schema; nothing reads a dotenv (the container gets real variables, `make dev` passes `--env-file` to uv). Logging is `core/logging.py`: one JSON object per line with `severity`, `message`, `timestamp`, `request_id` and `session_id` when known — `print` is a lint error.
+
+Note on health checks: `/healthz` exists and is tested, but Google's frontend answers that exact path on `*.run.app` before the request reaches the container, so the deployed service is probed at `/api/healthz` (the same handler).
 
 ## Agent skills
 
