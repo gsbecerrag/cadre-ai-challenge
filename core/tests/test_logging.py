@@ -101,7 +101,11 @@ def test_the_servers_own_lines_are_json_too() -> None:
 
 
 def test_the_servers_plain_text_access_log_is_silenced() -> None:
-    """The request middleware is the access log; uvicorn's plain-text one is not JSON."""
+    """The request middleware is the access log; uvicorn's plain-text one is not JSON.
+
+    Verified by mutation: delete the silencing from configure_logging and this fails, because
+    uvicorn.access then propagates into the managed `uvicorn` logger's JSON handler.
+    """
     stream = io.StringIO()
     configure_logging(level="INFO", stream=stream)
 
