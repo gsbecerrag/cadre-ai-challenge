@@ -155,6 +155,36 @@ describe('the chat reducer', () => {
     expect(new Set(ids).size).toBe(ids.length)
   })
 
+  it('learns the title behind every citation id, so a chip can show more than the id', () => {
+    const state = chatReducer(initialChatState(GREETING), {
+      type: 'sections_loaded',
+      sections: [
+        { id: 'not-published#pricing', title: 'Pricing', topic: 'not-published' },
+        { id: 'services#what-cadre-does', title: 'What Cadre does', topic: 'services' },
+      ],
+    })
+
+    expect(state.sections).toEqual({
+      'not-published#pricing': 'Pricing',
+      'services#what-cadre-does': 'What Cadre does',
+    })
+    expect(state.messages).toEqual(initialChatState(GREETING).messages)
+  })
+
+  it('keeps the section titles across the Turns that follow, so they are fetched once', () => {
+    const loaded = chatReducer(initialChatState(GREETING), {
+      type: 'sections_loaded',
+      sections: [{ id: 'not-published#pricing', title: 'Pricing', topic: 'not-published' }],
+    })
+
+    const after = [
+      { type: 'visitor_message', text: 'What does it cost?' } as ChatAction,
+      ...ESCALATED_ANSWER.map((event): ChatAction => ({ type: 'event', event })),
+    ].reduce(chatReducer, loaded)
+
+    expect(after.sections).toEqual({ 'not-published#pricing': 'Pricing' })
+  })
+
   it('reports a stream that never arrived in the same shape as a failed Turn', () => {
     const state = chatReducer(
       chatReducer(initialChatState(GREETING), { type: 'visitor_message', text: 'hello' }),

@@ -12,4 +12,10 @@ section it came from.
 - Facts come from `docs/research/cadreai-site-facts.md`. What Cadre does *not* publish is a
   first-class topic, because the Assistant has to escalate rather than invent (ticket 04).
 
-Topics so far: `services`, `industries`, `contact`. The rest arrive with ticket 04.
+Topics: `services`, `industries`, `case-studies`, `maturity-index`, `partners-and-models`,
+`data-security`, `portal`, `contact`, and `not-published` — the topic that records what Cadre
+has *not* published, so that "I can't confirm that" is itself a citable answer.
+
+The compiled block has a token budget (`KNOWLEDGE_TOKEN_BUDGET` in `core/knowledge.py`,
+25,000 tokens) because it sits in the cached prefix of every prompt; a unit test fails if the
+authored topics grow past it.

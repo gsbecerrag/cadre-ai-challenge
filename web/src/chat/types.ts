@@ -13,6 +13,13 @@ export interface Usage {
   cost_usd: number
 }
 
+/** One row of `GET /api/knowledge/sections` — what the citation chips show. */
+export interface KBSectionTitle {
+  id: string
+  title: string
+  topic: string
+}
+
 export interface WalkthroughCard {
   title: string
   steps: string[]
@@ -86,9 +93,15 @@ export interface ChatState {
   streamingId: string | null
   /** Message ids are minted here so the reducer stays a pure function of its input. */
   seq: number
+  /**
+   * KB Section id to its heading, fetched once when the panel opens. Empty until it arrives,
+   * and a chip falls back to showing the id — a citation is still a citation without a title.
+   */
+  sections: Record<string, string>
 }
 
 export type ChatAction =
   | { type: 'visitor_message'; text: string }
   | { type: 'event'; event: ChatEvent }
   | { type: 'stream_failed'; message: string }
+  | { type: 'sections_loaded'; sections: KBSectionTitle[] }

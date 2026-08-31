@@ -3,6 +3,7 @@
 from datetime import date
 
 from core.prompt import build_system_prompt
+from core.tools.escalate import DEFINITION, ESCALATION_REASONS
 
 KNOWLEDGE_BLOCK = "[services#what-cadre-does] What Cadre does\nCadre AI is a consultancy."
 
@@ -46,3 +47,28 @@ def test_the_prompt_names_the_citation_marker_the_web_app_parses() -> None:
     prompt = build_system_prompt(KNOWLEDGE_BLOCK, today=date(2026, 8, 30))
 
     assert "[topic#heading]" in prompt.cached
+
+
+def block(name: str) -> str:
+    prompt = build_system_prompt(KNOWLEDGE_BLOCK, today=date(2026, 8, 30))
+    return dict(prompt.cached_sections)[name]
+
+
+def test_the_escalation_block_lists_every_trap_question_the_escalate_tool_can_name() -> None:
+    """The Trap Question list and the tool's `reason` enum are written in different files and
+    have to agree: a reason the prompt never mentions is one the Assistant will not pick, and
+    the Visitor gets a guess instead of an Escalation."""
+    escalation = block("escalation")
+
+    for reason in ESCALATION_REASONS:
+        assert f"`{reason}`" in escalation, reason
+
+
+def test_the_tools_block_describes_the_escalate_tool_as_it_is_actually_defined() -> None:
+    """The prompt tells the Assistant how to call the tool; the definition tells the provider.
+    They drift silently, so the arguments are pinned to the definition rather than retyped."""
+    tools = block("tools")
+
+    assert DEFINITION.name in tools
+    for argument in DEFINITION.parameters["properties"]:
+        assert argument in tools, argument

@@ -37,7 +37,7 @@ export function ChatWidget() {
   const [usedQuickReplies, setUsedQuickReplies] = useState<string[]>([])
 
   const chrome = chromeFor(language)
-  const { state, send } = useChat(chromeFor('en').greeting, chrome.connectionError)
+  const { state, send, loadSections } = useChat(chromeFor('en').greeting, chrome.connectionError)
 
   const transcript = useRef<HTMLDivElement>(null)
   const composer = useRef<HTMLInputElement>(null)
@@ -53,11 +53,14 @@ export function ChatWidget() {
   useEffect(() => {
     if (open) {
       composer.current?.focus()
+      // The titles behind the citation chips, fetched once and only for a Visitor who
+      // actually opens the panel.
+      void loadSections()
     } else if (wasOpen.current) {
       launcher.current?.focus()
     }
     wasOpen.current = open
-  }, [open])
+  }, [open, loadSections])
 
   useEffect(() => {
     function openFromHostPage() {
@@ -176,7 +179,13 @@ export function ChatWidget() {
         className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto bg-[#faf9f6] px-4 pt-[18px] pb-2"
       >
         {state.messages.map((message) => (
-          <MessageView key={message.id} message={message} typingLabel={chrome.typing} />
+          <MessageView
+            key={message.id}
+            message={message}
+            typingLabel={chrome.typing}
+            nextStepLabel={chrome.nextStep}
+            sectionTitles={state.sections}
+          />
         ))}
       </div>
 

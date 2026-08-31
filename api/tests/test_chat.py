@@ -20,12 +20,16 @@ ANSWER = "Cadre AI is a consultancy focused on revenue growth and EBITDA."
 CITATION = " [services#what-cadre-does]"
 SPEND = Usage(input_tokens=12_400, output_tokens=48, cached_tokens=12_200, cost_usd=0.0031)
 
+# The Escalation's title and refusal come from the per-reason copy table, not from the model
+# (ticket 04); what the model contributes is the reason, what it knows, and the next step.
 ESCALATE = ToolCall(
     id="call-0100",
     name="escalate",
     arguments={
-        "reason": "Cadre does not publish pricing for its engagements.",
+        "reason": "pricing",
+        "known": "The 45-day Intensive is the engagement behind that question.",
         "next_step": "Write hello@gocadre.ai or call (619) 324-3223 [contact#how-to-reach-cadre].",
+        "language": "en",
     },
 )
 
@@ -68,10 +72,13 @@ def test_a_tool_call_is_marked_in_the_stream_before_the_answer_that_follows_it(
     assert [name for name, _ in events] == ["tool", "escalation", "tool", "text", "done"]
     assert events[0] == ("tool", {"name": "escalate", "status": "started"})
     assert events[2] == ("tool", {"name": "escalate", "status": "finished"})
-    assert events[1][1]["body"] == ESCALATE.arguments["reason"]
+    assert events[1][1]["body"].endswith(ESCALATE.arguments["known"])
     # The marker becomes a chip, so it must not also be left sitting in the prose.
     assert events[1][1]["next_step"] == "Write hello@gocadre.ai or call (619) 324-3223."
-    assert events[1][1]["citations"] == ["contact#how-to-reach-cadre"]
+    assert events[1][1]["citations"] == [
+        "not-published#pricing",
+        "contact#how-to-reach-cadre",
+    ]
 
 
 def test_the_tool_result_is_fed_back_so_the_model_can_answer_with_it(
