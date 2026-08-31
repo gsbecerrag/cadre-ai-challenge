@@ -6,8 +6,22 @@
 
 import { type ReactNode, useState } from 'react'
 
-import { chromeFor } from './strings'
-import type { CardDestination, Message } from './types'
+import { type Chrome, chromeFor } from './strings'
+import type { CardDestination, LeadContact, Message, OfferMessage } from './types'
+
+/**
+ * What the Visitor's two buttons and the details form do. They are handlers rather than
+ * fetches because a message row should not know the API exists: `useChat` owns the requests,
+ * the reducer owns what the transcript then shows, and this file draws it.
+ */
+export interface HandoverActions {
+  accept: (requestId: string) => void
+  decline: (requestId: string) => void
+  shareDetails: (details: LeadContact) => void
+  /** A request in flight: both buttons wait, so a double press cannot send two answers. */
+  busy: boolean
+  failed: boolean
+}
 
 const CHIP =
   'rounded-[48px] border border-[#e5e5e5] bg-[#f2efe4] px-2.5 py-[3px] font-mono text-[10px] text-[#666]'
@@ -86,25 +100,168 @@ function WalkthroughCta({
   )
 }
 
+const CARD = 'max-w-[88%] rounded-[16px] border border-[#e5e5e5] bg-white px-4 py-3.5'
+
+/**
+ * The Hand-over offer: the Assistant's question and two buttons, or — once it is answered —
+ * one line saying what happens next. The card keeps its place in the transcript rather than
+ * disappearing, because a Visitor scrolling back should still see what they were asked.
+ */
+function OfferCard({
+  message,
+  chrome,
+  actions,
+}: {
+  message: OfferMessage
+  chrome: Chrome
+  actions: HandoverActions
+}) {
+  if (message.status !== 'open') {
+    return (
+      <div className={`${CARD} text-center text-[13px] text-[#666]`}>
+        {message.status === 'accepted' ? chrome.offerAccepted : chrome.offerDeclined}
+      </div>
+    )
+  }
+  return (
+    <div
+      className={`${CARD} flex flex-col items-center gap-3 text-center shadow-[0_4px_16px_rgba(0,0,0,0.05)]`}
+    >
+      <p className="text-[14px] leading-[1.5] font-semibold text-[#0c0407]">
+        {message.prompt || chrome.offerPrompt}
+      </p>
+      <div className="flex flex-wrap justify-center gap-2">
+        <button
+          type="button"
+          disabled={actions.busy}
+          onClick={() => actions.accept(message.requestId)}
+          className="rounded-[48px] bg-[#0c0407] px-[22px] py-2.5 text-[13px] font-semibold text-white hover:bg-[#3a3236] disabled:opacity-60"
+        >
+          {chrome.offerYes}
+        </button>
+        <button
+          type="button"
+          disabled={actions.busy}
+          onClick={() => actions.decline(message.requestId)}
+          className="rounded-[48px] border border-[#e5e5e5] px-[22px] py-2.5 text-[13px] font-semibold text-[#666] hover:border-[#db4545] hover:text-[#db4545] disabled:opacity-60"
+        >
+          {chrome.offerKeepChatting}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+const FIELD =
+  'w-full rounded-[10px] border border-[#e5e5e5] bg-[#faf9f6] px-3 py-2 text-[13px] text-[#0c0407] outline-none placeholder:text-[#999] focus:border-[#0c0407]'
+
+/**
+ * The "Your details" card, shown when a Visitor accepts a Hand-over and the Lead has no name
+ * or work email yet — the two things a Strategist needs to come back to them. It posts to the
+ * same Lead the Assistant has been filling in through `capture_lead`, so what the Visitor
+ * types and what the Assistant learned are one person in the Console.
+ */
+function DetailsCard({
+  lead,
+  done,
+  chrome,
+  actions,
+}: {
+  lead: LeadContact
+  done: boolean
+  chrome: Chrome
+  actions: HandoverActions
+}) {
+  const [name, setName] = useState(lead.name)
+  const [email, setEmail] = useState(lead.email)
+  const [company, setCompany] = useState(lead.company)
+
+  if (done) {
+    return <div className={`${CARD} text-[13px] text-[#0a7d43]`}>{chrome.detailsDone}</div>
+  }
+  return (
+    <form
+      className={`${CARD} flex w-[88%] flex-col gap-2`}
+      onSubmit={(event) => {
+        event.preventDefault()
+        actions.shareDetails({ name: name.trim(), email: email.trim(), company: company.trim() })
+      }}
+    >
+      <div className="text-[13.5px] font-semibold text-[#0c0407]">{chrome.detailsTitle}</div>
+      <input
+        className={FIELD}
+        aria-label={chrome.detailsName}
+        placeholder={chrome.detailsName}
+        value={name}
+        onChange={(event) => setName(event.target.value)}
+      />
+      <input
+        className={FIELD}
+        type="email"
+        aria-label={chrome.detailsEmail}
+        placeholder={chrome.detailsEmail}
+        value={email}
+        onChange={(event) => setEmail(event.target.value)}
+      />
+      <input
+        className={FIELD}
+        aria-label={chrome.detailsCompany}
+        placeholder={chrome.detailsCompany}
+        value={company}
+        onChange={(event) => setCompany(event.target.value)}
+      />
+      {actions.failed ? (
+        <p role="alert" className="text-[12px] text-[#db4545]">
+          {chrome.detailsFailed}
+        </p>
+      ) : null}
+      <button
+        type="submit"
+        disabled={actions.busy || (name.trim() === '' && email.trim() === '')}
+        className="self-start rounded-[48px] bg-[#0c0407] px-[18px] py-2.5 text-[13px] font-semibold text-white hover:bg-[#3a3236] disabled:bg-[#ccc]"
+      >
+        {chrome.detailsSubmit}
+      </button>
+    </form>
+  )
+}
+
+/** The Callback confirmation, with the details a Strategist will use to reach the Visitor. */
+function CallbackCard({ lead, chrome }: { lead: LeadContact; chrome: Chrome }) {
+  const details = [lead.name, lead.company, lead.email].filter((value) => value.trim() !== '')
+  return (
+    <div className={CARD}>
+      <div className="mb-1.5 text-[13.5px] font-semibold text-[#0c0407]">
+        {chrome.callbackTitle}
+      </div>
+      <p className="mb-2.5 text-[13.5px] leading-[1.55] text-[#4c4c4c]">{chrome.callbackBody}</p>
+      {details.length > 0 ? (
+        <div className="rounded-[10px] bg-[#faf9f6] px-3 py-2.5 text-[12.5px] text-[#666]">
+          {details.join(' · ')}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
 export function MessageView({
   message,
-  typingLabel,
-  nextStepLabel,
+  chrome,
   sectionTitles,
   onNavigate,
   feedback,
+  handover,
 }: {
   message: Message
-  typingLabel: string
-  /** The Escalation card's "Next step:" label when the Escalation names no language of its
-   * own; localised with the rest of the chrome. */
-  nextStepLabel: string
+  /** The widget's chrome in the Visitor's chosen language: every label a card draws. */
+  chrome: Chrome
   sectionTitles: Record<string, string>
   /** Follow a Walkthrough Card into the app, without unmounting the panel. */
   onNavigate: (href: string) => void
   /** The thumbs for this answer, when it has a Trace to attach them to. Passed in rather than
    * built here so that one component owns which answers are rateable. */
   feedback?: ReactNode
+  handover: HandoverActions
 }) {
   const alignment = message.role === 'visitor' ? 'items-end' : 'items-start'
 
@@ -127,7 +284,7 @@ export function MessageView({
 
       {message.kind === 'typing' && (
         <div
-          aria-label={typingLabel}
+          aria-label={chrome.typing}
           className="flex gap-[5px] rounded-[16px_16px_16px_4px] border border-[#e5e5e5] bg-white px-4 py-3.5"
         >
           <span className="cadre-tdot size-1.5 rounded-full bg-[#999]" />
@@ -144,7 +301,7 @@ export function MessageView({
             {/* The copy above was looked up in the Escalation's own language, so its label
                 follows the card rather than the widget's EN/ES toggle. */}
             <b className="text-[#0c0407]">
-              {message.language ? chromeFor(message.language).nextStep : nextStepLabel}
+              {message.language ? chromeFor(message.language).nextStep : chrome.nextStep}
             </b>{' '}
             {message.nextStep}
           </div>
@@ -183,6 +340,27 @@ export function MessageView({
               <Citations ids={message.citations} titles={sectionTitles} />
             </div>
           )}
+        </div>
+      )}
+
+      {message.kind === 'offer' && (
+        <OfferCard message={message} chrome={chrome} actions={handover} />
+      )}
+
+      {message.kind === 'details' && (
+        <DetailsCard
+          lead={message.lead}
+          done={message.done}
+          chrome={chrome}
+          actions={handover}
+        />
+      )}
+
+      {message.kind === 'callback' && <CallbackCard lead={message.lead} chrome={chrome} />}
+
+      {message.kind === 'note' && (
+        <div className="max-w-[82%] rounded-[16px_16px_16px_4px] border border-[#e5e5e5] bg-white px-[15px] py-[11px] text-[14px] leading-[1.55] text-[#333]">
+          {chrome[message.note]}
         </div>
       )}
 

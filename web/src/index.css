@@ -18,3 +18,27 @@
   --radius-card: 1.875rem;
   --radius-pill: 48px;
 }
+
+/* The "live" pulse from the design artboard (docs/design/DESIGN-BRIEF.md §1): a Handover
+   Request that is waiting for a person, or a call in progress. It is in the app's theme rather
+   than beside the Console because the Console is a lazy chunk — a stylesheet imported there
+   would arrive after the first paint of the queue. */
+@keyframes cadre-livepulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+.cadre-livepulse {
+  animation: cadre-livepulse 1.5s infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cadre-livepulse {
+    animation: none;
+  }
+}

@@ -4,6 +4,7 @@ from datetime import date
 
 from core.prompt import build_system_prompt
 from core.tools.escalate import DEFINITION, ESCALATION_REASONS
+from core.tools.offer_live_handover import DEFINITION as OFFER_DEFINITION
 
 KNOWLEDGE_BLOCK = "[services#what-cadre-does] What Cadre does\nCadre AI is a consultancy."
 
@@ -72,3 +73,16 @@ def test_the_tools_block_describes_the_escalate_tool_as_it_is_actually_defined()
     assert DEFINITION.name in tools
     for argument in DEFINITION.parameters["properties"]:
         assert argument in tools, argument
+
+
+def test_the_tools_block_describes_the_offer_live_handover_tool_as_it_is_actually_defined() -> None:
+    """The Hand-over offer is the one tool the model is not always given, so the prompt has to
+    name it and its argument the same way the definition does — and the qualification block has
+    to be the place the rule about offering once lives, since the tool's absence is what
+    enforces it."""
+    tools = block("tools")
+
+    assert OFFER_DEFINITION.name in tools
+    for argument in OFFER_DEFINITION.parameters["properties"]:
+        assert argument in tools, argument
+    assert OFFER_DEFINITION.name in block("qualification")

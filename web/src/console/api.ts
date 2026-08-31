@@ -12,6 +12,50 @@ export type Lead = {
   qualified: boolean
 }
 
+/** The states a Handover Request may be in, mirroring `core/handover.py`. */
+export type HandoverState =
+  | 'offered'
+  | 'accepted_by_user'
+  | 'pending_strategist'
+  | 'strategist_joined'
+  | 'in_call'
+  | 'ended'
+  | 'declined'
+  | 'no_strategist_available'
+
+export type HandoverMode = 'video' | 'callback'
+
+/**
+ * One Handover Request as the queue card and the Callbacks row need it.
+ *
+ * The Lead travels as the snapshot taken when the Hand-over was offered, in the same shape as
+ * a Lead from `/api/console/leads` — so the Console has one Lead type and the queue is one
+ * read per screen rather than a join across two collections for every row.
+ */
+export type Handover = {
+  request_id: string
+  session_id: string
+  state: HandoverState
+  mode: HandoverMode | null
+  prompt: string
+  created_at: string | null
+  trace_id: string | null
+  lead: Lead
+}
+
+/** One line of "Conversation so far" in the request detail. */
+export type ConversationLine = {
+  role: string
+  text: string
+}
+
+export type HandoverDetail = {
+  handover: Handover
+  /** The Lead as it stands now — Contact Details keep arriving after the offer. */
+  lead: Lead
+  conversation: ConversationLine[]
+}
+
 export type Availability = {
   online: boolean
   any_online: boolean
@@ -45,6 +89,18 @@ async function consoleFetch<T>(path: string, authorize: Authorize, init?: Reques
 
 export function fetchLeads(authorize: Authorize): Promise<{ leads: Lead[] }> {
   return consoleFetch('/api/console/leads', authorize)
+}
+
+export function fetchHandovers(
+  authorize: Authorize,
+  mode?: HandoverMode,
+): Promise<{ handovers: Handover[] }> {
+  const query = mode ? `?mode=${mode}` : ''
+  return consoleFetch(`/api/console/handovers${query}`, authorize)
+}
+
+export function fetchHandover(authorize: Authorize, requestId: string): Promise<HandoverDetail> {
+  return consoleFetch(`/api/console/handovers/${encodeURIComponent(requestId)}`, authorize)
 }
 
 export function fetchAvailability(authorize: Authorize): Promise<Availability> {

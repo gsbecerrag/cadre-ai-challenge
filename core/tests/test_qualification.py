@@ -161,4 +161,33 @@ def test_a_later_call_that_learns_something_better_overrides_what_the_lead_held(
     assert updated.role == "VP of Operations"
     assert updated.email == "jane@example.com"
     assert updated.signals["initiative_or_pain"] == "supplier paperwork eats three days a week"
-    assert updated.score == 1
+    # Two: the initiative, and the role that came with the Contact Details (see below).
+    assert updated.signals["company_size_or_role"] == "VP of Operations"
+    assert updated.score == 2
+
+
+def test_the_visitors_job_title_is_the_company_size_or_role_signal() -> None:
+    """Carried from the evaluation suite (ticket 13): the Assistant reliably files a title in
+    the `role` Contact Detail and then never repeats it as `company_size_or_role`, so a Visitor
+    who says "I'm the COO" scored zero for a signal they had plainly given.
+
+    The signal is "company size *or role*", and the role is right there on the Lead — so it is
+    counted from the Contact Detail rather than waiting for the model to say it twice.
+    """
+    lead = merged_lead(None, "session-0902", {"role": "COO", "industry_fit": "Construction"})
+
+    assert lead.signals["company_size_or_role"] == "COO"
+    assert lead.score == 2
+
+
+def test_a_size_the_assistant_learned_is_not_overwritten_by_the_job_title() -> None:
+    """What the Assistant actually learned wins: "roughly 300 people, VP of Operations" is a
+    better answer to the signal than the title on its own."""
+    lead = merged_lead(
+        None,
+        "session-0903",
+        {"role": "COO", "company_size_or_role": "roughly 300 people, reports to the CEO"},
+    )
+
+    assert lead.signals["company_size_or_role"] == "roughly 300 people, reports to the CEO"
+    assert lead.score == 1

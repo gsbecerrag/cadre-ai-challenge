@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { chatReducer, initialChatState } from './reducer'
-import type { ChatAction, ChatEvent, ChatState } from './types'
+import type { ChatAction, ChatEvent, ChatState, LeadContact } from './types'
 
 const GREETING = "Hi there — I'm Cadre's AI assistant."
 
@@ -97,6 +97,40 @@ function traced(events: ChatEvent[], traceId: string): ChatEvent[] {
   return events.map((event) =>
     event.event === 'done' ? { ...event, data: { ...event.data, trace_id: traceId } } : event,
   )
+}
+
+/** Recorded from `POST /api/chat` with the stub provider (api/tests/test_handover.py). */
+const HANDOVER_OFFER: ChatEvent[] = [
+  { event: 'tool', data: { name: 'offer_live_handover', status: 'started' } },
+  {
+    event: 'offer',
+    data: {
+      request_id: 'hr-0001',
+      prompt: 'Do you want to jump into a call with our experts?',
+    },
+  },
+  { event: 'tool', data: { name: 'offer_live_handover', status: 'finished' } },
+  { event: 'text', data: { delta: 'Whenever you are ready.' } },
+  {
+    event: 'done',
+    data: {
+      trace_id: null,
+      usage: { input_tokens: 900, output_tokens: 24, cached_tokens: 800, cost_usd: 0.0004 },
+    },
+  },
+]
+
+/** Obviously fake, as the Contact Details of a Lead always are in a test. */
+const JANE: LeadContact = {
+  name: 'Jane Doe',
+  email: 'jane@example.com',
+  company: 'Acme Manufacturing',
+}
+
+const NOBODY_YET: LeadContact = { name: '', email: '', company: '' }
+
+function offered(): ChatState {
+  return replay('Can I talk to someone?', HANDOVER_OFFER)
 }
 
 function replay(question: string, events: ChatEvent[]): ChatState {
@@ -413,5 +447,150 @@ describe('the chat reducer', () => {
 
     expect(state.messages[2]).toMatchObject({ kind: 'error', text: 'I lost the connection.' })
     expect(state.pending).toBe(false)
+  })
+
+  // --- the Callback Hand-over (ticket 11) ---------------------------------------------------
+
+  it('shows the Hand-over offer as a card the Visitor answers with a button', () => {
+    const state = offered()
+
+    expect(state.messages.map((message) => message.kind)).toEqual([
+      'text',
+      'text',
+      'offer',
+      'text',
+    ])
+    expect(state.messages[2]).toMatchObject({
+      kind: 'offer',
+      requestId: 'hr-0001',
+      prompt: 'Do you want to jump into a call with our experts?',
+      status: 'open',
+    })
+    // The card closes the bubble that was streaming, so the sentence after it is its own.
+    expect(state.messages[3]).toMatchObject({ kind: 'text', text: 'Whenever you are ready.' })
+  })
+
+  it('asks for the details a Callback needs when the Lead has no name or email yet', () => {
+    const accepted = chatReducer(offered(), {
+      type: 'handover',
+      state: 'pending_strategist',
+      mode: 'callback',
+      lead: NOBODY_YET,
+    })
+
+    expect(accepted.messages[2]).toMatchObject({ kind: 'offer', status: 'accepted' })
+    expect(accepted.messages.at(-1)).toMatchObject({ kind: 'details', done: false })
+  })
+
+  it('confirms the Callback with the details the Visitor typed into the card', () => {
+    const asked = chatReducer(offered(), {
+      type: 'handover',
+      state: 'pending_strategist',
+      mode: 'callback',
+      lead: NOBODY_YET,
+    })
+
+    const shared = chatReducer(asked, { type: 'details_shared', lead: JANE })
+
+    expect(shared.messages.map((message) => message.kind)).toEqual([
+      'text',
+      'text',
+      'offer',
+      'text',
+      'details',
+      'callback',
+    ])
+    expect(shared.messages[4]).toMatchObject({ kind: 'details', done: true })
+    expect(shared.messages[5]).toMatchObject({ kind: 'callback', lead: JANE })
+  })
+
+  it('confirms the Callback once, however many times the details card is submitted', () => {
+    // A double-pressed "Share details", or a retried request, must not leave the Visitor
+    // looking at two Callback confirmations for one Callback.
+    const asked = chatReducer(offered(), {
+      type: 'handover',
+      state: 'pending_strategist',
+      mode: 'callback',
+      lead: NOBODY_YET,
+    })
+    const shared = chatReducer(asked, { type: 'details_shared', lead: JANE })
+
+    const again = chatReducer(shared, { type: 'details_shared', lead: JANE })
+
+    expect(again).toBe(shared)
+    expect(again.messages.filter((message) => message.kind === 'callback')).toHaveLength(1)
+  })
+
+  it('confirms the Callback straight away when the Lead is already reachable', () => {
+    const accepted = chatReducer(offered(), {
+      type: 'handover',
+      state: 'pending_strategist',
+      mode: 'callback',
+      lead: JANE,
+    })
+
+    expect(accepted.messages.at(-1)).toMatchObject({ kind: 'callback', lead: JANE })
+    expect(accepted.messages.some((message) => message.kind === 'details')).toBe(false)
+  })
+
+  it('says a Strategist is being connected when the Hand-over is a video call', () => {
+    const accepted = chatReducer(offered(), {
+      type: 'handover',
+      state: 'pending_strategist',
+      mode: 'video',
+      lead: JANE,
+    })
+
+    expect(accepted.messages.at(-1)).toMatchObject({ kind: 'note', note: 'handoverConnecting' })
+  })
+
+  it('takes a decline gracefully and leaves the conversation open', () => {
+    const declined = chatReducer(offered(), {
+      type: 'handover',
+      state: 'declined',
+      mode: null,
+      lead: NOBODY_YET,
+    })
+
+    expect(declined.messages[2]).toMatchObject({ kind: 'offer', status: 'declined' })
+    expect(declined.messages.at(-1)).toMatchObject({ kind: 'note', note: 'handoverDeclined' })
+    expect(declined.pending).toBe(false)
+  })
+
+  it('answers the offer only once, however many times the button is pressed', () => {
+    const accepted = chatReducer(offered(), {
+      type: 'handover',
+      state: 'pending_strategist',
+      mode: 'callback',
+      lead: JANE,
+    })
+
+    const again = chatReducer(accepted, {
+      type: 'handover',
+      state: 'pending_strategist',
+      mode: 'callback',
+      lead: JANE,
+    })
+
+    expect(again).toBe(accepted)
+  })
+
+  it('reduces a Hand-over that arrives on the wire the same way as one the browser asked for', () => {
+    const state = [
+      ...HANDOVER_OFFER.map((event): ChatAction => ({ type: 'event', event })),
+      {
+        type: 'event',
+        event: {
+          event: 'handover',
+          data: { request_id: 'hr-0001', state: 'declined', mode: null },
+        },
+      } as ChatAction,
+    ].reduce(chatReducer, chatReducer(initialChatState(GREETING), {
+      type: 'visitor_message',
+      text: 'Can I talk to someone?',
+    }))
+
+    expect(state.messages[2]).toMatchObject({ kind: 'offer', status: 'declined' })
+    expect(state.messages.at(-1)).toMatchObject({ kind: 'note', note: 'handoverDeclined' })
   })
 })

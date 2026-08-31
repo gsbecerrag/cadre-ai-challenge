@@ -131,6 +131,8 @@ def test_the_refusal_tests_cover_every_console_endpoint() -> None:
         ("GET", "/api/console/availability"),
         ("PUT", "/api/console/availability"),
         ("GET", "/api/console/leads"),
+        ("GET", "/api/console/handovers"),
+        ("GET", "/api/console/handovers/{request_id}"),
     }
 
 

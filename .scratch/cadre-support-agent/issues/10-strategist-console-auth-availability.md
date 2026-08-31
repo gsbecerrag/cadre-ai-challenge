@@ -23,3 +23,4 @@
 - Ruling: Firestore rules mirror the allowlist (rendered by `scripts/render-firestore-rules.py`), deny Sessions and messages by default, and allow a Strategist to write only their own presence document with a fixed field set; `make deploy-rules` is run by the controller after the merge; the deploy target sets `ADMIN_ALLOWED_EMAILS`.
 - Parked: the store's `StrategistIdentity` parameter couples the store seam to the auth type; cross-surface links are full page loads; no `CONSOLE_TOKEN` fallback (ADR-0010) built.
 - Deployed checks: the controller records the API 401/403 and the rules denial check after the deploy; the signed-in walkthrough (sign in with the allowlisted account, toggle Availability, watch a Lead arrive) needs Galo's Google session — recorded here when done.
+- Deployed-app check recorded: [docs/transcripts/2026-08-31-deployed-checks-06-10.md](../../../docs/transcripts/2026-08-31-deployed-checks-06-10.md) — revision `56aa909` on the public URL.

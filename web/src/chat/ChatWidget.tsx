@@ -6,14 +6,17 @@
  * radius 24px, the header gradient with the "C" avatar, the presence line, the EN/ES chrome
  * toggle, and the composer with the `↑` send button.
  *
- * The presence line shows the offline copy until ticket 11 wires Availability.
+ * The presence line follows Availability: `GET /api/availability` while the panel is open
+ * (ticket 11). It is a line about the team, not a promise — the offer of a Hand-over is gated
+ * on the server at the moment the Visitor accepts.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import './chat.css'
 import { FeedbackControl } from './FeedbackControl'
-import { MessageView } from './MessageView'
+import { type HandoverActions, MessageView } from './MessageView'
+import { useAvailability } from './presence'
 import { chromeFor, type Language } from './strings'
 import type { Message } from './types'
 import { useChat } from './useChat'
@@ -47,10 +50,18 @@ export function ChatWidget() {
   const [usedQuickReplies, setUsedQuickReplies] = useState<string[]>([])
 
   const chrome = chromeFor(language)
-  const { state, send, loadSections, sendFeedback } = useChat(
-    chromeFor('en').greeting,
-    chrome.connectionError,
-  )
+  const {
+    state,
+    send,
+    loadSections,
+    sendFeedback,
+    acceptHandover,
+    declineHandover,
+    shareDetails,
+    handoverBusy,
+    handoverFailed,
+  } = useChat(chromeFor('en').greeting, chrome.connectionError)
+  const strategistOnline = useAvailability(open)
 
   const transcript = useRef<HTMLDivElement>(null)
   const composer = useRef<HTMLInputElement>(null)
@@ -137,6 +148,14 @@ export function ChatWidget() {
     )
   }
 
+  const handover: HandoverActions = {
+    accept: (requestId) => void acceptHandover(requestId),
+    decline: (requestId) => void declineHandover(requestId),
+    shareDetails: (details) => void shareDetails(details),
+    busy: handoverBusy,
+    failed: handoverFailed,
+  }
+
   function submitQuickReply(id: string, label: string) {
     setUsedQuickReplies([...usedQuickReplies, id])
     submit(label)
@@ -170,8 +189,11 @@ export function ChatWidget() {
             {chrome.headerTitle}
           </div>
           <div className="flex items-center gap-1.5 text-[11px] text-[#b3b3b3]">
-            <span className="inline-block size-[7px] rounded-full bg-[#999]" />
-            {chrome.presenceOffline}
+            <span
+              className="inline-block size-[7px] rounded-full"
+              style={{ background: strategistOnline ? '#3ddc84' : '#999999' }}
+            />
+            {strategistOnline ? chrome.presenceOnline : chrome.presenceOffline}
           </div>
         </div>
         <div className="flex items-center gap-1.5">
@@ -225,11 +247,11 @@ export function ChatWidget() {
           <MessageView
             key={message.id}
             message={message}
-            typingLabel={chrome.typing}
-            nextStepLabel={chrome.nextStep}
+            chrome={chrome}
             sectionTitles={state.sections}
             onNavigate={followCard}
             feedback={feedbackFor(message)}
+            handover={handover}
           />
         ))}
       </div>

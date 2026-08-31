@@ -36,6 +36,30 @@ export interface CardDestination {
   external: boolean
 }
 
+/**
+ * The states a Handover Request may be in, mirroring `core/handover.py`. The Console derives
+ * the labels a Strategist reads (Pending, In call, Ended, Declined, Callback) from these and
+ * the mode; the chat only needs to know whether the Hand-over is a Callback, a call, or a no.
+ */
+export type HandoverState =
+  | 'offered'
+  | 'accepted_by_user'
+  | 'pending_strategist'
+  | 'strategist_joined'
+  | 'in_call'
+  | 'ended'
+  | 'declined'
+  | 'no_strategist_available'
+
+export type HandoverMode = 'video' | 'callback'
+
+/** The Contact Details the Callback confirmation reads back — the Visitor's own. */
+export interface LeadContact {
+  name: string
+  email: string
+  company: string
+}
+
 export interface WalkthroughCard {
   title: string
   steps: string[]
@@ -60,7 +84,10 @@ export type ChatEvent =
       }
     }
   | { event: 'offer'; data: { request_id: string; prompt: string } }
-  | { event: 'handover'; data: { request_id: string; state: string; mode: 'video' | 'callback' } }
+  | {
+      event: 'handover'
+      data: { request_id: string; state: HandoverState; mode: HandoverMode | null }
+    }
   | { event: 'done'; data: { trace_id: string | null; usage: Usage } }
   | { event: 'error'; data: { message: string } }
 
@@ -137,6 +164,56 @@ export interface WalkthroughMessage extends Rateable {
   citations: string[]
 }
 
+/**
+ * The Hand-over offer card: the Assistant's question and two buttons.
+ *
+ * `status` is what the card does after the Visitor answers, and it is a status rather than the
+ * done-text the design draws because the reducer holds no copy: the widget renders the line
+ * for the status in the Visitor's chrome language, so a card answered in Spanish does not
+ * close in English.
+ */
+export interface OfferMessage {
+  id: string
+  kind: 'offer'
+  role: 'assistant'
+  requestId: string
+  /** What the Assistant phrased the offer with, or empty for Cadre's own wording. */
+  prompt: string
+  status: 'open' | 'accepted' | 'declined'
+}
+
+/** The "Your details" card: shown when a Visitor accepts and the Lead is not reachable yet. */
+export interface DetailsMessage {
+  id: string
+  kind: 'details'
+  role: 'assistant'
+  done: boolean
+  lead: LeadContact
+}
+
+/** The Callback confirmation: a Strategist will reach out, and here is what they will use. */
+export interface CallbackMessage {
+  id: string
+  kind: 'callback'
+  role: 'assistant'
+  lead: LeadContact
+}
+
+/**
+ * A line of the Assistant's own chrome — the decline reply, the "connecting you" placeholder.
+ *
+ * A key rather than a string, for the same reason as `OfferMessage.status`: the reducer is
+ * pure and language-agnostic, and the copy lives in `strings.ts` with the rest of the chrome.
+ */
+export type NoteKey = 'handoverDeclined' | 'handoverConnecting'
+
+export interface NoteMessage {
+  id: string
+  kind: 'note'
+  role: 'assistant'
+  note: NoteKey
+}
+
 export interface ErrorMessage {
   id: string
   kind: 'error'
@@ -149,6 +226,10 @@ export type Message =
   | TypingMessage
   | EscalationMessage
   | WalkthroughMessage
+  | OfferMessage
+  | DetailsMessage
+  | CallbackMessage
+  | NoteMessage
   | ErrorMessage
 
 export interface ChatState {
@@ -179,6 +260,14 @@ export interface ChatState {
 export type ChatAction =
   | { type: 'visitor_message'; text: string }
   | { type: 'event'; event: ChatEvent }
+  /**
+   * A Handover Request changed state. It arrives from the accept and decline endpoints rather
+   * than over the stream — the Visitor pressed a button, so the answer is an HTTP response —
+   * and carries the Visitor's own Contact Details, which is what tells the widget whether to
+   * ask for them before confirming the Callback.
+   */
+  | { type: 'handover'; state: HandoverState; mode: HandoverMode | null; lead: LeadContact }
+  | { type: 'details_shared'; lead: LeadContact }
   | { type: 'stream_failed'; message: string }
   | { type: 'sections_loaded'; sections: KBSectionTitle[] }
   /**

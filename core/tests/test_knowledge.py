@@ -222,3 +222,29 @@ def test_every_id_the_escalation_copy_cites_resolves_to_a_kb_section() -> None:
 
     assert cited, "the Escalation copy cites nothing, so this guard proves nothing"
     assert cited <= ids
+
+
+# The qualifier `not-published#pricing` attaches to the one figure Cadre publishes, in the two
+# languages the Assistant answers in.
+PRICE_QUALIFIER = {
+    "en": "an event ticket, not an engagement price",
+    "es": "una entrada a un evento, no el precio de un proyecto",
+}
+
+
+def test_the_one_published_price_is_never_quoted_without_the_qualifier_the_kb_attaches() -> None:
+    """The Knowledge Base records the $5,000 PE AI Value Creation Playbook and says in the same
+    breath that it is an event ticket, not the price of an engagement, and must never be quoted
+    as one. The pricing Escalation quotes the figure, so it carries the qualifier as well —
+    otherwise the one refusal a prospect reads about money leaves them with a number that reads
+    like a starting price."""
+    quoting = [
+        (language, copy)
+        for languages in ESCALATION_COPY.values()
+        for language, copy in languages.items()
+        if "$5,000" in copy.body
+    ]
+
+    assert quoting, "no Escalation quotes the published price, so this guard proves nothing"
+    for language, copy in quoting:
+        assert PRICE_QUALIFIER[language] in copy.body, language
