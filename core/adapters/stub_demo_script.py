@@ -226,6 +226,34 @@ UNKNOWN_ESCALATION = _escalation(
 )
 
 
+# Lead capture, so the demo shows the fourth user story and not only the Q&A ones: the
+# Visitor volunteers a Contact Detail and an initiative, the Assistant records it, and the
+# reply acknowledges it in a clause instead of reciting it back. Obviously fake details.
+LEAD_CAPTURE = ToolCall(
+    id="demo-capture-lead",
+    name="capture_lead",
+    arguments={
+        "name": "Jane Doe",
+        "email": "jane@example.com",
+        "company": "Acme Manufacturing",
+        "role": "VP of Operations",
+        "industry_fit": "Manufacturing & Logistics",
+        "company_size_or_role": "VP of Operations at roughly 300 people",
+        "initiative_or_pain": "supplier paperwork eats three days a week",
+    },
+)
+
+LEAD_ACKNOWLEDGEMENT = (
+    "Thanks, Jane — noted. Supplier paperwork that gets slower as the company grows is exactly "
+    "the best-fit case Cadre describes [industries#best-fit-companies], and Manufacturing & "
+    "Logistics is one of the nine industries it publishes "
+    "[industries#industries-cadre-serves]. There is no booking calendar on cadreai.com — every "
+    "\u201ctalk to an AI strategist\u201d call to action goes to the contact form "
+    "[contact#booking-a-call-with-an-ai-strategist] — so the quickest next step is that form, "
+    "hello@gocadre.ai, or (619) 324-3223 [contact#how-to-reach-cadre]."
+)
+
+
 def _deltas(answer: str) -> list[StubEvent]:
     """Chunk an answer the way a model streams one, so the demo shows text arriving."""
     words = answer.split(" ")
@@ -235,20 +263,20 @@ def _deltas(answer: str) -> list[StubEvent]:
     ]
 
 
-def _streamed(answer: str) -> list[StubEvent]:
+def _deltas(answer: str) -> list[StubEvent]:
     return [*_deltas(answer), DEMO_USAGE]
 
 
 def _after(escalation: ToolCall, closing: str) -> list[StubResponse]:
     """A Turn that escalates and then carries on talking, which is what the prompt asks for:
     an Escalation is not the end of the conversation."""
-    return [[escalation], _streamed(closing)]
+    return [[escalation], _deltas(closing)]
 
 
 def _walkthrough(intro: str, card: ToolCall, closing: str) -> list[StubResponse]:
     """The reference flow from the design artboard: a short cited sentence, then the card.
     Nothing repeats the steps afterwards — once the card is shown, they have been said."""
-    return [[*_deltas(intro), card], _streamed(closing)]
+    return [[*_deltas(intro), card], _deltas(closing)]
 
 
 def demo_scripts() -> dict[str, Sequence[StubResponse]]:
@@ -260,19 +288,21 @@ def demo_scripts() -> dict[str, Sequence[StubResponse]]:
     anything_else = "Anything else I can look up for you?"
     return {
         # Grounded answers.
-        "cadre ai do": [_streamed(SERVICES_ANSWER)],
-        "services": [_streamed(SERVICES_ANSWER)],
-        "industries": [_streamed(INDUSTRIES_ANSWER)],
-        "strategist": [_streamed(CONTACT_ANSWER)],
-        "contact": [_streamed(CONTACT_ANSWER)],
-        "maturity": [_streamed(MATURITY_ANSWER)],
-        "security": [_streamed(SECURITY_ANSWER)],
-        "results": [_streamed(PORTAL_ANSWER)],
+        "cadre ai do": [_deltas(SERVICES_ANSWER)],
+        "services": [_deltas(SERVICES_ANSWER)],
+        "industries": [_deltas(INDUSTRIES_ANSWER)],
+        "strategist": [_deltas(CONTACT_ANSWER)],
+        "contact": [_deltas(CONTACT_ANSWER)],
+        "maturity": [_deltas(MATURITY_ANSWER)],
+        "security": [_deltas(SECURITY_ANSWER)],
+        "results": [_deltas(PORTAL_ANSWER)],
         # Walkthrough Cards. Both triggers are narrower than the grounded answers above, and
         # the stub matches the longest one, so "what is the Maturity Index" still reads as
         # prose while "how do I get scored" gets the card.
         "my agents": _walkthrough(PORTAL_WALKTHROUGH_INTRO, PORTAL_WALKTHROUGH, anything_else),
         "get scored": _walkthrough(MATURITY_WALKTHROUGH_INTRO, MATURITY_WALKTHROUGH, anything_else),
+        # Lead capture: a Contact Detail and an initiative in one message.
+        "email is": [[LEAD_CAPTURE], _deltas(LEAD_ACKNOWLEDGEMENT)],
         # Trap Questions.
         "cost": _after(PRICING_ESCALATION, anything_else),
         "price": _after(PRICING_ESCALATION, anything_else),
