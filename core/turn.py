@@ -150,7 +150,10 @@ class TurnRunner:
                     tool_calls: list[ToolCall] = []
                     call_usage = Usage()
                     request = ProviderRequest(
-                        prompt, tuple(history), await self.tools.definitions_for(session_id), session_id
+                        prompt,
+                        tuple(history),
+                        await self.tools.definitions_for(session_id),
+                        session_id,
                     )
 
                     with trace.provider_span(model=self.model, iteration=iteration) as span:
