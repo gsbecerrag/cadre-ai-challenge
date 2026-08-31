@@ -1,14 +1,23 @@
-"""Find the `[topic#heading]` markers the Assistant writes into its answers.
+"""Read the `[topic#heading]` markers the Assistant writes into its answers.
 
 The marker is the contract between the system prompt's grounding rule and the chat widget's
-citation chips; the server needs the same reading of it to attach citations to an Escalation.
+citation chips. A marker that has become a chip must not also be left sitting in the prose, so
+lifting it out and cleaning up after it are one operation.
 """
 
 import re
 
 CITATION_PATTERN = re.compile(r"\[([a-z0-9][a-z0-9-]*#[a-z0-9][a-z0-9-]*)\]")
+_REPEATED_SPACES = re.compile(r"[ \t]{2,}")
+_SPACE_BEFORE_PUNCTUATION = re.compile(r" +([.,;:!?)])")
 
 
-def find_citations(text: str) -> tuple[str, ...]:
-    """The KB Section ids cited in the text, first mention first, each one once."""
-    return tuple(dict.fromkeys(CITATION_PATTERN.findall(text)))
+def split_citations(text: str) -> tuple[str, tuple[str, ...]]:
+    """The text without its markers, and the KB Section ids they named — first mention first,
+    each one once."""
+    citations = tuple(dict.fromkeys(CITATION_PATTERN.findall(text)))
+    without_markers = CITATION_PATTERN.sub("", text)
+    tidied = _SPACE_BEFORE_PUNCTUATION.sub(
+        r"\1", _REPEATED_SPACES.sub(" ", without_markers)
+    ).strip()
+    return tidied, citations

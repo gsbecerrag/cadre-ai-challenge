@@ -61,7 +61,8 @@ def test_a_tool_call_is_marked_in_the_stream_before_the_answer_that_follows_it(
     assert events[0] == ("tool", {"name": "escalate", "status": "started"})
     assert events[2] == ("tool", {"name": "escalate", "status": "finished"})
     assert events[1][1]["body"] == ESCALATE.arguments["reason"]
-    assert events[1][1]["next_step"] == ESCALATE.arguments["next_step"]
+    # The marker becomes a chip, so it must not also be left sitting in the prose.
+    assert events[1][1]["next_step"] == "Write hello@gocadre.ai or call (619) 324-3223."
     assert events[1][1]["citations"] == ["contact#how-to-reach-cadre"]
 
 

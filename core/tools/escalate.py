@@ -7,7 +7,7 @@ the prompt rules and the Trap Question list that decide *when*; this is the mech
 from collections.abc import Mapping
 from typing import Any
 
-from core.citations import find_citations
+from core.citations import split_citations
 from core.events import escalation_event
 from core.provider import ToolDefinition
 from core.tools.registry import Tool, ToolOutcome
@@ -42,8 +42,8 @@ DEFINITION = ToolDefinition(
 
 
 def run_escalate(arguments: Mapping[str, Any]) -> ToolOutcome:
-    reason = str(arguments["reason"]).strip()
-    next_step = str(arguments["next_step"]).strip()
+    reason, reason_citations = split_citations(str(arguments["reason"]))
+    next_step, next_step_citations = split_citations(str(arguments["next_step"]))
     if not reason or not next_step:
         raise ValueError("an Escalation needs both a reason and a next step")
     return ToolOutcome(
@@ -53,7 +53,7 @@ def run_escalate(arguments: Mapping[str, Any]) -> ToolOutcome:
                 title=ESCALATION_TITLE,
                 body=reason,
                 next_step=next_step,
-                citations=find_citations(f"{reason} {next_step}"),
+                citations=tuple(dict.fromkeys(reason_citations + next_step_citations)),
             ),
         ),
     )
