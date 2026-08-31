@@ -15,7 +15,7 @@ VERSION := $(shell git rev-parse --short HEAD 2>/dev/null || echo dev)
 # exists in CI or in the container, so tests and Cloud Run cannot pick up a stray .env.
 ENV_FILE := $(if $(wildcard .env),--env-file .env,)
 
-.PHONY: help install dev check test build-web deploy deploy-secrets
+.PHONY: help install dev check test build-web deploy deploy-secrets rules deploy-rules
 
 help:
 	@echo "install    install Python (uv) and web (pnpm) dependencies"
@@ -24,6 +24,8 @@ help:
 	@echo "test       unit tests only (pytest + vitest)"
 	@echo "build-web  build the SPA into web/dist so the API can serve it"
 	@echo "deploy     build the container and deploy it to Cloud Run"
+	@echo "rules      render ADMIN_ALLOWED_EMAILS into firestore.rules"
+	@echo "deploy-rules  deploy firestore.rules and the indexes to Firebase"
 
 install:
 	uv sync
@@ -89,3 +91,15 @@ deploy: deploy-secrets
 	    --format='value(status.url)'); \
 	  echo "Service URL: $$url"; \
 	  curl -sS "$$url/api/healthz"; echo
+
+# The Console enforces the Strategist allowlist twice — in the API and in Firestore's rules,
+# because the browser reads Leads live and a realtime listener never passes through the API
+# (ADR-0010). This renders the second one from the same ADMIN_ALLOWED_EMAILS the first reads,
+# so the committed rules always say what the deployment says. Commit the result.
+rules:
+	uv run $(ENV_FILE) scripts/render-firestore-rules.py
+
+# Rules and indexes are deployed separately from the container: they belong to the Firebase
+# project, not to the Cloud Run revision. Run `make rules` first if the allowlist changed.
+deploy-rules:
+	firebase deploy --only firestore:rules,firestore:indexes --project $(PROJECT)
