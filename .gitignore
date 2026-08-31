@@ -21,3 +21,6 @@ build/
 __pycache__/
 .venv/
 *.log
+
+# Source artifacts kept locally (unpacked into .claude/skills/ when adopted)
+external_assets/
