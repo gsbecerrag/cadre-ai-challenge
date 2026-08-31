@@ -125,6 +125,14 @@ class OpenRouterModelProvider:
             # Every call in the tool loop carries the definitions; OpenRouter validates the
             # schema per request, not per conversation.
             payload["tools"] = [_wire_tool(tool) for tool in request.tools]
+        if request.response_format:
+            payload["response_format"] = dict(request.response_format)
+            # Not every endpoint behind a model id supports strict JSON schemas — Sonnet 5's
+            # `google-vertex/*` endpoints list `response_format` but not `structured_outputs`
+            # (docs/research/openrouter-facts.md) — and one that silently ignores the schema
+            # answers with prose the Triage Agent then has to salvage. This asks OpenRouter to
+            # route only to endpoints that honour the parameters in the request.
+            payload["provider"] = {"require_parameters": True}
         if request.session_id:
             # Sticky routing: the next Turn of this Session reaches the upstream that holds
             # its cached prefix (ADR-0002).

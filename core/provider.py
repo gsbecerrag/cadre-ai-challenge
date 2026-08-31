@@ -98,6 +98,11 @@ class ProviderRequest:
     # routing, so consecutive Turns reach the upstream that already holds the cached prefix
     # (ADR-0002). It is an opaque id, never anything about the Visitor.
     session_id: str = ""
+    # A JSON schema the answer must satisfy, in the provider's `response_format` shape, or
+    # `None` for the ordinary case of prose. The Assistant never asks for one — a Visitor
+    # reads sentences — but the Triage Agent does (ADR-0005), and enforcing the shape at the
+    # provider beats parsing it back out of prose the model was only asked nicely for.
+    response_format: Mapping[str, Any] | None = None
 
 
 class ModelProvider(Protocol):

@@ -44,9 +44,13 @@ from core.store import (
     CONTACT_DETAIL_NAMES,
     DEFAULT_HANDOVER_PAGE,
     DEFAULT_LEAD_PAGE,
+    DEFAULT_TRIAGE_PAGE,
+    TRIAGE_CATEGORIES,
+    TRIAGE_SEVERITIES,
     Feedback,
     Lead,
     Rating,
+    TriageReport,
 )
 
 SESSIONS = "sessions"
@@ -59,6 +63,10 @@ LEADS = "leads"
 # Session because a Firestore trigger is a collection path, and `sessions/{id}/feedback/{id}`
 # would fire the Triage Agent on a wildcard nobody else in this schema needs.
 FEEDBACK = "feedback"
+# The Triage Agent's output, keyed by the Feedback id it analysed (ADR-0005). Top-level and
+# read straight from the browser by the Console's Triage tab, which is why `firestore.rules`
+# names it: an allowlisted Strategist may read it and nobody may write it from a client.
+TRIAGE_REPORTS = "triage_reports"
 # Handover Requests, keyed by the request id. A top-level collection because it is the
 # Console's work list: a Strategist opens one screen and reads every waiting request, and the
 # realtime listener that raises their notification is a listener on this one collection.
@@ -186,6 +194,61 @@ class FirestoreConversationStore:
             extra={"rating": feedback.rating, "changed": feedback.changed},
         )
         return feedback
+
+    async def save_triage_report(self, report: TriageReport) -> TriageReport:
+        """Write the one Triage Report for this Feedback.
+
+        The document id is the Feedback id, so an at-least-once trigger delivered twice
+        overwrites rather than duplicates — that is the whole of the handler's idempotency
+        (ADR-0005). `created_at` is written on the first delivery only, so a redelivery an
+        hour later does not move the report to the top of the Console's list.
+        """
+        reference = self._connect().collection(TRIAGE_REPORTS).document(report.id)
+        document: dict[str, Any] = {
+            "session_id": report.session_id,
+            "trace_id": report.trace_id,
+            "category": report.category,
+            "summary": report.summary,
+            "evidence": list(report.evidence),
+            "suggested_kb_addition": report.suggested_kb_addition,
+            "suggested_eval_case": report.suggested_eval_case,
+            "severity": report.severity,
+            "model": report.model,
+            "updated_at": firestore.SERVER_TIMESTAMP,
+        }
+        snapshot = await reference.get()
+        if not snapshot.exists:
+            document["created_at"] = firestore.SERVER_TIMESTAMP
+        await reference.set(document, merge=True)
+        # The category and the severity, never the evidence: a report quotes a conversation.
+        logger.info(
+            "Triage Report written",
+            extra={"triage_category": report.category, "triage_severity": report.severity},
+        )
+        stored = await reference.get()
+        return _triage_report(report.id, stored.to_dict() or {})
+
+    async def list_triage_reports(
+        self, limit: int = DEFAULT_TRIAGE_PAGE
+    ) -> tuple[TriageReport, ...]:
+        """The Triage tab's page, newest first.
+
+        Ordered on `created_at` — when the Visitor pressed the thumb — rather than
+        `updated_at`, so a redelivered event re-writing an old report leaves it where a
+        Strategist last saw it. One field, so no composite index.
+        """
+        query = (
+            self._connect()
+            .collection(TRIAGE_REPORTS)
+            .order_by("created_at", direction=firestore.Query.DESCENDING)
+            .limit(limit)
+        )
+        return tuple(
+            [
+                _triage_report(document.id, document.to_dict() or {})
+                async for document in query.stream()
+            ]
+        )
 
     async def get_lead(self, session_id: str) -> Lead | None:
         document = (
@@ -472,6 +535,28 @@ def _feedback(document: Mapping[str, Any], trace_id: str) -> Feedback:
         rating=rating,
         comment=str(document.get("comment") or ""),
         changes=int(document.get("changes", 0)),
+    )
+
+
+def _triage_report(report_id: str, document: Mapping[str, Any]) -> TriageReport:
+    """One Triage Report as stored. The category and the severity are read back defensively:
+    a document written by an older build of the Triage Agent is still a report worth showing,
+    and a value this build has no chip for reads as `other`."""
+    category = str(document.get("category") or "")
+    severity = str(document.get("severity") or "")
+    evidence = document.get("evidence") or []
+    return TriageReport(
+        id=report_id,
+        session_id=str(document.get("session_id") or ""),
+        trace_id=str(document.get("trace_id") or report_id),
+        category=category if category in TRIAGE_CATEGORIES else "other",
+        summary=str(document.get("summary") or ""),
+        evidence=tuple(str(quote) for quote in evidence),
+        suggested_kb_addition=str(document.get("suggested_kb_addition") or ""),
+        suggested_eval_case=str(document.get("suggested_eval_case") or ""),
+        severity=severity if severity in TRIAGE_SEVERITIES else "medium",
+        model=str(document.get("model") or ""),
+        created_at=document.get("created_at"),
     )
 
 
