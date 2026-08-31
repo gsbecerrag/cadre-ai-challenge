@@ -4,7 +4,7 @@
 
 **Blocked by:** 02 (First Turn end-to-end with the stub provider)
 
-**Status:** ready-for-agent
+**Status:** in-progress
 
 - [ ] The `refuse` profile masks a Luhn-valid card to its last four, tags a valid SSN and a valid cédula, tags a labelled password, and leaves an order-like number, an email, and a phone untouched; the `full` profile additionally tokenises emails and phones consistently within one text; covered at seam S2 with fixtures from the skill's catalog (fake values only).
 - [ ] A Visitor message containing a card number reaches the stub provider already masked and is stored masked; covered at seam S1 by inspecting what the stub received and what the in-memory store holds.
