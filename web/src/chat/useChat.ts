@@ -9,10 +9,11 @@ import { useCallback, useReducer, useRef, useState } from 'react'
 
 import { chatReducer, initialChatState } from './reducer'
 import { readChatEvents } from './sse'
-import type { ChatState, KBSectionTitle } from './types'
+import type { ChatState, FeedbackRating, KBSectionTitle } from './types'
 
 export const CHAT_ENDPOINT = '/api/chat'
 export const SECTIONS_ENDPOINT = '/api/knowledge/sections'
+export const FEEDBACK_ENDPOINT = '/api/feedback'
 
 export interface Chat {
   state: ChatState
@@ -20,6 +21,10 @@ export interface Chat {
   /** Fetch the KB Section titles the citation chips reveal. Idempotent; called when the
    * panel first opens, so a Visitor who never opens it never pays for the request. */
   loadSections: () => Promise<void>
+  /** A thumb was pressed: open the comment box. Nothing is sent until the Visitor sends it. */
+  chooseFeedback: (traceId: string, rating: FeedbackRating) => void
+  /** Post the Feedback for one Trace. */
+  sendFeedback: (traceId: string, rating: FeedbackRating, comment: string) => Promise<void>
 }
 
 export function useChat(greeting: string, connectionError: string): Chat {
@@ -84,5 +89,39 @@ export function useChat(greeting: string, connectionError: string): Chat {
     }
   }, [])
 
-  return { state, send, loadSections }
+  const chooseFeedback = useCallback((traceId: string, rating: FeedbackRating) => {
+    dispatch({ type: 'feedback_chosen', traceId, rating })
+  }, [])
+
+  const sendFeedback = useCallback(
+    async (traceId: string, rating: FeedbackRating, comment: string) => {
+      try {
+        const response = await fetch(FEEDBACK_ENDPOINT, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ trace_id: traceId, rating, comment }),
+          credentials: 'same-origin',
+        })
+        if (response.status === 409) {
+          // Already rated and changed once — another tab, or a reload that lost what this
+          // one knew. The rating that stands is the server's, so the control locks.
+          dispatch({ type: 'feedback_locked', traceId })
+          return
+        }
+        if (!response.ok) {
+          // Any other refusal leaves the control as it is, with the thumb still chosen: the
+          // Visitor can press send again, and a rating is not worth an error bubble in the
+          // middle of a conversation.
+          return
+        }
+        const body = (await response.json()) as { changed: boolean }
+        dispatch({ type: 'feedback_sent', traceId, changed: body.changed })
+      } catch {
+        return
+      }
+    },
+    [],
+  )
+
+  return { state, send, loadSections, chooseFeedback, sendFeedback }
 }

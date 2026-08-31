@@ -12,8 +12,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import './chat.css'
+import { FeedbackControl } from './FeedbackControl'
 import { MessageView } from './MessageView'
 import { chromeFor, type Language } from './strings'
+import type { Message } from './types'
 import { useChat } from './useChat'
 
 const DOCKED = 'right-6 bottom-24 h-[min(660px,calc(100vh-130px))] w-[392px]'
@@ -45,7 +47,10 @@ export function ChatWidget() {
   const [usedQuickReplies, setUsedQuickReplies] = useState<string[]>([])
 
   const chrome = chromeFor(language)
-  const { state, send, loadSections } = useChat(chromeFor('en').greeting, chrome.connectionError)
+  const { state, send, loadSections, chooseFeedback, sendFeedback } = useChat(
+    chromeFor('en').greeting,
+    chrome.connectionError,
+  )
 
   const transcript = useRef<HTMLDivElement>(null)
   const composer = useRef<HTMLInputElement>(null)
@@ -108,6 +113,27 @@ export function ChatWidget() {
     setExpanded(false)
     window.dispatchEvent(new CustomEvent(NAVIGATE_EVENT, { detail: { href } }))
   }, [])
+
+  /**
+   * The thumbs for one answer, or nothing. An answer has a Trace only once its Turn has
+   * finished and only where the service is traced, which is exactly when there is something
+   * for a thumb to score — so this is the one place that decides a control is offered.
+   */
+  function feedbackFor(message: Message) {
+    const traceId = 'traceId' in message ? message.traceId : undefined
+    if (!traceId) {
+      return null
+    }
+    return (
+      <FeedbackControl
+        traceId={traceId}
+        entry={state.feedback[traceId]}
+        chrome={chrome}
+        onChoose={chooseFeedback}
+        onSend={(id, rating, comment) => void sendFeedback(id, rating, comment)}
+      />
+    )
+  }
 
   function submitQuickReply(id: string, label: string) {
     setUsedQuickReplies([...usedQuickReplies, id])
@@ -201,6 +227,7 @@ export function ChatWidget() {
             nextStepLabel={chrome.nextStep}
             sectionTitles={state.sections}
             onNavigate={followCard}
+            feedback={feedbackFor(message)}
           />
         ))}
       </div>

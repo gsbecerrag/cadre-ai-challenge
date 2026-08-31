@@ -159,8 +159,11 @@ sequenceDiagram
   participant O as OpenRouter (Sonnet 5)
   participant L as Langfuse
   participant C as Console Triage tab
-  U->>A: thumbs down on an assistant message, optional comment
-  A->>F: create feedback with session_id, trace_id, rating down, comment
+  U->>A: POST /api/feedback with trace_id, rating down, optional comment
+  A->>A: is that trace_id one this session produced? 404 if not
+  A->>F: write feedback/{trace_id} with session_id, rating down, redacted comment
+  A->>L: score feedback=0 on trace_id
+  A-->>U: feedback_id, rating, changed
   F-->>T: on_document_created for the feedback document
   T->>F: does triage_reports with the same feedbackId exist
   alt already triaged (redelivery)
@@ -219,10 +222,12 @@ erDiagram
     bool online
   }
   FEEDBACK {
-    string id PK
+    string id PK "the trace id: one feedback per rated turn"
     string session_id FK
     string trace_id "the rated turn"
     string rating "up or down"
+    string comment "optional, full-profile redacted"
+    int changes "times the visitor changed their mind, at most 1"
   }
   TRIAGE_REPORTS {
     string feedbackId PK "same id as the feedback document"
@@ -233,7 +238,7 @@ erDiagram
   }
 ```
 
-Not drawn: every document carries `created_at`; `sessions` also `last_seen` and `turn_count`; `messages` an optional `tool_calls` array; `leads` are keyed by the session id and hold the raw typed contact fields `name`, `email`, `phone`, `company`, `role` (all optional), a `session` reference, and `updated_at` (industry is not a field of its own: industry fit is one of the five signals); `handover_requests` keep an optional `room_url` and a `timestamps` map with one entry per transition; `strategists` are keyed by the Firebase uid and carry `online`, `email`, `name` and `updated_at` — written by `PUT /api/console/availability`, and the one document a browser may write (its own, per `firestore.rules`); `feedback` an optional refuse-redacted `comment`; `triage_reports` a `summary`, an `evidence` list and the `model` used. Phase 2 adds a `kb_docs` collection behind the `KnowledgeSource` seam; nothing else changes.
+Not drawn: every document carries `created_at`; `sessions` also `last_seen` and `turn_count`; `messages` an optional `tool_calls` array; `leads` are keyed by the session id and hold the raw typed contact fields `name`, `email`, `phone`, `company`, `role` (all optional), a `session` reference, and `updated_at` (industry is not a field of its own: industry fit is one of the five signals); `handover_requests` keep an optional `room_url` and a `timestamps` map with one entry per transition; `strategists` are keyed by the Firebase uid and carry `online`, `email`, `name` and `updated_at` — written by `PUT /api/console/availability`, and the one document a browser may write (its own, per `firestore.rules`); `feedback` is keyed by the `trace_id` it judges (one feedback per turn, so a second thumb updates it and `changes` caps that at one) and carries `session_id`, `rating`, an optional `comment` through the `full` redaction profile, `created_at` and `updated_at` — written by `POST /api/feedback`, which accepts a rating only for a trace the caller's own session produced, and mirrors it to Langfuse as a numeric `feedback` score (1 up, 0 down) on that trace; the ownership check is what the `trace_id` on the assistant `messages` exists for; `triage_reports` a `summary`, an `evidence` list and the `model` used. Phase 2 adds a `kb_docs` collection behind the `KnowledgeSource` seam; nothing else changes.
 
 ### Handover state machine
 

@@ -6,7 +6,15 @@
  */
 
 import { splitCitations } from './citations'
-import type { ChatAction, ChatEvent, ChatState, Message, TextMessage } from './types'
+import type {
+  ChatAction,
+  ChatEvent,
+  ChatState,
+  FeedbackEntry,
+  FeedbackStatus,
+  Message,
+  TextMessage,
+} from './types'
 
 function nextState(state: ChatState, messages: Message[], patch: Partial<ChatState>): ChatState {
   return { ...state, ...patch, messages }
@@ -30,7 +38,49 @@ export function initialChatState(greeting: string): ChatState {
     streamingId: null,
     seq: 1,
     sections: {},
+    feedback: {},
   }
+}
+
+/** The kinds of message that are an answer, and so can be rated. A typing bubble is not one,
+ * an error is the Assistant failing rather than answering, and the Visitor's own message is
+ * not the Assistant's to judge. */
+function isAnswer(message: Message): boolean {
+  return (
+    message.role === 'assistant' &&
+    (message.kind === 'text' || message.kind === 'escalation' || message.kind === 'walkthrough')
+  )
+}
+
+/**
+ * Mark the answer the Trace belongs to — the last thing the Assistant said this Turn.
+ *
+ * One Turn is one Trace and the server keeps one Feedback per Trace, so a Turn that produced a
+ * card and two paragraphs still gets one set of thumbs, under the last of them.
+ */
+function rateable(messages: Message[], traceId: string): Message[] {
+  const last = messages.map(isAnswer).lastIndexOf(true)
+  if (last < 0) {
+    return messages
+  }
+  return messages.map((message, index) => (index === last ? { ...message, traceId } : message))
+}
+
+/** The state a control is in before anything has been pressed. */
+const UNRATED: FeedbackEntry = { rating: null, status: 'none' }
+
+/** Whether a thumb may still be pressed, and pressing it would mean something new. */
+function acceptsAThumb(entry: FeedbackEntry, rating: FeedbackEntry['rating']): boolean {
+  if (entry.status === 'chosen' || entry.status === 'none') {
+    return true
+  }
+  // Submitted: one change is allowed, and only a change — pressing the thumb that already
+  // stands would spend it on the rating the server already holds.
+  return entry.status === 'submitted' && entry.rating !== rating
+}
+
+function withFeedback(state: ChatState, traceId: string, entry: FeedbackEntry): ChatState {
+  return { ...state, feedback: { ...state.feedback, [traceId]: entry } }
 }
 
 function reduceEvent(state: ChatState, event: ChatEvent): ChatState {
@@ -99,14 +149,20 @@ function reduceEvent(state: ChatState, event: ChatEvent): ChatState {
       })
     }
 
-    case 'done':
-      return nextState(state, withoutTyping(state.messages), {
-        pending: false,
-        streamingId: null,
-        activeTool: null,
-        usage: event.data.usage,
-        traceId: event.data.trace_id,
-      })
+    case 'done': {
+      const answered = withoutTyping(state.messages)
+      return nextState(
+        state,
+        event.data.trace_id ? rateable(answered, event.data.trace_id) : answered,
+        {
+          pending: false,
+          streamingId: null,
+          activeTool: null,
+          usage: event.data.usage,
+          traceId: event.data.trace_id,
+        },
+      )
+    }
 
     case 'error':
       return failed(state, event.data.message)
@@ -156,5 +212,24 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
           action.sections.map((section) => [section.id, section.title]),
         ),
       }
+
+    case 'feedback_chosen': {
+      const entry = state.feedback[action.traceId] ?? UNRATED
+      if (!acceptsAThumb(entry, action.rating)) {
+        return state
+      }
+      return withFeedback(state, action.traceId, { rating: action.rating, status: 'chosen' })
+    }
+
+    case 'feedback_sent': {
+      const entry = state.feedback[action.traceId] ?? UNRATED
+      const status: FeedbackStatus = action.changed ? 'changed' : 'submitted'
+      return withFeedback(state, action.traceId, { rating: entry.rating, status })
+    }
+
+    case 'feedback_locked': {
+      const entry = state.feedback[action.traceId] ?? UNRATED
+      return withFeedback(state, action.traceId, { rating: entry.rating, status: 'locked' })
+    }
   }
 }

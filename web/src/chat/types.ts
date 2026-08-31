@@ -66,12 +66,37 @@ export type ChatEvent =
 
 export type MessageRole = 'visitor' | 'assistant'
 
+export type FeedbackRating = 'up' | 'down'
+
+/**
+ * How far one answer's Feedback has got. `none` is the two thumbs on their own; `chosen` is a
+ * thumb pressed and the comment box open, before anything has been sent; `submitted` is a
+ * Feedback the server has, which the Visitor may still change once; `changed` is that one
+ * change spent; `locked` is the server refusing a further change — a second tab, or a reload
+ * that lost what this one knew. The last two both render as a control nobody can press again.
+ */
+export type FeedbackStatus = 'none' | 'chosen' | 'submitted' | 'changed' | 'locked'
+
+export interface FeedbackEntry {
+  rating: FeedbackRating | null
+  status: FeedbackStatus
+}
+
+/**
+ * What every Assistant answer carries once its Turn has finished: the Trace the thumbs are
+ * attached to. Absent while the answer is still streaming, and absent for good when the
+ * service runs untraced — there is then no Trace to score, so no thumbs are offered.
+ */
+export interface Rateable {
+  traceId?: string
+}
+
 /**
  * `raw` keeps the deltas exactly as they arrived, markers and all; `text` and `citations` are
  * derived from it on every delta. Deriving rather than accumulating is what lets a marker that
  * is still arriving stay hidden and then resolve into a chip.
  */
-export interface TextMessage {
+export interface TextMessage extends Rateable {
   id: string
   kind: 'text'
   role: MessageRole
@@ -86,7 +111,7 @@ export interface TypingMessage {
   role: 'assistant'
 }
 
-export interface EscalationMessage {
+export interface EscalationMessage extends Rateable {
   id: string
   kind: 'escalation'
   role: 'assistant'
@@ -97,7 +122,7 @@ export interface EscalationMessage {
   language?: Language
 }
 
-export interface WalkthroughMessage {
+export interface WalkthroughMessage extends Rateable {
   id: string
   kind: 'walkthrough'
   role: 'assistant'
@@ -138,6 +163,12 @@ export interface ChatState {
    * and a chip falls back to showing the id — a citation is still a citation without a title.
    */
   sections: Record<string, string>
+  /**
+   * The Feedback left in this conversation, keyed by the Trace it judges — the same key the
+   * server writes the Feedback document under, so a control's state and a stored rating can
+   * never mean two different things.
+   */
+  feedback: Record<string, FeedbackEntry>
 }
 
 export type ChatAction =
@@ -145,3 +176,9 @@ export type ChatAction =
   | { type: 'event'; event: ChatEvent }
   | { type: 'stream_failed'; message: string }
   | { type: 'sections_loaded'; sections: KBSectionTitle[] }
+  /** A thumb was pressed: the comment box opens and nothing has been sent yet. */
+  | { type: 'feedback_chosen'; traceId: string; rating: FeedbackRating }
+  /** The server took it. `changed` is its answer to whether this replaced an earlier thumb. */
+  | { type: 'feedback_sent'; traceId: string; changed: boolean }
+  /** The server refused a further change (409): this answer's rating is final. */
+  | { type: 'feedback_locked'; traceId: string }
