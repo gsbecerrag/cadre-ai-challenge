@@ -233,7 +233,7 @@ erDiagram
   }
 ```
 
-Not drawn: every document carries `created_at`; `sessions` also `last_seen` and `turn_count`; `messages` an optional `tool_calls` array; `leads` are keyed by the session id and hold the raw typed contact fields `name`, `email`, `phone`, `company`, `role` (all optional), a `session` reference, and `updated_at` (industry is not a field of its own: industry fit is one of the five signals); `handover_requests` keep an optional `room_url` and a `timestamps` map with one entry per transition; `strategists` carry `email` and `updated_at`; `feedback` an optional refuse-redacted `comment`; `triage_reports` a `summary`, an `evidence` list and the `model` used. Phase 2 adds a `kb_docs` collection behind the `KnowledgeSource` seam; nothing else changes.
+Not drawn: every document carries `created_at`; `sessions` also `last_seen` and `turn_count`; `messages` an optional `tool_calls` array; `leads` are keyed by the session id and hold the raw typed contact fields `name`, `email`, `phone`, `company`, `role` (all optional), a `session` reference, and `updated_at` (industry is not a field of its own: industry fit is one of the five signals); `handover_requests` keep an optional `room_url` and a `timestamps` map with one entry per transition; `strategists` are keyed by the Firebase uid and carry `online`, `email`, `name` and `updated_at` — written by `PUT /api/console/availability`, and the one document a browser may write (its own, per `firestore.rules`); `feedback` an optional refuse-redacted `comment`; `triage_reports` a `summary`, an `evidence` list and the `model` used. Phase 2 adds a `kb_docs` collection behind the `KnowledgeSource` seam; nothing else changes.
 
 ### Handover state machine
 
@@ -319,6 +319,23 @@ Solid boxes are MVP; grey dashed boxes are Phase 2 (triggered upgrades) and Phas
 | Observability | Langfuse Cloud | Open source, cost from `usage.cost`, sessions, datasets, scores | LangSmith, Traceloop | [0002](adr/0002-openrouter-sole-provider.md) |
 | Logs and secrets | structlog JSON to Cloud Logging; Secret Manager injected into Cloud Run | Correlate session_id, request_id and trace_id; no secrets in the image or repo | Plain logging; env vars in the service config | [0003](adr/0003-gcp-with-seams.md) |
 | CI | GitHub Actions on pull requests: lint, unit tests, stub-provider eval subset | Deterministic, zero model spend on PRs | Cloud Build | [0008](adr/0008-pytest-evals-over-ragas.md) |
+
+**Evaluation.** `evals/cases.jsonl` holds fifty Eval Cases — twenty in-KB questions with a
+golden answer and the KB Section ids the answer must cite, twenty Trap Questions with the
+`escalate` reason that fits and the strings that would be an invented fact, ten qualification
+exchanges with the Contact Details, Qualification Signals and Qualification Score the Lead must
+end with. Four metrics grade a Turn: `escalation_correctness` and `tool_correctness` are
+deterministic, `correctness` and `groundedness` ask a Haiku 4.5 judge behind the same
+`ModelProvider` seam as the Assistant, each after a deterministic floor (an expected section
+cited; every cited id resolves). The runner builds the application with `create_app` and drives
+it over its own HTTP surface, so a metric grades the event list a browser would have received.
+`make eval` runs all fifty against the real provider — about $0.50, a couple of minutes, a
+scorecard and a JSON report in `evals/reports/` that the model benchmark reads back per model.
+`make eval-stub` runs the thirty deterministic cases against the stub provider, scripted from
+the case, and is the CI step: it cannot say whether the model would have chosen the right tool,
+but it fails the moment the escalate copy table, the score, or the chat event contract changes
+underneath. The Langfuse dataset run is a seam (`evals/sink.py`) with a no-op behind it until
+ticket 06 lands the client. See [ADR-0008](adr/0008-pytest-evals-over-ragas.md).
 
 ## 8. Capacity model
 

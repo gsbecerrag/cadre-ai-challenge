@@ -1,0 +1,74 @@
+rules_version = '2';
+
+// Cadre AI Support Agent — Firestore security rules.
+//
+// The Console reads Leads, Handover Requests and Triage Reports live, straight from the
+// browser, so these rules are the second enforcement point of the same allowlist the API
+// checks in `api/console.py`. ADR-0010 accepted that duplication as the price of realtime;
+// `make rules` keeps the two in step by rendering the list below from ADMIN_ALLOWED_EMAILS.
+//
+// The API and the Triage Agent write with the runtime service account, which bypasses rules
+// entirely. So everything a *client* may do is here, and every client write is denied except
+// a Strategist's own presence document: nothing the Assistant records — a Session, a message,
+// a Lead, a Handover Request — is ever written from a browser.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // BEGIN allowlist — rendered by `make rules` from ADMIN_ALLOWED_EMAILS. Do not edit by hand.
+    function allowlist() {
+      return [
+        'galo.s.becerra@gmail.com'
+      ];
+    }
+    // END allowlist
+
+    // A signed-in Strategist on the allowlist. `email_verified` is required for the same
+    // reason the API requires it: the allowlist is a list of emails, so an unverified email
+    // claim would be a way to assert an address you do not own.
+    function isStrategist() {
+      return request.auth != null
+        && request.auth.token.email_verified == true
+        && request.auth.token.email.lower() in allowlist();
+    }
+
+    // Everything the Console renders. Read-only from the browser: these documents are written
+    // by the API and the Triage Agent, never by a client.
+    match /leads/{sessionId} {
+      allow read: if isStrategist();
+      allow write: if false;
+    }
+
+    match /handover_requests/{requestId} {
+      allow read: if isStrategist();
+      allow write: if false;
+    }
+
+    match /triage_reports/{feedbackId} {
+      allow read: if isStrategist();
+      allow write: if false;
+    }
+
+    // Presence. A Strategist may see who else is online and may set their own Availability —
+    // and only their own: the document id is the Firebase uid, so `request.auth.uid == uid` is
+    // the whole rule. Availability gates the Live Hand-over offer, so a Strategist who could
+    // write someone else's presence could summon a colleague who is not there.
+    match /strategists/{uid} {
+      allow read: if isStrategist();
+      // Own document only — the id is the Firebase uid — and only these four fields. Without
+      // hasOnly, a Strategist could write anything else into their own presence document, and
+      // a later feature that trusts a field on it (a role, a claim, a queue assignment) would
+      // be trusting something the client wrote.
+      allow write: if isStrategist()
+        && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['online', 'email', 'name', 'updated_at']);
+    }
+
+    // Sessions, messages and feedback are the Visitor's side of the product and are never read
+    // or written from a browser — the chat client talks only to the API (ADR-0010). Firestore
+    // denies by default; this says so out loud.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

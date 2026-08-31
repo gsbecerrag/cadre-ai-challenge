@@ -20,3 +20,4 @@
 - Ruling: the skill catalog's two illustrative values that fail their own validators were replaced by check-digit-valid fakes in fixtures; five behavioural departures from the skill's script are false-positive fixes.
 - Parked: the O(n²) obfuscated-email alternative in `full` (ticket 06 must bound it before tracing bodies through `full`); invalid-range SSNs counted as `gov_id`; names/addresses still stored (ADR-0006 Phase 2); a logging-state fixture duplicated across two test files until a ticket owns `conftest.py`.
 - Deployed-app check (a fake card yields the "not needed, not kept" reply and Firestore holds the masked form) is recorded by the controller after the merge.
+- Deployed-app check recorded: [docs/transcripts/2026-08-31-deployed-checks-05-08-09.md](../../../docs/transcripts/2026-08-31-deployed-checks-05-08-09.md) — revision `93e79e6` on the public URL.

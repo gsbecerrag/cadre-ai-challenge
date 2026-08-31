@@ -5,6 +5,10 @@ description = "Cadre AI Support Agent — FastAPI API and the built web app in o
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "fastapi>=0.115",
+    # Verifies the Console's Firebase ID tokens (signature, audience, expiry) against Google's
+    # published certificates — ADR-0010's whole server-side auth. Imported only inside
+    # core/adapters/firebase_verifier.py.
+    "google-auth>=2.35",
     # The ConversationStore's database. Its async client is imported only inside
     # core/adapters/firestore_store.py, which is the only place that knows Firestore exists.
     "google-cloud-firestore>=2.21",
@@ -57,10 +61,16 @@ known-first-party = ["api", "core"]
 
 [tool.mypy]
 python_version = "3.12"
-files = ["api", "core"]
+files = ["api", "core", "evals"]
 strict = true
 
 [tool.pytest.ini_options]
-testpaths = ["api/tests", "core/tests"]
-addopts = "-q --strict-markers"
+# `evals` is on the list for its S2 units (evals/tests) and its well-formedness checks; the
+# `evals` marker is deselected here so that `make check` stays fast and offline, and
+# `make eval-stub` re-selects it with `-m evals --stub`.
+testpaths = ["api/tests", "core/tests", "evals"]
+addopts = "-q --strict-markers -m 'not evals'"
 filterwarnings = ["error"]
+markers = [
+    "evals: an Eval Case driven through the Assistant (seam S5). Never reaches the network — it runs against the stub provider — but it is a suite of its own, so `make check` deselects it and `make eval-stub` runs it.",
+]

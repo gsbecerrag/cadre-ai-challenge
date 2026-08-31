@@ -57,7 +57,12 @@ def portal_routes() -> dict[str, tuple[str, ...]]:
     layout = PORTAL_LAYOUT.search(source)
     assert layout, "the route table no longer mounts a layout at /portal"
 
-    _, _, children = source.partition("path: '/portal',")
+    _, _, after_portal = source.partition("path: '/portal',")
+    # Stop at the next absolute path in the table. The Portal's own children are relative
+    # (`path: 'tools'`), so the next `path: '/` is a sibling route group — `/console` since
+    # ticket 10 — and reading its children as Portal routes would look for its pages in
+    # web/src/portal.
+    children, _, _ = after_portal.partition("path: '/")
     routes: dict[str, tuple[str, ...]] = {}
     for path, index, component in PORTAL_ROUTE.findall(children):
         routes["/portal" if index else f"/portal/{path}"] = (layout.group(1), component)
