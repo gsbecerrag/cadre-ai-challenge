@@ -6,7 +6,7 @@
 
 **Design reference:** [docs/design](../../../docs/design/README.md) — brief §2.5 kind 9: the feedback card ("How was your conversation with {Strategist}?" with 👍/👎, thumbs-up hover border `#0a7d43`) and its done state with the thanks/apology copy. Ruling: the same component also appears after each Assistant answer, inline, as the spec requires.
 
-**Status:** ready-for-agent
+**Status:** in-progress
 
 - [ ] Posting Feedback with a rating, an optional comment, the Session id and the Trace id writes a Feedback document and calls the tracing sink with a score of 1 or 0 on that Trace; a comment passes through the `full` Redaction Profile; covered at seam S1 with the in-memory store and the fake tracer.
 - [ ] Feedback for an unknown Session or a Trace id that does not belong to it is rejected; covered at S1.
