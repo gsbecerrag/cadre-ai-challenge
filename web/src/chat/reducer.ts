@@ -7,6 +7,7 @@
 
 import { splitCitations } from './citations'
 import type {
+  CallState,
   ChatAction,
   ChatEvent,
   ChatState,
@@ -41,6 +42,7 @@ export function initialChatState(greeting: string): ChatState {
     streamingId: null,
     seq: 1,
     sections: {},
+    call: null,
   }
 }
 
@@ -152,6 +154,38 @@ function reduceEvent(state: ChatState, event: ChatEvent): ChatState {
 
 const EMPTY_CONTACT: LeadContact = { name: '', email: '', company: '' }
 
+/**
+ * The states in which a video Hand-over has a call to draw.
+ *
+ * `pending_strategist` is one of them because the Visitor is already in the room: Daily's
+ * prebuilt frame is what they wait in, not a placeholder that is swapped for it when somebody
+ * joins. `ended` and `no_strategist_available` are not, which is what closes the frame.
+ */
+const LIVE_CALL_STATES: HandoverState[] = ['pending_strategist', 'strategist_joined', 'in_call']
+
+function liveCall(
+  handoverState: HandoverState,
+  mode: HandoverMode | null,
+  roomUrl: string,
+  strategistName: string,
+): CallState | null {
+  if (mode !== 'video' || !LIVE_CALL_STATES.includes(handoverState)) {
+    return null
+  }
+  return { state: handoverState, roomUrl, strategistName }
+}
+
+function sameCall(one: CallState | null, other: CallState | null): boolean {
+  if (one === null || other === null) {
+    return one === other
+  }
+  return (
+    one.state === other.state &&
+    one.roomUrl === other.roomUrl &&
+    one.strategistName === other.strategistName
+  )
+}
+
 /** A Lead a Strategist could actually reach: the Callback is confirmed rather than asked for. */
 function reachable(lead: LeadContact): boolean {
   return lead.name.trim() !== '' && lead.email.trim() !== ''
@@ -159,6 +193,20 @@ function reachable(lead: LeadContact): boolean {
 
 function note(state: ChatState, key: NoteKey): Message {
   return { id: `m${state.seq + 1}`, kind: 'note', role: 'assistant', note: key }
+}
+
+/**
+ * What a Callback looks like in the transcript: the confirmation when a Strategist could
+ * already reach the Visitor, and the card that asks for the two details they need when not.
+ *
+ * One function because there are two ways into it — accepting with nobody online, and a call
+ * nobody joined timing out — and a Visitor who waited two minutes for a Strategist should not
+ * meet a different Callback from one who never had a room.
+ */
+function callbackReply(state: ChatState, lead: LeadContact): Message {
+  return reachable(lead)
+    ? { id: `m${state.seq + 1}`, kind: 'callback', role: 'assistant', lead }
+    : { id: `m${state.seq + 1}`, kind: 'details', role: 'assistant', done: false, lead }
 }
 
 /**
@@ -174,30 +222,46 @@ function handover(
   handoverState: HandoverState,
   mode: HandoverMode | null,
   lead: LeadContact,
+  roomUrl = '',
+  strategistName = '',
 ): ChatState {
+  const call = liveCall(handoverState, mode, roomUrl, strategistName)
   const open = state.messages.find(
     (message): message is OfferMessage => message.kind === 'offer' && message.status === 'open',
   )
-  if (!open) {
+  if (open) {
+    const declined = handoverState === 'declined'
+    const answered = state.messages.map((message) =>
+      message.id === open.id
+        ? { ...open, status: declined ? ('declined' as const) : ('accepted' as const) }
+        : message,
+    )
+    const reply: Message = declined
+      ? note(state, 'handoverDeclined')
+      : mode === 'video'
+        ? note(state, 'handoverConnecting')
+        : callbackReply(state, lead)
+    return nextState(state, [...withoutTyping(answered), reply], {
+      seq: state.seq + 1,
+      streamingId: null,
+      call,
+    })
+  }
+  // Everything below is a status poll rather than an answered offer. It arrives every five
+  // seconds for as long as the Visitor waits, so it returns the state it was given whenever
+  // nothing has changed: a new object per poll would re-render the panel, and re-rendering
+  // the panel remounts the iframe, which drops the Visitor out of their own call.
+  if (state.call === null) {
     return state
   }
-  const declined = handoverState === 'declined'
-  const answered = state.messages.map((message) =>
-    message.id === open.id
-      ? { ...open, status: declined ? ('declined' as const) : ('accepted' as const) }
-      : message,
-  )
-  const reply: Message = declined
-    ? note(state, 'handoverDeclined')
-    : mode === 'video'
-      ? note(state, 'handoverConnecting')
-      : reachable(lead)
-        ? { id: `m${state.seq + 1}`, kind: 'callback', role: 'assistant', lead }
-        : { id: `m${state.seq + 1}`, kind: 'details', role: 'assistant', done: false, lead }
-  return nextState(state, [...withoutTyping(answered), reply], {
-    seq: state.seq + 1,
-    streamingId: null,
-  })
+  if (call !== null) {
+    return sameCall(call, state.call) ? state : { ...state, call }
+  }
+  // The call is over. Either somebody ended it, or nobody joined it and the server turned it
+  // into the Callback it promised — which is the same confirmation ticket 11 already draws.
+  const reply =
+    handoverState === 'no_strategist_available' ? callbackReply(state, lead) : note(state, 'callEnded')
+  return nextState(state, [...state.messages, reply], { seq: state.seq + 1, call: null })
 }
 
 /**
@@ -251,7 +315,14 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
       return reduceEvent(state, action.event)
 
     case 'handover':
-      return handover(state, action.state, action.mode, action.lead)
+      return handover(
+        state,
+        action.state,
+        action.mode,
+        action.lead,
+        action.roomUrl,
+        action.strategistName,
+      )
 
     case 'details_shared':
       return detailsShared(state, action.lead)

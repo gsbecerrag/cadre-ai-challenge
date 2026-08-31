@@ -38,6 +38,11 @@ export interface Chrome {
   /** The Assistant's own lines after an answer — `NoteKey` in `types.ts`. */
   handoverDeclined: string
   handoverConnecting: string
+  callEnded: string
+  /** The live call view (docs/design/DESIGN-BRIEF.md §2.6). */
+  callTitle: string
+  callAssistedBy: string
+  callLive: string
   /** The "Your details" card. */
   detailsTitle: string
   detailsName: string
@@ -84,6 +89,10 @@ const EN: Chrome = {
   handoverDeclined:
     "No problem — I'm right here if you change your mind. What else can I help with?",
   handoverConnecting: 'Connecting you with a strategist…',
+  callEnded: 'The call has ended. I am right here if anything else comes up.',
+  callTitle: 'Call with a Cadre strategist',
+  callAssistedBy: "You're being assisted by",
+  callLive: 'Live',
   detailsTitle: 'Your details',
   detailsName: 'Full name',
   detailsEmail: 'Work email',
@@ -130,6 +139,10 @@ const ES: Chrome = {
   handoverDeclined:
     'Sin problema — aquí sigo si cambias de opinión. ¿En qué más te puedo ayudar?',
   handoverConnecting: 'Te estoy conectando con un estratega…',
+  callEnded: 'La llamada terminó. Aquí sigo si necesitas algo más.',
+  callTitle: 'Llamada con un estratega de Cadre',
+  callAssistedBy: 'Te está atendiendo',
+  callLive: 'En vivo',
   detailsTitle: 'Tus datos',
   detailsName: 'Nombre completo',
   detailsEmail: 'Correo de trabajo',

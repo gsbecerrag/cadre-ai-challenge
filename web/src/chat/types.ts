@@ -175,7 +175,7 @@ export interface CallbackMessage {
  * A key rather than a string, for the same reason as `OfferMessage.status`: the reducer is
  * pure and language-agnostic, and the copy lives in `strings.ts` with the rest of the chrome.
  */
-export type NoteKey = 'handoverDeclined' | 'handoverConnecting'
+export type NoteKey = 'handoverDeclined' | 'handoverConnecting' | 'callEnded'
 
 export interface NoteMessage {
   id: string
@@ -202,8 +202,24 @@ export type Message =
   | NoteMessage
   | ErrorMessage
 
+/**
+ * The Live Hand-over's call, as the panel draws it (docs/design/DESIGN-BRIEF.md §2.6).
+ *
+ * Not a message: the call is a view over the transcript rather than a line in it, and it
+ * comes and goes while the transcript only ever grows. `roomUrl` is empty until the server
+ * has a Daily room — the panel shows the connecting spinner until it does — and
+ * `strategistName` is empty until somebody has claimed the request.
+ */
+export interface CallState {
+  state: HandoverState
+  roomUrl: string
+  strategistName: string
+}
+
 export interface ChatState {
   messages: Message[]
+  /** The call in the panel, or null when there is not one. */
+  call: CallState | null
   /** A Turn is in flight: the composer waits and the typing bubble shows. */
   pending: boolean
   /** The tool the Assistant is running right now, if any. */
@@ -230,7 +246,16 @@ export type ChatAction =
    * and carries the Visitor's own Contact Details, which is what tells the widget whether to
    * ask for them before confirming the Callback.
    */
-  | { type: 'handover'; state: HandoverState; mode: HandoverMode | null; lead: LeadContact }
+  | {
+      type: 'handover'
+      state: HandoverState
+      mode: HandoverMode | null
+      lead: LeadContact
+      /** The Daily room, once the server has one. Absent on a Callback and on a decline. */
+      roomUrl?: string
+      /** Who claimed the request, once somebody has. */
+      strategistName?: string
+    }
   | { type: 'details_shared'; lead: LeadContact }
   | { type: 'stream_failed'; message: string }
   | { type: 'sections_loaded'; sections: KBSectionTitle[] }
