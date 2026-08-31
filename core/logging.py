@@ -3,17 +3,25 @@
 Every line is one JSON object carrying Cloud Logging's `severity`, the `message`, an ISO-8601
 `timestamp`, and the correlation ids bound for the current request — so a log line, a Trace and
 a Firestore document can be joined. `print` is forbidden anywhere in the codebase (ruff T20).
+
+Bodies are redacted here rather than at each call site: every string a record carries — its
+message, the fields passed through `extra`, the formatted exception — goes through the `full`
+Redaction Profile on its way into the JSON object (ADR-0006). One place, so a line written by a
+library, or by a call site added next month, cannot be the one that leaks. The correlation ids
+are structure rather than body and are left alone: a request id is thirty-two hex characters,
+which is also the shape of an API key, and redacting it would make a request's lines unjoinable.
 """
 
 import json
 import logging
 import sys
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
 from datetime import UTC, datetime
 from typing import Any, TextIO
 
+from core import redaction
 from core.config import LogLevel
 
 _ROOT_LOGGER_NAME = "cadre"
@@ -41,16 +49,52 @@ _STANDARD_RECORD_KEYS = frozenset(logging.LogRecord("", 0, "", 0, "", None, None
 }
 
 
+# What a field becomes when it cannot be redacted. A line is never dropped for the sake of one
+# field, and the fallback is never the raw value: unredacted is the one outcome worse than
+# losing the field.
+UNREDACTABLE = "[unredactable]"
+
+
+def redacted_body(text: str) -> str:
+    """A log body, through the `full` Redaction Profile: the Refuse Set gone and Contact
+    Details tokenised, because Cloud Logging is not a place Cadre keeps a Visitor's email."""
+    try:
+        return redaction.full(text).text
+    except Exception:
+        return UNREDACTABLE
+
+
+def redacted_field(value: object) -> object:
+    """A field passed through `extra`, redacted whatever shape it arrived in: a string, or a
+    dict or list holding them. Anything else is structure and passes through as it is."""
+    try:
+        return _redacted_leaves(value)
+    except Exception:  # a cycle, an exotic mapping — anything but the raw value
+        return UNREDACTABLE
+
+
+def _redacted_leaves(value: object) -> object:
+    if isinstance(value, str):
+        return redacted_body(value)
+    if isinstance(value, Mapping):
+        return {key: _redacted_leaves(item) for key, item in value.items()}
+    if isinstance(value, list | tuple):
+        return [_redacted_leaves(item) for item in value]
+    return value
+
+
 class JsonFormatter(logging.Formatter):
-    """Render a log record as a single JSON object."""
+    """Render a log record as a single JSON object, with every body redacted."""
 
     def format(self, record: logging.LogRecord) -> str:
         payload: dict[str, Any] = {
             "severity": record.levelname,
-            "message": record.getMessage(),
+            "message": redacted_body(record.getMessage()),
             "timestamp": datetime.fromtimestamp(record.created, tz=UTC).isoformat(),
             "logger": record.name,
         }
+        # Correlation ids are placed before the loop below, which is what keeps them out of
+        # the redaction: they are structure, and a redacted request id joins nothing.
         request_id = getattr(record, "request_id", None) or _request_id.get()
         if request_id:
             payload["request_id"] = request_id
@@ -59,9 +103,9 @@ class JsonFormatter(logging.Formatter):
             payload["session_id"] = session_id
         for key, value in record.__dict__.items():
             if key not in _STANDARD_RECORD_KEYS and key not in payload:
-                payload[key] = value
+                payload[key] = redacted_field(value)
         if record.exc_info:
-            payload["error"] = self.formatException(record.exc_info)
+            payload["error"] = redacted_body(self.formatException(record.exc_info))
         return json.dumps(payload, default=str)
 
 

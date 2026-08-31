@@ -24,6 +24,7 @@ from core.provider import (
     ToolCall,
     Usage,
 )
+from core.redaction import Redaction
 from core.store import ConversationStore
 from core.tools import ToolRegistry
 
@@ -57,11 +58,12 @@ PROVIDER_ERROR_MESSAGE = (
 logger = get_logger("turn")
 
 
-def keep_as_is(message: str) -> str:
-    """The pre-model, pre-store hook, doing nothing. Ticket 05 plugs the redactor in here so
-    that the Refuse Set is stripped before the provider sees the message and before it is
-    stored — one hook point, so the two can never drift apart."""
-    return message
+def keep_as_is(message: str) -> Redaction:
+    """The pre-model, pre-store hook, doing nothing — the identity for a Turn that wants no
+    redaction at all. The composition root passes `core.redaction.refuse` in its place, and
+    because there is one hook point applied at one call site, what the provider is sent and
+    what the Session keeps can never drift apart."""
+    return Redaction(message, {})
 
 
 @dataclass(frozen=True)
@@ -72,7 +74,7 @@ class TurnRunner:
     store: ConversationStore
     tools: ToolRegistry
     build_prompt: Callable[[], SystemPrompt]
-    prepare_message: Callable[[str], str] = keep_as_is
+    prepare_message: Callable[[str], Redaction] = keep_as_is
     max_iterations: int = field(default=MAX_PROVIDER_ITERATIONS)
     max_turns: int = field(default=MAX_TURNS_PER_SESSION)
 
@@ -89,13 +91,20 @@ class TurnRunner:
             yield done_event(Usage())
             return
 
-        visitor = ModelMessage(role="visitor", content=self.prepare_message(message))
+        prepared = self.prepare_message(message)
+        visitor = ModelMessage(role="visitor", content=prepared.text)
         history = [*stored, visitor]
 
         prompt = self.build_prompt()
         answered: list[ModelMessage] = []
         usage = Usage()
         logger.info("Turn started", extra={"history_length": len(history)})
+        # The one place a message body is logged, and only at debug level: what is written has
+        # already lost the Refuse Set, and the formatter puts it through `full` on the way out,
+        # so the Contact Details are tokenised as well (ADR-0006).
+        logger.debug(
+            "Visitor message", extra={"body": visitor.content, "redactions": dict(prepared.counts)}
+        )
 
         try:
             for _iteration in range(self.max_iterations):
@@ -153,4 +162,4 @@ class TurnRunner:
                 "cost_usd": usage.cost_usd,
             },
         )
-        yield done_event(usage)
+        yield done_event(usage, redactions=prepared.counts)
