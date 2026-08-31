@@ -1,0 +1,26 @@
+# What `gcloud run deploy --source .` must NOT upload to Cloud Build.
+# Explicit, so gcloud does not derive one from .gitignore behind our backs.
+
+.git/
+.gitignore
+.github/
+.claude/
+.scratch/
+.superpowers/
+docs/
+scripts/
+external_assets/
+
+node_modules/
+dist/
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Configuration and secrets never leave the laptop; Cloud Run gets environment variables.
+.env
+.env.*
+
+*.md
