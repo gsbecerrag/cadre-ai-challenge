@@ -190,7 +190,7 @@ class TurnRunner:
                 output_text=_answer(answered, failed=True),
                 usage=usage,
                 tags=turn_tags(tools_run, language, True, prepared.counts),
-                metadata=self._metadata(prepared, cited, len(answered)),
+                metadata=self._metadata(prepared, cited),
             )
             return
 
@@ -206,7 +206,10 @@ class TurnRunner:
                 "output_tokens": usage.output_tokens,
                 "cached_tokens": usage.cached_tokens,
                 "cost_usd": usage.cost_usd,
-                "trace_id": trace.trace_id,
+                # No trace id here: it is thirty-two hex characters, which is the shape of an
+                # API key, so the `full` profile writes it out as `[CREDENTIAL]` and it joins
+                # nothing. The join runs the other way — the Trace carries the `request_id`
+                # that every one of this Turn's log lines carries.
             },
         )
         yield done_event(usage, trace_id=trace.trace_id, redactions=prepared.counts)
@@ -216,18 +219,15 @@ class TurnRunner:
             output_text=_answer(answered),
             usage=usage,
             tags=turn_tags(tools_run, language, False, prepared.counts),
-            metadata=self._metadata(prepared, cited, len(answered)),
+            metadata=self._metadata(prepared, cited),
         )
 
-    def _metadata(
-        self, prepared: Redaction, cited: Mapping[str, None], answers: int
-    ) -> Mapping[str, Any]:
+    def _metadata(self, prepared: Redaction, cited: Mapping[str, None]) -> Mapping[str, Any]:
         """What a Trace carries besides its bodies: never a value, only counts and ids."""
         return {
             "model": self.model,
             "citations": list(cited),
             "redactions": dict(prepared.counts),
-            "messages": answers,
         }
 
 
