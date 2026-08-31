@@ -39,18 +39,18 @@ A customer-support **Assistant** for Cadre AI that a prospect or client can plau
 
 ## 4. Phases
 
-Tickets are the unit of work (one branch, one PR, one TDD-driven subagent run each); numbering below is the proposal, refined in [`.scratch/cadre-support-agent/issues/`](.scratch/cadre-support-agent/issues/).
+Tickets are the unit of work (one branch, one PR, one TDD-driven subagent run each). The 19 tickets — 15 core, 3 optional, 1 honesty pass — live in [`.scratch/cadre-support-agent/issues/`](.scratch/cadre-support-agent/issues/) with their `Blocked by` edges and status; [`tasks.md`](.scratch/cadre-support-agent/tasks.md) is the generated index the subagent tooling reads.
 
 | Phase | Tickets | Hours | Demoable outcome | Status |
 |---|---|---|---|---|
 | **P0 Foundations** | 01 scaffold + hello-world live on Cloud Run · strategy docs · super spec · tickets · credentials wizard | 1.5 | Public URL answers `/healthz`; docs reviewable | 🟡 in progress |
-| **P1 Grounded chat** | 02 config/logging/provider seam (stub + OpenRouter) · 03 KB + system prompt · 04 chat turn end-to-end (SSE, tool loop, Firestore) · 05 PII profiles · 06 Langfuse · 08 demo Portal (parallel) | 2.5 | Ask about services/industries/Maturity Index → Grounded Answers with citations; Trap Questions escalate | ⚪ |
-| **P2 Leads & hand-over** | 07 Escalation + Walkthrough Cards · 09 Lead capture + Qualification Score · 10 Callback Hand-over + Console (Firebase Auth, Availability, realtime) | 2 | A Qualified Lead appears in the Console the instant the Assistant creates it | ⚪ |
-| **P3 Evals & CI** | 11 50 Eval Cases, four metrics, judge, Langfuse datasets; GitHub Actions | 1.5 | `make eval` prints the scorecard; PRs run lint + unit + stub-provider evals | ⚪ |
-| **P4 Feedback loop** | 12 thumbs → Langfuse score · 13 Triage Agent (Firebase Function) + Console Triage tab | 1.5 | Thumbs-down → Triage Report with a suggested KB fix, no human in the loop | ⚪ |
-| **P5 Live video** | 14 Daily.co Live Hand-over, Strategist join/end, Availability gate, `LIVE_HANDOVER_ENABLED` | 2 | Visitor accepts → video call opens inside the chat; Strategist joins from the Console | ⚪ |
-| **P6 If green** | 15 model benchmark · 16 capacity table + 200-VU stub smoke test · 17 in-app navigation · tldraw board | 3.5 | `docs/model-selection.md` with a real table | ⚪ optional |
-| **P7 Honesty pass** | 18 cut log, README, demo script, final deploy | 1 | This file tells the truth | ⚪ |
+| **P1 Grounded chat** | 02 first Turn with the stub provider (seams, tool loop, SSE, KB compiler) · 03 real Grounded Answers (OpenRouter + Firestore Sessions) · 04 Knowledge Base + Escalation · 05 Refuse Set redaction · 06 Langfuse Traces · 07 demo Portal (parallel) | 2.5 | Ask about services/industries/Maturity Index → Grounded Answers with citations; Trap Questions escalate | ⚪ |
+| **P2 Leads & hand-over** | 08 Walkthrough Cards · 09 Lead capture + Qualification Score · 10 Strategist Console (Firebase Auth, Availability) · 11 Callback Hand-over + Console queue | 2 | A Qualified Lead appears in the Console the instant the Assistant creates it | ⚪ |
+| **P3 Evals & CI** | 13 50 Eval Cases, four metrics, judge, Langfuse datasets; CI stub subset | 1.5 | `make eval` prints the scorecard; PRs run lint + unit + stub-provider evals | ⚪ |
+| **P4 Feedback loop** | 12 thumbs → Langfuse score · 14 Triage Agent (Firebase Function) + Console Triage tab | 1.5 | Thumbs-down → Triage Report with a suggested KB fix, no human in the loop | ⚪ |
+| **P5 Live video** | 15 Daily.co Live Hand-over, Strategist join/end, Availability gate, `LIVE_HANDOVER_ENABLED` | 2 | Visitor accepts → video call opens inside the chat; Strategist joins from the Console | ⚪ |
+| **P6 If green** | 16 model benchmark · 17 capacity table + 200-VU stub smoke test · 18 in-app navigation · tldraw board | 3.5 | `docs/model-selection.md` with a real table | ⚪ optional |
+| **P7 Honesty pass** | 19 cut log, README, demo script, final deploy | 1 | This file tells the truth | ⚪ |
 
 **If forced to choose on Monday afternoon:** Triage Agent (P4) beats Live video (P5) — it's the better argument for the observability thesis, and Callback Hand-over still demos.
 

@@ -1,0 +1,13 @@
+# 11: Callback Hand-over with a realtime Console notification
+
+**What to build:** A Qualified Lead is asked once — "would you like to talk to a strategist right now?" — and on accepting, a Handover Request appears on the Strategist's Console the same instant, with a browser notification and a sound; when no Strategist is online (or the live flag is off) the request is a Callback: the Visitor is told a strategist will reach out and sees their details confirmed. This slice adds the `offer_live_handover` tool, exposed to the model only when the Session's Lead meets the threshold and no offer has been made; the Handover Request document and its state machine (`offered → accepted_by_user → pending_strategist → …`, exits `declined`, `no_strategist_available`, mode `callback` when nobody is online or the flag is off; every transition validated server-side); the hand-over offer card and accept/decline actions in the chat; the Console queue (pending, callbacks) via realtime listener with notification and sound; and the `Notifier` seam whose production implementation is the Firestore write itself. Video mode is ticket 15. Phase P2.
+
+**Blocked by:** 10 (Strategist Console with Google sign-in, Availability, and Leads)
+
+**Status:** ready-for-agent
+
+- [ ] The offer tool is absent from the tool list below the threshold, present at or above it, and absent again after one offer in the Session; covered at seam S1 by inspecting the tools the stub provider receives.
+- [ ] Accepting creates a Handover Request in `callback` mode when no Strategist is online or `LIVE_HANDOVER_ENABLED` is off, and in `video` mode otherwise (mode only; the video path is ticket 15); declining sets `declined`; invalid transitions are rejected; covered at S1 with the in-memory store and notifier.
+- [ ] The state machine's allowed transitions are covered exhaustively at seam S2.
+- [ ] The chat reducer handles the offer card and the hand-over state events (offered, accepted, callback confirmed, declined); covered at seam S4.
+- [ ] On the deployed app with the Console open on a second screen: accepting the offer makes the request appear within a second with a notification and sound; the Visitor sees the Callback confirmation. A short recording is attached to the PR.
