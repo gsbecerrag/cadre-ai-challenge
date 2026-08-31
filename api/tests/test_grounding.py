@@ -12,7 +12,6 @@ from core.adapters.knowledge_files import FileKnowledgeSource
 from core.adapters.stub_provider import StubModelProvider
 from core.knowledge import compile_knowledge_base
 from core.provider import TextDelta, ToolCall, Usage
-from core.tools.escalate import ESCALATION_COPY
 
 SPEND = Usage(input_tokens=12_400, output_tokens=48, cached_tokens=12_200, cost_usd=0.0031)
 
@@ -87,6 +86,9 @@ def test_an_escalation_cites_only_kb_sections_that_exist(
 def test_a_spanish_visitor_reads_the_escalation_in_spanish(
     client: TestClient, provider: StubModelProvider
 ) -> None:
+    """The expected strings are the design artboard's, copied out of
+    docs/design/cadre-support-chat.dc.html — not read back from the production table, which
+    would make any Spanish string pass."""
     provider.script(
         "cuánto cuesta", [pricing_escalation("es", known="")], [TextDelta("¿Algo más?"), SPEND]
     )
@@ -95,8 +97,10 @@ def test_a_spanish_visitor_reads_the_escalation_in_spanish(
 
     card = escalation_payload(response)
     assert card["title"] == "Cadre no publica precios"
-    assert card["body"] == ESCALATION_COPY["pricing"]["es"].body.replace(
-        " [not-published#pricing]", ""
+    assert card["body"] == (
+        "No puedo cotizar Estrategia, Facilitación, Ingeniería ni Agentes — Cadre no publica "
+        "esos precios. El único precio publicado es el PE AI Value Creation Playbook: $5,000 "
+        "por firma."
     )
 
 
