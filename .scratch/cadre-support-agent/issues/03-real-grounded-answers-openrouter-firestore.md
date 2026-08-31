@@ -22,3 +22,4 @@
 - Ruling: the Turn cap reuses `MAX_TURNS_PER_SESSION`; at the cap nothing is stored and the provider is not called.
 - Ruling: the implementer verified locally against the real provider (total spend $0.032) and the controller verified the Firestore round-trip against the real project; the deployed-URL check and observed cost are recorded below after the merge.
 - Follow-ups parked: Session expiry (a Firestore TTL policy on `updated_at`); closing the provider's HTTP client via a lifespan hook when a ticket adds one; the first-deploy referer fallback; a typed check on the stored `role`.
+- Deployed-app check recorded: [docs/transcripts/2026-08-31-deployed-checks.md](../../../docs/transcripts/2026-08-31-deployed-checks.md) — revision `0b118a7` on the public URL with Claude Sonnet 5 through OpenRouter and Firestore Sessions; six scenarios, three Trap Questions, Spanish, and a refresh pair; ~0.6–1.3¢ per cached Turn.
