@@ -74,6 +74,16 @@ class Settings(BaseSettings):
     # decision a Strategist may want to move without a deploy of new wording.
     qualification_threshold: int = DEFAULT_QUALIFICATION_THRESHOLD
 
+    # --- Observability (Langfuse) ---
+    # Both keys present turns tracing on; either one missing leaves it off, which is the
+    # default for CI, `make dev` and every reviewer's laptop. A missing key is never a
+    # startup failure: a Turn that cannot be traced is still a Turn that can be answered.
+    langfuse_public_key: str = ""
+    langfuse_secret_key: str = ""
+    # The region the Langfuse project lives in. `us.` and `cloud.` are different data
+    # residencies, and pointing at the wrong one is an authentication error, not a redirect.
+    langfuse_host: str = "https://us.cloud.langfuse.com"
+
     # --- GCP ---
     # Firestore reads this when it is set; on Cloud Run the metadata server supplies it.
     google_cloud_project: str = ""

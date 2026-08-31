@@ -32,6 +32,7 @@ from core.provider import ModelProvider
 from core.redaction import refuse
 from core.store import ConversationStore
 from core.tools import default_tools
+from core.tracing import NoopTracer, TraceBoundary, Tracer
 from core.turn import TurnRunner
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -85,6 +86,32 @@ def build_provider(settings: Settings) -> ModelProvider:
     )
 
 
+def build_tracer(settings: Settings) -> Tracer:
+    """The `Tracer` seam. No keys is the default everywhere but the deployed service, and it
+    is a no-op rather than a startup failure: an observability vendor is not what decides
+    whether a Visitor can be answered."""
+    if not (settings.langfuse_public_key.strip() and settings.langfuse_secret_key.strip()):
+        logger.info("Langfuse keys are not set; Turns run untraced")
+        return NoopTracer()
+    # Imported here, not at the top: the Langfuse SDK is the only thing that knows Langfuse
+    # exists, and a container running untraced should not pay for the import.
+    from core.adapters.langfuse_tracer import LangfuseTracer
+
+    return LangfuseTracer(
+        public_key=settings.langfuse_public_key,
+        secret_key=settings.langfuse_secret_key,
+        host=settings.langfuse_host,
+        release=settings.app_version,
+        environment=settings.env,
+    )
+
+
+def model_name(settings: Settings) -> str:
+    """What the Trace calls the model that answered: the configured model id, or the name of
+    the test double that stood in for one."""
+    return settings.chat_model if settings.model_provider == "openrouter" else "stub"
+
+
 def build_store(settings: Settings) -> ConversationStore:
     """The `ConversationStore` seam. In memory a Session lives in one process, which is wrong
     for a service that scales past one instance — Cloud Run selects `firestore`."""
@@ -103,6 +130,7 @@ def create_app(
     provider: ModelProvider | None = None,
     store: ConversationStore | None = None,
     knowledge: KnowledgeSource | None = None,
+    tracer: Tracer | None = None,
 ) -> FastAPI:
     """Wire the application. A missing required variable fails fast here, before serving."""
     resolved = load_settings() if settings is None else settings
@@ -139,6 +167,10 @@ def create_app(
         # The one pre-model, pre-store hook: the Refuse Set stops here, at the only place
         # both the provider call and the Session write can be reached from (ADR-0006).
         prepare_message=refuse,
+        # Every Trace passes through the boundary, whichever tracer is behind it: bodies
+        # through the `full` Redaction Profile, and no tracer exception reaching the Turn.
+        tracer=TraceBoundary(build_tracer(resolved) if tracer is None else tracer),
+        model=model_name(resolved),
         max_turns=resolved.max_turns_per_session,
     )
 

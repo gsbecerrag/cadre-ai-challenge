@@ -11,6 +11,7 @@ dependencies = [
     # The OpenRouter adapter's HTTP client. No vendor SDK sits between us and the provider's
     # streaming quirks (ADR-0004), so a streaming HTTP client is a runtime dependency.
     "httpx2>=2.12",
+    "langfuse>=4.15.1",
     "pydantic-settings>=2.5",
     "uvicorn[standard]>=0.30",
 ]
