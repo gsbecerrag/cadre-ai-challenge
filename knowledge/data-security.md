@@ -28,7 +28,7 @@ Pillar 3 of the eight-pillar framework, the AI-First Culture Shift, starts with 
 so agreeing the rules for how staff may use AI is part of the engagement rather than something
 a company is left to write alone.
 
-## Cadre's own privacy policy and terms
+## Privacy policy and terms for cadreai.com
 
 Cadre AI is the trading name of AI Gurus LLC. Its privacy policy, last updated 25 June 2026,
 says the site collects name, email, phone, IP address, cookies, usage, device and geolocation

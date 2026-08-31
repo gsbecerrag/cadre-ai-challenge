@@ -1,6 +1,6 @@
 # Partners and model selection
 
-## Cadre's partners
+## The partners Cadre names
 
 Cadre AI is an Official OpenAI Service Partner, announced in January 2026: the partnership
 covers helping organisations integrate ChatGPT for Business, design CustomGPTs, deploy AI

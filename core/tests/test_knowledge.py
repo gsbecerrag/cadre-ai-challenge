@@ -11,6 +11,7 @@ from core.knowledge import (
     render_knowledge_block,
 )
 from core.provider import TextDelta, ToolCall
+from core.tools.escalate import ESCALATION_COPY
 
 SERVICES = """\
 # Services
@@ -166,3 +167,18 @@ def test_the_compiled_knowledge_base_fits_inside_the_cached_prompt_budget() -> N
     block = render_knowledge_block(compile_knowledge_base(FileKnowledgeSource().documents()))
 
     assert estimate_tokens(block) < KNOWLEDGE_TOKEN_BUDGET
+
+
+def test_every_id_the_escalation_copy_cites_resolves_to_a_kb_section() -> None:
+    """The per-reason Escalation copy cites the KB Section that records the absence it is
+    refusing on. A renamed heading has to fail here rather than ship an Escalation whose
+    citation chip points at nothing."""
+    ids = {section.id for section in compile_knowledge_base(FileKnowledgeSource().documents())}
+
+    cited: set[str] = set()
+    for languages in ESCALATION_COPY.values():
+        for copy in languages.values():
+            cited |= set(CITATION_PATTERN.findall(copy.body))
+
+    assert cited, "the Escalation copy cites nothing, so this guard proves nothing"
+    assert cited <= ids
