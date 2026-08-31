@@ -7,8 +7,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from api.main import create_app
-from api.session import SESSION_COOKIE
-from api.tests.conftest import LogReader, sse_events
+from api.session import SESSION_COOKIE, session_id_from_cookie
+from api.tests.conftest import COOKIE_SECRET, LogReader, sse_events
 from core.adapters.knowledge_files import FileKnowledgeSource
 from core.adapters.memory_store import InMemoryConversationStore
 from core.adapters.stub_provider import StubModelProvider
@@ -195,7 +195,9 @@ def test_a_failed_turn_leaves_no_orphan_visitor_message_in_the_session(
     client.post("/api/chat", json={"message": "break it"})
     client.post("/api/chat", json={"message": "try again"})
 
-    session_id = client.cookies[SESSION_COOKIE]
+    # The cookie is signed; the store is keyed by the id inside it.
+    session_id = session_id_from_cookie(client.cookies[SESSION_COOKIE], COOKIE_SECRET)
+    assert session_id is not None
     stored = asyncio.run(store.load(session_id))
     assert [message.content for message in stored] == ["try again", ANSWER]
     assert [message.content for message in provider.requests[-1].messages] == ["try again"]

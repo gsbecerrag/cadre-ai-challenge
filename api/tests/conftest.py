@@ -21,6 +21,8 @@ from core.config import Settings
 from core.logging import configure_logging
 
 INDEX_HTML = "<!doctype html><title>Cadre AI</title><div id='root'></div>"
+# Obviously fake: the Session cookie's signing key for the HTTP tests.
+COOKIE_SECRET = "test-session-cookie-secret-not-a-real-one"
 BUNDLE_JS = "console.log('cadre');"
 APP_LOGGER_PREFIX = "cadre."
 
@@ -39,7 +41,12 @@ def web_dist(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def settings() -> Settings:
-    return Settings(env="production", loglevel="INFO", app_version="0.1.0")
+    return Settings(
+        env="production",
+        loglevel="INFO",
+        app_version="0.1.0",
+        session_cookie_secret=COOKIE_SECRET,
+    )
 
 
 @pytest.fixture

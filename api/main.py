@@ -8,6 +8,7 @@ Routes are registered before the web app is mounted at `/`, so the API always wi
 single-page fallback.
 """
 
+import secrets
 from datetime import UTC, date, datetime
 from pathlib import Path
 
@@ -24,7 +25,7 @@ from core.adapters.stub_demo_script import demo_fallback, demo_scripts
 from core.adapters.stub_provider import StubModelProvider
 from core.config import MissingConfigurationError, Settings, load_settings
 from core.knowledge import KnowledgeSource, compile_knowledge_base, render_knowledge_block
-from core.logging import configure_logging
+from core.logging import configure_logging, get_logger
 from core.prompt import SystemPrompt, build_system_prompt
 from core.provider import ModelProvider
 from core.store import ConversationStore
@@ -36,6 +37,25 @@ DEFAULT_WEB_DIST = REPO_ROOT / "web" / "dist"
 
 # Slow enough that a reviewer can watch an answer arrive, fast enough not to be annoying.
 DEMO_DELAY_SECONDS = 0.05
+
+logger = get_logger("app")
+
+
+def resolve_cookie_secret(settings: Settings) -> str:
+    """The key the Session cookie is signed with, or a refusal to start without one."""
+    secret = settings.session_cookie_secret.strip()
+    if secret:
+        return secret
+    if settings.env == "production":
+        raise MissingConfigurationError(
+            "SESSION_COOKIE_SECRET is not set. It signs the Session cookie, and without it a "
+            "Session id is guessable — which is a way into somebody else's conversation. "
+            "Generate one with `openssl rand -hex 32` (see .env.example)."
+        )
+    # Development convenience only: a key for this process. Sessions then do not survive a
+    # restart, which is the honest behaviour for a machine that has configured no secret.
+    logger.warning("SESSION_COOKIE_SECRET is not set; signing Sessions with a per-process key")
+    return secrets.token_urlsafe(32)
 
 
 def build_provider(settings: Settings) -> ModelProvider:
@@ -51,6 +71,12 @@ def build_provider(settings: Settings) -> ModelProvider:
     )
 
 
+def build_store(settings: Settings) -> ConversationStore:
+    """The `ConversationStore` seam. In memory a Session lives in one process, which is wrong
+    for a service that scales past one instance — Cloud Run selects `firestore`."""
+    return InMemoryConversationStore()
+
+
 def create_app(
     settings: Settings | None = None,
     web_dist: Path | None = None,
@@ -61,6 +87,7 @@ def create_app(
     """Wire the application. A missing required variable fails fast here, before serving."""
     resolved = load_settings() if settings is None else settings
     configure_logging(level=resolved.loglevel)
+    cookie_secret = resolve_cookie_secret(resolved)
 
     # The Knowledge Base is compiled once, at startup: it is the cached prefix of every
     # prompt, and recompiling it per Turn would be both wasted work and a chance to differ.
@@ -81,7 +108,7 @@ def create_app(
 
     runner = TurnRunner(
         provider=provider if provider is not None else build_provider(resolved),
-        store=store if store is not None else InMemoryConversationStore(),
+        store=store if store is not None else build_store(resolved),
         tools=default_tools(),
         build_prompt=build_prompt,
     )
@@ -94,7 +121,11 @@ def create_app(
     # the container, so the deployed service is probed under the API prefix instead.
     app.include_router(create_health_router(resolved), prefix="/api")
     app.include_router(
-        create_chat_router(runner, secure_cookie=resolved.env == "production"),
+        create_chat_router(
+            runner,
+            cookie_secret=cookie_secret,
+            secure_cookie=resolved.env == "production",
+        ),
         prefix="/api",
     )
     app.include_router(create_knowledge_router(sections), prefix="/api")
