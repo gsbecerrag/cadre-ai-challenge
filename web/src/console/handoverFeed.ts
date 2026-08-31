@@ -9,9 +9,12 @@
  * the listener cannot start or the rules deny it, the same list is polled from the API every
  * ten seconds — a Console a few seconds stale beats a Console that is empty.
  *
- * A request that arrives while the Console is open raises a browser notification and plays a
- * short blip. Only new ones: the first delivery is the backlog a Strategist opened the page to
- * read, and pinging them once per waiting request would train them to ignore the sound.
+ * A request the Visitor has *accepted* while the Console is open raises a browser notification
+ * and plays a short blip — `pending_strategist`, the state that means somebody is waiting for a
+ * call, not `offered`, which only means the Assistant put the card on screen and the Visitor may
+ * yet say no. The first delivery is silent whatever it holds: it is the backlog a Strategist
+ * opened the page to read, and pinging them once per waiting request would train them to ignore
+ * the sound.
  */
 
 import {
@@ -119,7 +122,12 @@ function handoverFrom(id: string, data: DocumentData): Handover {
   }
 }
 
-/** Tell the Strategist, once, that this request arrived while they were looking elsewhere. */
+/** A request somebody is waiting on: accepted by the Visitor, not yet picked up. */
+function isWaiting(request: Handover): boolean {
+  return request.state === 'pending_strategist'
+}
+
+/** Tell the Strategist, once, that a Visitor accepted while they were looking elsewhere. */
 function announce(request: Handover): void {
   playNotificationSound()
   try {
@@ -127,7 +135,7 @@ function announce(request: Handover): void {
       return
     }
     const who = request.lead.name || request.lead.company || 'A Qualified Lead'
-    new Notification('New hand-over request', {
+    new Notification('Hand-over accepted', {
       body: `${who} — score ${request.lead.score} of 5`,
       tag: request.request_id,
     })
@@ -162,9 +170,11 @@ export function useHandovers(authorize: () => Promise<string>): {
   const [handovers, setHandovers] = useState<Handover[]>([])
   const [status, setStatus] = useState<FeedStatus>('loading')
   const [error, setError] = useState<string>()
-  // Which requests this Console has already shown. The first delivery fills it silently: it
-  // is the backlog, not news.
-  const known = useRef<Set<string> | undefined>(undefined)
+  // Which requests this Console has already announced — tracked by *state*, not by existence,
+  // because the news is the acceptance and not the offer: a request delivered as `offered` and
+  // then accepted has to ring, and one that arrives already accepted has to ring once. The
+  // first delivery fills the set silently: it is the backlog, not news.
+  const announced = useRef<Set<string> | undefined>(undefined)
 
   useEffect(() => {
     let live = true
@@ -175,13 +185,14 @@ export function useHandovers(authorize: () => Promise<string>): {
       if (!live) {
         return
       }
-      const seen = known.current
-      if (seen === undefined) {
-        known.current = new Set(page.map((request) => request.request_id))
+      const waiting = page.filter(isWaiting)
+      const heard = announced.current
+      if (heard === undefined) {
+        announced.current = new Set(waiting.map((request) => request.request_id))
       } else {
-        for (const request of page) {
-          if (!seen.has(request.request_id)) {
-            seen.add(request.request_id)
+        for (const request of waiting) {
+          if (!heard.has(request.request_id)) {
+            heard.add(request.request_id)
             announce(request)
           }
         }
