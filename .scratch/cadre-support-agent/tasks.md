@@ -32,16 +32,21 @@ Source ticket: `.scratch/cadre-support-agent/issues/01-hello-world-live-on-cloud
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] `GET /healthz` returns 200 with a JSON body naming the service and version; covered by an HTTP test at seam S1 (test client against the app).
-- [ ] The root URL serves the built web app; the page shows the Cadre wordmark/colours and an empty chat shell with a disabled composer ("coming soon").
-- [ ] Configuration loads from environment variables with typed defaults; a missing required variable fails fast at startup with a clear message; covered at seam S2.
-- [ ] Every log line is one JSON object with `severity`, `message`, `request_id`, and (when present) `session_id`; `LOGLEVEL=DEBUG` enables debug lines; covered at seam S2 with a captured log record.
-- [ ] `make check` runs lint (ruff, eslint), typecheck (mypy or pyright, tsc) and the unit suites and passes; `make dev` runs API and web app locally.
-- [ ] `make deploy` builds the container and deploys to Cloud Run; the printed public URL answers `/healthz` and serves the page (verified by curl and a browser check, recorded in the PR).
-- [ ] CI workflow runs `make check` on pull requests and is green on this PR.
-- [ ] No secret is read at build time; the deploy binds none yet.
+- [x] `GET /healthz` returns 200 with a JSON body naming the service and version; covered by an HTTP test at seam S1 (test client against the app).
+- [x] The root URL serves the built web app; the page shows the Cadre wordmark/colours and an empty chat shell with a disabled composer ("coming soon").
+- [x] Configuration loads from environment variables with typed defaults; a missing required variable fails fast at startup with a clear message; covered at seam S2.
+- [x] Every log line is one JSON object with `severity`, `message`, `request_id`, and (when present) `session_id`; `LOGLEVEL=DEBUG` enables debug lines; covered at seam S2 with a captured log record.
+- [x] `make check` runs lint (ruff, eslint), typecheck (mypy or pyright, tsc) and the unit suites and passes; `make dev` runs API and web app locally.
+- [x] `make deploy` builds the container and deploys to Cloud Run; the printed public URL answers `/healthz` and serves the page (verified by curl and a browser check, recorded in the PR).
+- [x] CI workflow runs `make check` on pull requests and is green on this PR.
+- [x] No secret is read at build time; the deploy binds none yet.
+
+## Comments
+
+- 2026-08-31 — Delivered in [PR #6](https://github.com/gsbecerrag/cadre-ai-challenge/pull/6). Public URL: <https://cadre-support-agent-495870119371.us-central1.run.app>. Subagent-driven: implementer (opus, TDD, 29+2 tests → 30+2 after the fix round); reviewer (opus): Spec ✅, 2 Important findings fixed in round 1, scoped re-review clean. 8 Minor findings deferred to the ledger (`docs/process/sdd-ledger-p0.md`); two carried into ticket 02 (root logger unmanaged; bare `/api`) and two into ticket 03 (tests baked into the image; `--set-secrets` for the deploy).
+- Ruling: Google Frontend answers `/healthz` on `*.run.app` with a 404 that never reaches the container (verified with curl). Canonical deployed health path is `/api/healthz`; `/healthz` stays as an in-app alias for local/Docker. The "answers `/healthz`" criterion is satisfied through the alias.
 
 ## Global Constraints
 
@@ -69,6 +74,8 @@ Source ticket: `.scratch/cadre-support-agent/issues/02-first-turn-stub-provider.
 
 **Blocked by:** 01 (Hello-world Assistant live on Cloud Run)
 
+**Design reference:** [docs/design](../../../docs/design/README.md) — artboard `cadre-support-chat.dc.html`, brief §2.3–2.5 and §2.7: the launcher (fixed bottom-right, 58 px circle, ink `#0c0407`), the panel shell (docked 392 px / expanded, radius 24 px, header gradient with the avatar "C", title "Cadre AI Assistant", presence line, EN/ES toggle for chrome strings, expand and close), the `text` and `typing` message kinds, citation chips (monospace pill on `#f2efe4`), the input bar (placeholder "Ask about services, industries, pricing…", send `↑`), quick-reply chips, and the `msgin` entrance. The presence line shows the offline copy until ticket 11 wires Availability; the host page under the widget is ticket 07 (keep a stable mount point).
+
 **Status:** ready-for-agent
 
 - [ ] Posting a message to the chat endpoint streams the event sequence text deltas → done, and the done event carries usage; covered at seam S1 with the stub provider and in-memory store.
@@ -78,6 +85,7 @@ Source ticket: `.scratch/cadre-support-agent/issues/02-first-turn-stub-provider.
 - [ ] The compiler produces a KB Section for every heading in the topic files with ids of the form `topic#heading`, and the assembled system prompt lists the Knowledge Base block before any volatile content; covered at seam S2.
 - [ ] The chat reducer turns a recorded event sequence into the expected chat state (streamed text accumulates, error renders as a friendly message); covered at seam S4 with one Vitest test.
 - [ ] Running locally with the stub provider, the browser shows a streamed answer that cites a section id; a short screen recording or screenshot is attached to the PR.
+- [ ] The chat widget matches the design reference for the launcher, panel shell, text/typing bubbles, citation chips, input bar and quick replies (tokens, radii, copy); any deviation is listed in the PR.
 
 ## Global Constraints
 
@@ -141,6 +149,8 @@ Source ticket: `.scratch/cadre-support-agent/issues/04-knowledge-base-and-escala
 
 **Blocked by:** 02 (First Turn end-to-end with the stub provider)
 
+**Design reference:** [docs/design](../../../docs/design/README.md) — brief §2.5 kind 3: the Escalation card (3 px `#db4545` left border, radius `6px 16px 16px 6px`, title, body, boxed "Next step:" line, citations). The pricing and generic-fallback copy in §2.5 is the reference wording, in English and Spanish.
+
 **Status:** ready-for-agent
 
 - [ ] Every fact in the Knowledge Base traces to the research files or the brief; the "what Cadre does not publish" topic lists pricing, Portal login, certifications, headcount, and named availability.
@@ -149,6 +159,7 @@ Source ticket: `.scratch/cadre-support-agent/issues/04-knowledge-base-and-escala
 - [ ] Citations in the answer render as inline references that reveal the section's title on hover or tap.
 - [ ] A Spanish message receives a Spanish answer (prompt rule; verified manually on the deployed app and recorded in the PR).
 - [ ] Manual verification on the deployed app of the six brief scenarios plus three Trap Questions (pricing, Portal URL, SOC 2), with the transcripts attached to the PR.
+- [ ] Escalations render as the design's Escalation card with the "Next step:" line; the pricing and generic-fallback wording follows the design reference.
 
 ## Global Constraints
 
@@ -244,13 +255,16 @@ Source ticket: `.scratch/cadre-support-agent/issues/07-demo-portal.md` — read 
 
 **Blocked by:** 01 (Hello-world Assistant live on Cloud Run)
 
+**Design reference:** [docs/design](../../../docs/design/README.md) — brief §2.1–2.2: the mock cadreai.com host page (sticky nav with "Talk to an AI Strategist", hero "From AI Confusion to AI Confidence.", partner strip, three-card grid, dark CTA "Track your AI results" → Portal, footer with the contact details) and the Portal (badge "Demo portal · mock data", tabs Dashboard / Tools / Agents / Results & Training, three stat cards, agents table with "● Live"). Ruling: the host page is in scope here — it is the page the chat widget floats over; it replaces ticket 01's placeholder shell and keeps the widget's mount point.
+
 **Status:** ready-for-agent
 
 - [ ] Four portal pages render with mock data: dashboard (summary tiles), tools, agents (with per-agent results), results/training (progress); each shows the demo badge and shares a portal layout with navigation.
 - [ ] The pages use the Cadre design tokens (colours, type, pill buttons) and are responsive.
 - [ ] Each page has a stable route and, for the walkthrough destinations, stable element ids on the key panels (agents results, training progress, tools list).
-- [ ] The portal code touches only its own route group and one route registration; `make check` stays green; no API changes.
+- [ ] The site and portal code touch only their own route groups and the root/portal route registrations; `make check` stays green; no API changes.
 - [ ] A screenshot of each page is attached to the PR.
+- [ ] The root route renders the mock cadreai.com host page from the design (nav, hero, partner strip, cards, CTA, footer) with the chat widget's mount point preserved; the Portal pages match the design reference.
 
 ## Global Constraints
 
@@ -278,12 +292,15 @@ Source ticket: `.scratch/cadre-support-agent/issues/08-walkthrough-cards.md` —
 
 **Blocked by:** 04 (Complete Knowledge Base and honest Escalation on Trap Questions), 07 (Demo Portal with mock data)
 
+**Design reference:** [docs/design](../../../docs/design/README.md) — brief §2.5 kind 4 and §6: the Walkthrough Card (cream header band with title, numbered steps with circular badges, CTA "Open demo Portal", optional citations) and the reference flow: cited text ("Here's where that lives — the Portal tracks tools, agents, training, and results:") followed by the card "See your agents' results in the Portal" with its three steps.
+
 **Status:** ready-for-agent
 
 - [ ] A Turn in which the provider calls `show_walkthrough` with a known destination streams a card event with the resolved link and the steps; an unknown destination id is rejected with a tool error the loop can recover from; covered at seam S1 with the stub.
 - [ ] The chat reducer places the card in the transcript at the right position relative to text; covered at seam S4 (extend the existing reducer test).
 - [ ] Clicking the card's link on the deployed app opens the matching Portal page in the same tab; recorded in the PR.
 - [ ] The Maturity Index walkthrough's destination is the contact form or a Hand-over, never an invented page; verified manually and recorded in the PR.
+- [ ] The Walkthrough Card matches the design reference (header band, numbered steps, CTA, citations).
 
 ## Global Constraints
 
@@ -310,6 +327,8 @@ Source ticket: `.scratch/cadre-support-agent/issues/09-lead-capture-qualificatio
 **What to build:** A Visitor shares their name, work email, company, phone, and role naturally during the conversation; the Assistant acknowledges without a lecture and a Lead is created for the Session with the five Qualification Signals it has learned (industry fit, company size or role, a concrete initiative or pain, a timeline or budget, explicit intent) and a Qualification Score computed in code as the count of signals present. Later details update the same Lead. The model never assigns the score; the threshold comes from configuration (default three). The system prompt gains qualification guidance: collect signals conversationally, never interrogate, call the tool as soon as any Contact Detail appears. Phase P2.
 
 **Blocked by:** 03 (Real Grounded Answers on the public URL)
+
+**Design reference:** [docs/design](../../../docs/design/README.md) — none directly: the design captures details through a "Your details" form card, which ticket 11 builds on top of this ticket's Lead upsert; this ticket implements the conversational `capture_lead` path from the spec. Ruling: the five Qualification Signals are the spec's (industry fit, company size or role, concrete initiative or pain, timeline or budget, explicit intent); the design's labels are superseded — see the rulings table.
 
 **Status:** ready-for-agent
 
@@ -345,12 +364,15 @@ Source ticket: `.scratch/cadre-support-agent/issues/10-strategist-console-auth-a
 
 **Blocked by:** 09 (Lead capture with a Qualification Score computed in code)
 
+**Design reference:** [docs/design](../../../docs/design/README.md) — artboard `strategist-console.dc.html`, brief §3 header and left nav: logo + "Strategist Console", the Availability control (label "Online" `#0a7d43` / "Offline" `#999` with the pill toggle), the identity block (avatar initial, name, email), the 200 px nav with tabs "Handover queue" / "Callbacks" / "Triage" and the red count badge (active tab weight 600, `#db4545` on `#f2efe4`). The design has no sign-in screen: build a minimal one in the same tokens (logo, "Sign in with Google", refusal message). The Leads list of this ticket uses the queue card style from §3.1.
+
 **Status:** ready-for-agent
 
 - [ ] Console endpoints reject a missing or invalid token and an email outside the allowlist, and accept an allowlisted one; covered at seam S1 with the auth dependency overridden by a fake verifier.
 - [ ] Setting Availability writes the Strategist's presence document with `online` and a timestamp; reading Availability reports whether any Strategist is online; covered at S1 with the in-memory store.
 - [ ] Firestore rules allow allowlisted signed-in users to read Leads, Handover Requests, and Triage Reports and to write only their own presence document; rules are deployed with the app (rules unit tests are out of scope; a manual denial check is recorded in the PR).
 - [ ] On the deployed app, signing in with the allowlisted account shows the Console; a non-allowlisted account is refused with a clear message; toggling online updates the presence document; a new Lead appears without a refresh. Screenshots attached to the PR.
+- [ ] The Console shell (header, Availability control, identity, left nav with badge) matches the design reference; the sign-in page uses the same tokens.
 
 ## Global Constraints
 
@@ -378,6 +400,8 @@ Source ticket: `.scratch/cadre-support-agent/issues/11-callback-handover-console
 
 **Blocked by:** 10 (Strategist Console with Google sign-in, Availability, and Leads)
 
+**Design reference:** [docs/design](../../../docs/design/README.md) — brief §2.5 kinds 5–7 and §3.1–3.2. Chat side: the "Your details" card (Full name / Work email / Company, "Share details", done state "✓ Details shared with the strategist") posting to this ticket's Lead endpoint (reusing ticket 09's upsert), the hand-over offer card ("Do you want to jump into a call with our experts?", Yes / "Keep chatting"), the decline line, and the Callback confirmation card ("A strategist will call you back"). Console side: the "Handover requests" list cards (name, pulsing state badge, company · industry, time, "score n/5"), the request detail (name header with the contact line, Qualification panel with ✓/— rows, Request panel with Mode / State / Session / Trace, "Conversation so far" bubbles) and the Callbacks table (Lead / Contact / Requested / Score). Rulings (see the rulings table): the spec's state machine with derived display labels; one Handover Request type with a mode field (Callbacks tab = `callback` filter); the calendar picker and "Scheduled for" slot are out of scope; the chat header's presence line is wired to Availability here.
+
 **Status:** ready-for-agent
 
 - [ ] The offer tool is absent from the tool list below the threshold, present at or above it, and absent again after one offer in the Session; covered at seam S1 by inspecting the tools the stub provider receives.
@@ -385,6 +409,7 @@ Source ticket: `.scratch/cadre-support-agent/issues/11-callback-handover-console
 - [ ] The state machine's allowed transitions are covered exhaustively at seam S2.
 - [ ] The chat reducer handles the offer card and the hand-over state events (offered, accepted, callback confirmed, declined); covered at seam S4.
 - [ ] On the deployed app with the Console open on a second screen: accepting the offer makes the request appear within a second with a notification and sound; the Visitor sees the Callback confirmation. A short recording is attached to the PR.
+- [ ] The chat cards (details, offer, callback) and the Console queue, request detail and Callbacks table match the design reference, using the spec's state names and signal labels.
 
 ## Global Constraints
 
@@ -412,12 +437,15 @@ Source ticket: `.scratch/cadre-support-agent/issues/12-feedback-thumbs.md` — r
 
 **Blocked by:** 06 (Every Turn is a Trace with cost in Langfuse)
 
+**Design reference:** [docs/design](../../../docs/design/README.md) — brief §2.5 kind 9: the feedback card ("How was your conversation with {Strategist}?" with 👍/👎, thumbs-up hover border `#0a7d43`) and its done state with the thanks/apology copy. Ruling: the same component also appears after each Assistant answer, inline, as the spec requires.
+
 **Status:** ready-for-agent
 
 - [ ] Posting Feedback with a rating, an optional comment, the Session id and the Trace id writes a Feedback document and calls the tracing sink with a score of 1 or 0 on that Trace; a comment passes through the `full` Redaction Profile; covered at seam S1 with the in-memory store and the fake tracer.
 - [ ] Feedback for an unknown Session or a Trace id that does not belong to it is rejected; covered at S1.
 - [ ] The chat shows the buttons after each answer and reflects the chosen state; covered at seam S4 (extend the reducer test).
 - [ ] On the deployed app, a thumbs-down appears as a score on the Trace in Langfuse and as a document in Firestore; screenshot attached to the PR.
+- [ ] The feedback buttons and their done states match the design reference.
 
 ## Global Constraints
 
@@ -479,6 +507,8 @@ Source ticket: `.scratch/cadre-support-agent/issues/14-triage-agent-and-triage-t
 
 **Blocked by:** 10 (Strategist Console with Google sign-in, Availability, and Leads), 12 (Thumbs up/down becomes Feedback and a Langfuse score)
 
+**Design reference:** [docs/design](../../../docs/design/README.md) — brief §3.3: the Triage tab (heading "Triage reports", subtitle "Written by the Triage Agent on every thumbs-down. Newest first."), report cards with the category chip (Knowledge gap on `#f2efe4`/`#996`, Wrong escalation on `#fdeaea`/`#db4545`; add chip styles for the other five categories), severity label, timestamp, "Open trace in Langfuse ↗", summary, italic evidence block on cream, and the dashed boxes "Suggested KB addition" / "Suggested eval case" (monospace).
+
 **Status:** ready-for-agent
 
 - [ ] The handler, invoked with a fake Firestore event for a thumbs-up, writes nothing; for a thumbs-down it writes a Triage Report with every field of the schema; invoked twice for the same Feedback id it writes once; covered at seam S3 with a fake Firestore client and the stub provider returning a structured-output fixture.
@@ -486,6 +516,7 @@ Source ticket: `.scratch/cadre-support-agent/issues/14-triage-agent-and-triage-t
 - [ ] The Console Triage tab lists reports via a realtime listener with category, severity, summary, suggestions, and the Trace link; allowlist enforced as in ticket 10.
 - [ ] The function deploys with `make deploy-functions` (core package copied in), and the emulator flow fires it locally; on the deployed app a real thumbs-down produces a report in the Console within a minute. Screenshots attached to the PR.
 - [ ] If the Functions deploy is blocked after a bounded effort, the fallback (a background task in the API) is implemented behind the same handler and recorded in the ADR and plan.md's cut log.
+- [ ] The Triage tab matches the design reference for all seven categories.
 
 ## Global Constraints
 
@@ -513,6 +544,8 @@ Source ticket: `.scratch/cadre-support-agent/issues/15-live-video-handover.md` �
 
 **Blocked by:** 11 (Callback Hand-over with a realtime Console notification)
 
+**Design reference:** [docs/design](../../../docs/design/README.md) — brief §2.6 and §3.1. Chat side: the connecting state (spinner + "Connecting you with a strategist…") and the live view ("You're being assisted by" + name badge, live pill with pulsing dot, video area, self-view, sharing badge, control pill with mic / camera / share / end). Console side: "Claim & join call" (ink pill) when pending, "End call" (red pill) when in call, and the in-call banner ("In call — Daily room open in the chat panel" + room URL). Daily's prebuilt iframe replaces the mock video area; its own controls may replace the custom control pill.
+
 **Status:** ready-for-agent
 
 - [ ] Accepting in video mode calls the video adapter (faked in tests) to create a room and stores the room URL on the request; the adapter is never called in callback mode; covered at seam S1 with a fake video adapter.
@@ -520,6 +553,7 @@ Source ticket: `.scratch/cadre-support-agent/issues/15-live-video-handover.md` �
 - [ ] The chat reducer shows the call frame at `pending_strategist`, the Strategist's name at `in_call`, and the "call ended" state; covered at seam S4.
 - [ ] With the flag off, the whole path behaves exactly as ticket 11; covered at S1.
 - [ ] On the deployed app with the Console on a second device: accept → room opens in chat → Join from Console → both sides see video → End. A short recording is attached to the PR.
+- [ ] The connecting/live states and the Console call controls and banner match the design reference, with Daily's prebuilt frame in the video area.
 
 ## Global Constraints
 

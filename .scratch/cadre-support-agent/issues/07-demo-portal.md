@@ -4,10 +4,13 @@
 
 **Blocked by:** 01 (Hello-world Assistant live on Cloud Run)
 
+**Design reference:** [docs/design](../../../docs/design/README.md) — brief §2.1–2.2: the mock cadreai.com host page (sticky nav with "Talk to an AI Strategist", hero "From AI Confusion to AI Confidence.", partner strip, three-card grid, dark CTA "Track your AI results" → Portal, footer with the contact details) and the Portal (badge "Demo portal · mock data", tabs Dashboard / Tools / Agents / Results & Training, three stat cards, agents table with "● Live"). Ruling: the host page is in scope here — it is the page the chat widget floats over; it replaces ticket 01's placeholder shell and keeps the widget's mount point.
+
 **Status:** ready-for-agent
 
 - [ ] Four portal pages render with mock data: dashboard (summary tiles), tools, agents (with per-agent results), results/training (progress); each shows the demo badge and shares a portal layout with navigation.
 - [ ] The pages use the Cadre design tokens (colours, type, pill buttons) and are responsive.
 - [ ] Each page has a stable route and, for the walkthrough destinations, stable element ids on the key panels (agents results, training progress, tools list).
-- [ ] The portal code touches only its own route group and one route registration; `make check` stays green; no API changes.
+- [ ] The site and portal code touch only their own route groups and the root/portal route registrations; `make check` stays green; no API changes.
 - [ ] A screenshot of each page is attached to the PR.
+- [ ] The root route renders the mock cadreai.com host page from the design (nav, hero, partner strip, cards, CTA, footer) with the chat widget's mount point preserved; the Portal pages match the design reference.

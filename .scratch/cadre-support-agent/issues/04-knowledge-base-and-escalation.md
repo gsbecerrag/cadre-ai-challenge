@@ -4,6 +4,8 @@
 
 **Blocked by:** 02 (First Turn end-to-end with the stub provider)
 
+**Design reference:** [docs/design](../../../docs/design/README.md) — brief §2.5 kind 3: the Escalation card (3 px `#db4545` left border, radius `6px 16px 16px 6px`, title, body, boxed "Next step:" line, citations). The pricing and generic-fallback copy in §2.5 is the reference wording, in English and Spanish.
+
 **Status:** ready-for-agent
 
 - [ ] Every fact in the Knowledge Base traces to the research files or the brief; the "what Cadre does not publish" topic lists pricing, Portal login, certifications, headcount, and named availability.
@@ -12,3 +14,4 @@
 - [ ] Citations in the answer render as inline references that reveal the section's title on hover or tap.
 - [ ] A Spanish message receives a Spanish answer (prompt rule; verified manually on the deployed app and recorded in the PR).
 - [ ] Manual verification on the deployed app of the six brief scenarios plus three Trap Questions (pricing, Portal URL, SOC 2), with the transcripts attached to the PR.
+- [ ] Escalations render as the design's Escalation card with the "Next step:" line; the pricing and generic-fallback wording follows the design reference.
