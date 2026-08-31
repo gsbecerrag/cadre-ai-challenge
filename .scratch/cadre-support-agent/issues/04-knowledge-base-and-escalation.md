@@ -6,7 +6,7 @@
 
 **Design reference:** [docs/design](../../../docs/design/README.md) — brief §2.5 kind 3: the Escalation card (3 px `#db4545` left border, radius `6px 16px 16px 6px`, title, body, boxed "Next step:" line, citations). The pricing and generic-fallback copy in §2.5 is the reference wording, in English and Spanish.
 
-**Status:** ready-for-agent
+**Status:** in-progress
 
 - [ ] Every fact in the Knowledge Base traces to the research files or the brief; the "what Cadre does not publish" topic lists pricing, Portal login, certifications, headcount, and named availability.
 - [ ] The compiled Knowledge Base stays under the token budget recorded in the architecture doc, and every section id is unique; covered at seam S2.
