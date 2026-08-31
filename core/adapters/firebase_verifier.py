@@ -22,6 +22,9 @@ from google.oauth2 import id_token as google_id_token
 from core.auth import InvalidTokenError, StrategistIdentity, identity_from_claims
 from core.logging import get_logger
 
+# Tolerance for a container clock that disagrees with Google's by a moment.
+CLOCK_SKEW_SECONDS = 10
+
 logger = get_logger("firebase")
 
 
@@ -43,7 +46,14 @@ class FirebaseTokenVerifier:
             # `google-auth` ships no type information, so this call is untyped to mypy; the
             # ignore is on the one line rather than relaxing strictness for the module.
             claims = google_id_token.verify_firebase_token(  # type: ignore[no-untyped-call]
-                id_token, self._transport, audience=self._project_id
+                id_token,
+                self._transport,
+                audience=self._project_id,
+                # A little tolerance for the clock: a token minted a second ahead of this
+                # container's time is otherwise "not yet valid", and a Strategist sees a
+                # sign-in that fails for no reason they can act on. Ten seconds is far short
+                # of the token's hour, so it widens nothing that matters.
+                clock_skew_in_seconds=CLOCK_SKEW_SECONDS,
             )
         except (ValueError, GoogleAuthError) as rejected:
             # Expired, wrong audience, wrong signature, not a JWT at all — all one case to the

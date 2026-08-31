@@ -102,25 +102,30 @@ def build_store(settings: Settings) -> ConversationStore:
 def build_token_verifier(settings: Settings, allowlist: frozenset[str]) -> TokenVerifier:
     """The `TokenVerifier` seam: who the Console believes a request comes from (ADR-0010).
 
+    `fake` is a demonstration mode: it turns `fake:<email>` into a Strategist, so the Console
+    can be opened and clicked through without a Google Workspace account. It accepts an
+    identity anyone can type, so selecting it outside development is a startup failure rather
+    than a surprising one at the first request.
+
     An empty allowlist means this deployment has no Console — nobody could be admitted even
     with a perfectly valid token — so it gets the closed verifier rather than a demand for a
     Firebase project. That is what keeps CI, the unit tests and a bare `make dev` from needing
     one.
 
-    `fake` is a demonstration mode: it turns `fake:<email>` into a Strategist, so the Console
-    can be opened and clicked through without a Google Workspace account. It accepts an
-    identity anyone can type, so selecting it outside development is a startup failure rather
-    than a surprising one at the first request.
+    The order of those two matters. The demo-mode refusal comes first, because a service
+    configured to accept typed identities is misconfigured whether or not anyone is on the
+    allowlist yet: starting it closed would hide the mistake until the day a Strategist is
+    added, and then open the Console to anyone who can type their address.
     """
+    if settings.console_auth == "fake" and settings.env != "development":
+        raise MissingConfigurationError(
+            "CONSOLE_AUTH=fake accepts any identity a caller types and is refused when "
+            f"ENV={settings.env}. The Console shows every Lead's Contact Details, so the "
+            "deployed service must verify real Firebase ID tokens (CONSOLE_AUTH=firebase)."
+        )
     if not allowlist:
         return ClosedTokenVerifier()
     if settings.console_auth == "fake":
-        if settings.env != "development":
-            raise MissingConfigurationError(
-                "CONSOLE_AUTH=fake accepts any identity a caller types and is refused when "
-                f"ENV={settings.env}. The Console shows every Lead's Contact Details, so the "
-                "deployed service must verify real Firebase ID tokens (CONSOLE_AUTH=firebase)."
-            )
         logger.warning(
             "CONSOLE_AUTH=fake: the Console accepts fake:<email> credentials without Google"
         )

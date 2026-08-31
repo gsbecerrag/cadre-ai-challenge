@@ -135,9 +135,14 @@ def create_console_router(
             raise HTTPException(status.HTTP_403_FORBIDDEN, not_allowlisted(identity.email))
         return identity
 
-    # Written out at every endpoint rather than aliased: the annotation *is* the access
-    # control, and an endpoint added here without it would be a public one.
-    router = APIRouter(prefix="/console", tags=["console"])
+    # On the router, not on each endpoint: the allowlist check is the Console's defining
+    # property, and a route added here that forgot to ask for it would be a public one. FastAPI
+    # solves a router-level dependency before the endpoint's own arguments, so this refuses a
+    # stranger before it validates their body. The endpoints that need to know *who* signed in
+    # ask for the identity as well; it is the same dependency, resolved once per request.
+    router = APIRouter(
+        prefix="/console", tags=["console"], dependencies=[Depends(current_strategist)]
+    )
 
     @router.get("/availability")
     async def read_availability(
@@ -161,9 +166,9 @@ def create_console_router(
         )
 
     @router.get("/leads")
-    async def list_leads(
-        strategist: Annotated[StrategistIdentity, Depends(current_strategist)],
-    ) -> ConsoleLeads:
+    async def list_leads() -> ConsoleLeads:
+        # No `strategist` argument: every Strategist sees the same queue, so the identity is
+        # not needed here — only the admission the router already enforced.
         leads = await store.list_leads(DEFAULT_LEAD_PAGE)
         return ConsoleLeads(leads=[console_lead(lead) for lead in leads])
 

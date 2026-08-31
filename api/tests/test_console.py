@@ -19,8 +19,10 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 
+from api.console import create_console_router
 from api.main import create_app
 from core.adapters.fake_verifier import ScriptedTokenVerifier
 from core.adapters.memory_store import InMemoryConversationStore
@@ -41,10 +43,26 @@ DANA_TOKEN = "id-token-dana"
 # Deliberately mixed case and padded: the allowlist a human types into a deploy command.
 ALLOWED_EMAILS = " Angel@Example.com , dana@example.com "
 
-CONSOLE_ENDPOINTS = (
-    ("GET", "/api/console/leads"),
-    ("GET", "/api/console/availability"),
-)
+
+def console_endpoints() -> tuple[tuple[str, str], ...]:
+    """Every route the Console router exposes, read off the router itself.
+
+    Derived rather than typed out, so a route added to `create_console_router` is a route the
+    refusal tests below cover the day it is added. An endpoint that forgot the allowlist is
+    otherwise a test nobody thought to write — which is exactly the endpoint that leaks.
+    """
+    router = create_console_router(
+        InMemoryConversationStore(), verifier=ScriptedTokenVerifier({}), allowlist=frozenset()
+    )
+    return tuple(
+        (method, f"/api{route.path}")
+        for route in router.routes
+        if isinstance(route, APIRoute)
+        for method in sorted((route.methods or set()) - {"HEAD", "OPTIONS"})
+    )
+
+
+CONSOLE_ENDPOINTS = console_endpoints()
 
 FIRST_LEAD = Lead(
     session_id="session-0001",
@@ -104,6 +122,16 @@ def console_client(
 def as_strategist(token: str) -> dict[str, str]:
     """The header the Console's browser sends: the Firebase ID token as a bearer credential."""
     return {"Authorization": f"Bearer {token}"}
+
+
+def test_the_refusal_tests_cover_every_console_endpoint() -> None:
+    """The parametrisation above is only worth anything if it actually found the routes: an
+    empty or half-read tuple would make three tests pass by testing nothing."""
+    assert set(CONSOLE_ENDPOINTS) == {
+        ("GET", "/api/console/availability"),
+        ("PUT", "/api/console/availability"),
+        ("GET", "/api/console/leads"),
+    }
 
 
 @pytest.mark.parametrize(("method", "path"), CONSOLE_ENDPOINTS)
@@ -269,8 +297,11 @@ def test_setting_availability_is_refused_for_a_strategist_who_is_not_on_the_allo
     assert asyncio.run(store.any_strategist_online()) is False
 
 
+@pytest.mark.parametrize(
+    "allowlist", [ALLOWED_EMAILS, ""], ids=["with-allowlist", "without-allowlist"]
+)
 def test_the_demo_credential_mode_is_refused_outside_development(
-    settings: Settings, web_dist: Path, provider: StubModelProvider
+    settings: Settings, web_dist: Path, provider: StubModelProvider, allowlist: str
 ) -> None:
     """`CONSOLE_AUTH=fake` admits anyone who can type `fake:<allowlisted-email>`.
 
@@ -281,7 +312,7 @@ def test_the_demo_credential_mode_is_refused_outside_development(
     is already public.
     """
     demo_mode = settings.model_copy(
-        update={"env": "production", "console_auth": "fake", "admin_allowed_emails": ALLOWED_EMAILS}
+        update={"env": "production", "console_auth": "fake", "admin_allowed_emails": allowlist}
     )
 
     with pytest.raises(MissingConfigurationError) as refusal:

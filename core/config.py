@@ -86,7 +86,7 @@ class Settings(BaseSettings):
     admin_allowed_emails: str = ""
     # Which implementation sits behind the `TokenVerifier` seam. `fake` decodes `fake:<email>`
     # so the Console can be demonstrated without Google sign-in, and is refused outside
-    # development (see `resolve_console_auth`).
+    # development (see `build_token_verifier` in api/main.py).
     console_auth: ConsoleAuthName = "firebase"
     # The audience a Firebase ID token must carry. Blank falls back to GOOGLE_CLOUD_PROJECT,
     # which is the same project here; it is separate because Firebase Auth and Firestore do
