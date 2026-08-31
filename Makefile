@@ -11,11 +11,18 @@ COOKIE_SECRET     := session-cookie-secret
 # The deployed build reports its git sha from /healthz.
 VERSION := $(shell git rev-parse --short HEAD 2>/dev/null || echo dev)
 
+# The Strategist Console allowlist the deployed service reads (ADR-0010). It is set here, not
+# left to a one-off gcloud command, because a blank allowlist admits nobody: a deploy that
+# forgot it would close the Console and look exactly like a broken sign-in. `make rules`
+# renders the same value into firestore.rules. Override for a different list:
+#   make deploy ADMIN_ALLOWED_EMAILS="a@gocadre.ai,b@gocadre.ai"
+ADMIN_ALLOWED_EMAILS ?= galo.s.becerra@gmail.com
+
 # The dotenv is a development convenience only: uv loads it when it exists, and it never
 # exists in CI or in the container, so tests and Cloud Run cannot pick up a stray .env.
 ENV_FILE := $(if $(wildcard .env),--env-file .env,)
 
-.PHONY: help install dev check test build-web deploy deploy-secrets
+.PHONY: help install dev check test build-web deploy deploy-secrets rules deploy-rules
 
 help:
 	@echo "install    install Python (uv) and web (pnpm) dependencies"
@@ -24,6 +31,8 @@ help:
 	@echo "test       unit tests only (pytest + vitest)"
 	@echo "build-web  build the SPA into web/dist so the API can serve it"
 	@echo "deploy     build the container and deploy it to Cloud Run"
+	@echo "rules      render ADMIN_ALLOWED_EMAILS into firestore.rules"
+	@echo "deploy-rules  deploy firestore.rules and the indexes to Firebase"
 
 install:
 	uv sync
@@ -74,6 +83,9 @@ deploy-secrets:
 # --update-env-vars and --update-secrets, not their --set- forms: a variable or a secret
 # binding another ticket added to the service survives this deploy instead of being replaced.
 # Secret values are bound from Secret Manager and never passed on the command line.
+# The `^|^` prefix is gcloud's alternate delimiter: `|` separates the pairs instead of a
+# comma, so an ADMIN_ALLOWED_EMAILS holding several comma-separated addresses stays one
+# value. It has to be `|` and not `@`, which every address in that list contains.
 deploy: deploy-secrets
 	@url=$$(gcloud run services describe $(SERVICE) --project $(PROJECT) --region $(REGION) \
 	    --format='value(status.url)' 2>/dev/null); \
@@ -83,9 +95,21 @@ deploy: deploy-secrets
 	  --region $(REGION) \
 	  --port 8080 \
 	  --allow-unauthenticated \
-	  --update-env-vars ENV=production,APP_VERSION=$(VERSION),MODEL_PROVIDER=openrouter,CONVERSATION_STORE=firestore,GOOGLE_CLOUD_PROJECT=$(PROJECT),OPENROUTER_APP_URL=$${url:-https://cadreai.com} \
+	  --update-env-vars "^|^ENV=production|APP_VERSION=$(VERSION)|MODEL_PROVIDER=openrouter|CONVERSATION_STORE=firestore|GOOGLE_CLOUD_PROJECT=$(PROJECT)|ADMIN_ALLOWED_EMAILS=$(ADMIN_ALLOWED_EMAILS)|OPENROUTER_APP_URL=$${url:-https://cadreai.com}" \
 	  --update-secrets OPENROUTER_API_KEY=$(OPENROUTER_SECRET):latest,SESSION_COOKIE_SECRET=$(COOKIE_SECRET):latest
 	@url=$$(gcloud run services describe $(SERVICE) --project $(PROJECT) --region $(REGION) \
 	    --format='value(status.url)'); \
 	  echo "Service URL: $$url"; \
 	  curl -sS "$$url/api/healthz"; echo
+
+# The Console enforces the Strategist allowlist twice — in the API and in Firestore's rules,
+# because the browser reads Leads live and a realtime listener never passes through the API
+# (ADR-0010). This renders the second one from the same ADMIN_ALLOWED_EMAILS the first reads,
+# so the committed rules always say what the deployment says. Commit the result.
+rules:
+	uv run $(ENV_FILE) scripts/render-firestore-rules.py
+
+# Rules and indexes are deployed separately from the container: they belong to the Firebase
+# project, not to the Cloud Run revision. Run `make rules` first if the allowlist changed.
+deploy-rules:
+	firebase deploy --only firestore:rules,firestore:indexes --project $(PROJECT)
