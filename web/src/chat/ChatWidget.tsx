@@ -183,6 +183,7 @@ export function ChatWidget() {
             key={message.id}
             message={message}
             typingLabel={chrome.typing}
+            nextStepLabel={chrome.nextStep}
             sectionTitles={state.sections}
           />
         ))}

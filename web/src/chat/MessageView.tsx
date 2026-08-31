@@ -53,10 +53,13 @@ function Citations({ ids, titles }: { ids: string[]; titles: Record<string, stri
 export function MessageView({
   message,
   typingLabel,
+  nextStepLabel,
   sectionTitles,
 }: {
   message: Message
   typingLabel: string
+  /** The Escalation card's "Next step:" label, localised with the rest of the chrome. */
+  nextStepLabel: string
   sectionTitles: Record<string, string>
 }) {
   const alignment = message.role === 'visitor' ? 'items-end' : 'items-start'
@@ -94,7 +97,7 @@ export function MessageView({
           <div className="mb-1.5 font-semibold text-[#0c0407]">{message.title}</div>
           <div className="mb-2 whitespace-pre-line text-[#4c4c4c]">{message.body}</div>
           <div className="rounded-[10px] bg-[#faf9f6] px-3 py-2.5 text-[12.5px] text-[#666]">
-            <b className="text-[#0c0407]">Next step:</b> {message.nextStep}
+            <b className="text-[#0c0407]">{nextStepLabel}</b> {message.nextStep}
           </div>
           <Citations ids={message.citations} titles={sectionTitles} />
         </div>
