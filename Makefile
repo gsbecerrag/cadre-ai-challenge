@@ -28,7 +28,7 @@ ADMIN_ALLOWED_EMAILS ?= galo.s.becerra@gmail.com
 # exists in CI or in the container, so tests and Cloud Run cannot pick up a stray .env.
 ENV_FILE := $(if $(wildcard .env),--env-file .env,)
 
-.PHONY: help install dev check test build-web deploy deploy-secrets eval eval-stub rules deploy-rules
+.PHONY: help install dev check test build-web deploy deploy-secrets eval eval-stub rules deploy-rules deploy-functions
 
 help:
 	@echo "install    install Python (uv) and web (pnpm) dependencies"
@@ -41,6 +41,7 @@ help:
 	@echo "deploy     build the container and deploy it to Cloud Run"
 	@echo "rules      render ADMIN_ALLOWED_EMAILS into firestore.rules"
 	@echo "deploy-rules  deploy firestore.rules and the indexes to Firebase"
+	@echo "deploy-functions  copy core/ and knowledge/ into functions/ and deploy the Triage Agent"
 
 install:
 	uv sync
@@ -135,3 +136,23 @@ rules:
 # project, not to the Cloud Run revision. Run `make rules` first if the allowlist changed.
 deploy-rules:
 	firebase deploy --only firestore:rules,firestore:indexes --project $(PROJECT)
+
+# The Triage Agent (ADR-0005): a second deployable, a Firebase Function on writes to the
+# `feedback` collection. It shares this repository's `core` package by copying it into the
+# functions directory at deploy time — the one drift risk the ADR accepted, and the reason it
+# is one make target and not a paragraph in a README. The copy is deliberately dumb: rsync,
+# no rendering, no generated file, so what runs in the function is the same source `make
+# check` just tested, and the triage prompt's cached prefix is byte-identical to the chat's.
+# `--delete` so a module deleted here is deleted there rather than lingering in the bundle.
+#
+#   make deploy-functions COPY_ONLY=1   # copy the packages in, deploy nothing (emulator)
+deploy-functions:
+	rsync -a --delete \
+	  --exclude '__pycache__' --exclude 'tests' --exclude '*.pyc' \
+	  core/ functions/core/
+	rsync -a --delete --exclude 'README.md' knowledge/ functions/knowledge/
+	@if [ -n "$(COPY_ONLY)" ]; then \
+	  echo "COPY_ONLY set: core/ and knowledge/ are in functions/, nothing deployed."; \
+	else \
+	  firebase deploy --only functions --project $(PROJECT); \
+	fi

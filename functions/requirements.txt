@@ -1,0 +1,19 @@
+# The Triage Agent function's runtime (ADR-0005). Separate from the root pyproject on
+# purpose: this is a second deployable with a different entry point, and `firebase deploy`
+# installs from a requirements.txt in this directory. `firebase-functions` is the only
+# dependency that is not already the API's — everything else is what the copied-in `core`
+# package imports, pinned to the same floors as pyproject.toml so the two deployables cannot
+# quietly run different versions of the same seam.
+#
+# `firebase-functions` brings functions-framework, flask, firebase-admin and google-events
+# with it; they are its dependencies, not ours to name.
+firebase-functions>=0.6.0
+
+# core.adapters.firestore_store — the ConversationStore.
+google-cloud-firestore>=2.21
+# core.adapters.openrouter_provider — the streaming HTTP client, no vendor SDK (ADR-0004).
+httpx2>=2.12
+# core.adapters.langfuse_tracer — the Trace the summary is posted back to.
+langfuse>=4.15.1
+# core.config — the typed settings read from the environment.
+pydantic-settings>=2.5

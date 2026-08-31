@@ -9,6 +9,9 @@
 .superpowers/
 docs/
 scripts/
+# The Triage Agent is a second deployable (`make deploy-functions`), not part of the image —
+# and after a deploy it holds a copy of core/ and knowledge/ that would otherwise ship twice.
+functions/
 external_assets/
 
 node_modules/

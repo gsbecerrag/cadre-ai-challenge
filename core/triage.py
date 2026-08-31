@@ -279,16 +279,12 @@ def parse_report(answer: str, *, feedback: Feedback, model: str) -> TriageReport
         id=feedback.id,
         session_id=feedback.session_id,
         trace_id=feedback.trace_id,
-        category=(
-            category if category in TRIAGE_CATEGORIES else FALLBACK_CATEGORY
-        ),
+        category=(category if category in TRIAGE_CATEGORIES else FALLBACK_CATEGORY),
         summary=summary or answer.strip(),
         evidence=_quotes(fields.get("evidence")),
         suggested_kb_addition=str(fields.get("suggested_kb_addition") or "").strip(),
         suggested_eval_case=str(fields.get("suggested_eval_case") or "").strip(),
-        severity=(
-            severity if severity in TRIAGE_SEVERITIES else FALLBACK_SEVERITY
-        ),
+        severity=(severity if severity in TRIAGE_SEVERITIES else FALLBACK_SEVERITY),
         model=model,
     )
 
