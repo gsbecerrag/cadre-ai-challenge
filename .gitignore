@@ -33,3 +33,8 @@ web/node_modules/
 
 # Source artifacts kept locally (unpacked into .claude/skills/ when adopted)
 external_assets/
+
+# Eval scorecards are the output of a run, not a source file — and they carry whole Assistant
+# answers. The directory and its README stay so a run never has to create them.
+evals/reports/*
+!evals/reports/README.md

@@ -39,3 +39,10 @@ jobs:
 
       - name: Lint, typecheck and unit test
         run: make check
+
+      # The deterministic Eval Cases — every Trap Question and every qualification case —
+      # against the stub provider. It catches a regression in the escalate copy table, the
+      # Qualification Score or the chat event contract on the pull request that causes it,
+      # and it costs nothing: no key, no network. The full suite runs on demand (`make eval`).
+      - name: Eval Cases (stub provider)
+        run: make eval-stub

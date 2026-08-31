@@ -9,6 +9,8 @@ single-page fallback.
 """
 
 import secrets
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import UTC, date, datetime
 from pathlib import Path
 
@@ -39,6 +41,7 @@ from core.provider import ModelProvider
 from core.redaction import refuse
 from core.store import ConversationStore
 from core.tools import default_tools
+from core.tracing import NoopTracer, TraceBoundary, Tracer
 from core.turn import TurnRunner
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -90,6 +93,32 @@ def build_provider(settings: Settings) -> ModelProvider:
         cache_ttl=settings.prompt_cache_ttl,
         base_url=settings.openrouter_base_url,
     )
+
+
+def build_tracer(settings: Settings) -> Tracer:
+    """The `Tracer` seam. No keys is the default everywhere but the deployed service, and it
+    is a no-op rather than a startup failure: an observability vendor is not what decides
+    whether a Visitor can be answered."""
+    if not (settings.langfuse_public_key.strip() and settings.langfuse_secret_key.strip()):
+        logger.info("Langfuse keys are not set; Turns run untraced")
+        return NoopTracer()
+    # Imported here, not at the top: the Langfuse SDK is the only thing that knows Langfuse
+    # exists, and a container running untraced should not pay for the import.
+    from core.adapters.langfuse_tracer import LangfuseTracer
+
+    return LangfuseTracer(
+        public_key=settings.langfuse_public_key,
+        secret_key=settings.langfuse_secret_key,
+        host=settings.langfuse_host,
+        release=settings.app_version,
+        environment=settings.env,
+    )
+
+
+def model_name(settings: Settings) -> str:
+    """What the Trace calls the model that answered: the configured model id, or the name of
+    the test double that stood in for one."""
+    return settings.chat_model if settings.model_provider == "openrouter" else "stub"
 
 
 def build_store(settings: Settings) -> ConversationStore:
@@ -163,6 +192,7 @@ def create_app(
     provider: ModelProvider | None = None,
     store: ConversationStore | None = None,
     knowledge: KnowledgeSource | None = None,
+    tracer: Tracer | None = None,
     verifier: TokenVerifier | None = None,
     notifier: Notifier | None = None,
 ) -> FastAPI:
@@ -188,6 +218,9 @@ def create_app(
     def build_prompt() -> SystemPrompt:
         return build_system_prompt(knowledge_block, today=_today())
 
+    # Every Trace passes through the boundary, whichever tracer is behind it: bodies through
+    # the `full` Redaction Profile, and no tracer exception reaching the Turn.
+    traced = TraceBoundary(build_tracer(resolved) if tracer is None else tracer)
     # One store instance, not two: the Turn's history and the Session's Lead are written to
     # the same database, and `capture_lead` reaches it through the tool registry.
     conversation_store = store if store is not None else build_store(resolved)
@@ -204,10 +237,24 @@ def create_app(
         # The one pre-model, pre-store hook: the Refuse Set stops here, at the only place
         # both the provider call and the Session write can be reached from (ADR-0006).
         prepare_message=refuse,
+        tracer=traced,
+        model=model_name(resolved),
         max_turns=resolved.max_turns_per_session,
     )
 
-    app = FastAPI(title="Cadre AI Support Agent", version=resolved.app_version)
+    @asynccontextmanager
+    async def flush_traces_on_the_way_out(_: FastAPI) -> AsyncIterator[None]:
+        """Cloud Run sends SIGTERM and waits before it takes an instance away. That grace
+        period is the last chance a queued Trace has to leave the container, because between
+        requests the exporter's thread gets almost no CPU."""
+        yield
+        traced.shutdown()
+
+    app = FastAPI(
+        title="Cadre AI Support Agent",
+        version=resolved.app_version,
+        lifespan=flush_traces_on_the_way_out,
+    )
     app.state.settings = resolved
     app.add_middleware(RequestContextMiddleware)
     app.include_router(create_health_router(resolved))

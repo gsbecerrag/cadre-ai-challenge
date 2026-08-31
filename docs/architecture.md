@@ -105,6 +105,18 @@ sequenceDiagram
 
 The refuse profile runs before the model and before storage, so nothing in Firestore or in the prompt carries payment cards, government IDs or credentials. The full profile (emails and phones tokenised as well) applies only to traces, logs and notification free text; lead typed fields stay raw because the product needs them.
 
+**What a trace carries** (`core/tracing.py` is the seam, `core/adapters/langfuse_tracer.py` the implementation). One trace per turn, named `turn`, on the Langfuse session id that is the chat session id, opened when the visitor's message has been through the refuse profile and closed after the `done` event has been streamed — so a flush is never on the visitor's critical path:
+
+| On the trace | Value |
+| --- | --- |
+| input / output | the prepared message and the assistant's answer, both through the `full` profile |
+| tags | `escalated`, `lead_captured`, `walkthrough_shown`, `handover_offered` (ticket 11), `language:<en\|es>`, `provider_error`, and `redacted:<category>` per redaction category |
+| metadata | `request_id`, `model`, cited KB section ids, the redaction manifest (counts, never values), the turn's token and cost totals |
+| generation per provider call | the model id, that call's input, output and cached tokens, and the cost OpenRouter reported (`cost_details.total`) — the trace's cost is the sum, never a price table |
+| span per tool execution | the tool's name and whether it produced events for the visitor |
+
+Tracing is a seam like the model provider and the store: without `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` it is a no-op, which is what CI, `make dev` and the unit tests run on, and a tracer that fails cannot fail a turn — the boundary redacts and swallows.
+
 ### 4b. Hand-over to a strategist
 
 ```mermaid
@@ -308,6 +320,23 @@ Solid boxes are MVP; grey dashed boxes are Phase 2 (triggered upgrades) and Phas
 | Observability | Langfuse Cloud | Open source, cost from `usage.cost`, sessions, datasets, scores | LangSmith, Traceloop | [0002](adr/0002-openrouter-sole-provider.md) |
 | Logs and secrets | structlog JSON to Cloud Logging; Secret Manager injected into Cloud Run | Correlate session_id, request_id and trace_id; no secrets in the image or repo | Plain logging; env vars in the service config | [0003](adr/0003-gcp-with-seams.md) |
 | CI | GitHub Actions on pull requests: lint, unit tests, stub-provider eval subset | Deterministic, zero model spend on PRs | Cloud Build | [0008](adr/0008-pytest-evals-over-ragas.md) |
+
+**Evaluation.** `evals/cases.jsonl` holds fifty Eval Cases — twenty in-KB questions with a
+golden answer and the KB Section ids the answer must cite, twenty Trap Questions with the
+`escalate` reason that fits and the strings that would be an invented fact, ten qualification
+exchanges with the Contact Details, Qualification Signals and Qualification Score the Lead must
+end with. Four metrics grade a Turn: `escalation_correctness` and `tool_correctness` are
+deterministic, `correctness` and `groundedness` ask a Haiku 4.5 judge behind the same
+`ModelProvider` seam as the Assistant, each after a deterministic floor (an expected section
+cited; every cited id resolves). The runner builds the application with `create_app` and drives
+it over its own HTTP surface, so a metric grades the event list a browser would have received.
+`make eval` runs all fifty against the real provider — about $0.50, a couple of minutes, a
+scorecard and a JSON report in `evals/reports/` that the model benchmark reads back per model.
+`make eval-stub` runs the thirty deterministic cases against the stub provider, scripted from
+the case, and is the CI step: it cannot say whether the model would have chosen the right tool,
+but it fails the moment the escalate copy table, the score, or the chat event contract changes
+underneath. The Langfuse dataset run is a seam (`evals/sink.py`) with a no-op behind it until
+ticket 06 lands the client. See [ADR-0008](adr/0008-pytest-evals-over-ragas.md).
 
 ## 8. Capacity model
 

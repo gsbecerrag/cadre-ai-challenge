@@ -72,6 +72,8 @@ make install    # uv sync + pnpm install
 make dev        # API with reload on :8080 and Vite on :5173 (Vite proxies /api and /healthz)
 make check      # ruff check, ruff format --check, mypy, pytest, eslint, tsc, vitest — what CI runs
 make test       # pytest + vitest only
+make eval       # all 50 Eval Cases against the real provider + Haiku judge; scorecard + JSON report (needs OPENROUTER_API_KEY)
+make eval-stub  # the 30 deterministic Eval Cases against the stub provider — free, no key; CI runs this after make check
 make build-web  # build web/dist so the API can serve it
 make deploy     # gcloud run deploy --source . to cadre-support-agent in us-central1, then curl the health endpoint
 ```

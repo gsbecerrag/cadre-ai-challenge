@@ -234,10 +234,26 @@ _SENSITIVE = re.compile(
     r"\s*(?:is|are|es|son|:|=)\s*)([^.;,\n]+)"
 )
 
+# Both alternatives are written to be linear in the length of the text, because both profiles
+# run inline on a Visitor message the API accepts up to four thousand characters long, and
+# `full` runs again on every log line and every Trace. Two things do that, and neither changes
+# what is matched:
+#
+# - the leading lookbehind, so a match can only start where a run of local-part characters
+#   starts. Without it the engine retries at all four thousand offsets of "1-1-1-…", and each
+#   retry walks the rest of the run looking for an `@` that is not there — a 4,000-character
+#   message took 54 seconds on the request thread, which is a denial of service, not a slow
+#   redactor;
+# - the bounded repeats, `{1,64}` for a local part and `{1,63}` per domain label, which are
+#   the lengths RFC 1035 and RFC 5321 allow anyway, so no email is lost and no single attempt
+#   can walk further than one label.
 _EMAIL = re.compile(
-    r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"
-    r"|(?i:[A-Za-z0-9_-]+(?:\s+(?:dot|punto)\s+[A-Za-z0-9_-]+)*\s+(?:at|arroba)\s+"
-    r"[A-Za-z0-9-]+(?:\s+(?:dot|punto)\s+[A-Za-z0-9-]+)*\s+(?:dot|punto)\s+[A-Za-z]{2,4}\b)"
+    r"(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]{1,63}"
+    r"(?:\.[A-Za-z0-9-]{1,63}){0,4}\.[A-Za-z]{2,24}"
+    r"|(?i:(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{1,64}"
+    r"(?:\s+(?:dot|punto)\s+[A-Za-z0-9_-]{1,64}){0,4}\s+(?:at|arroba)\s+"
+    r"[A-Za-z0-9-]{1,63}(?:\s+(?:dot|punto)\s+[A-Za-z0-9-]{1,63}){0,4}"
+    r"\s+(?:dot|punto)\s+[A-Za-z]{2,4}\b)"
 )
 
 _IBAN = re.compile(r"\b[A-Z]{2}\d{2}(?:[ ]?[A-Z0-9]{4}){2,7}(?:[ ]?[A-Z0-9]{1,4})?\b")

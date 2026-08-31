@@ -15,6 +15,7 @@ dependencies = [
     # The OpenRouter adapter's HTTP client. No vendor SDK sits between us and the provider's
     # streaming quirks (ADR-0004), so a streaming HTTP client is a runtime dependency.
     "httpx2>=2.12",
+    "langfuse>=4.15.1",
     "pydantic-settings>=2.5",
     "uvicorn[standard]>=0.30",
 ]
@@ -60,10 +61,16 @@ known-first-party = ["api", "core"]
 
 [tool.mypy]
 python_version = "3.12"
-files = ["api", "core"]
+files = ["api", "core", "evals"]
 strict = true
 
 [tool.pytest.ini_options]
-testpaths = ["api/tests", "core/tests"]
-addopts = "-q --strict-markers"
+# `evals` is on the list for its S2 units (evals/tests) and its well-formedness checks; the
+# `evals` marker is deselected here so that `make check` stays fast and offline, and
+# `make eval-stub` re-selects it with `-m evals --stub`.
+testpaths = ["api/tests", "core/tests", "evals"]
+addopts = "-q --strict-markers -m 'not evals'"
 filterwarnings = ["error"]
+markers = [
+    "evals: an Eval Case driven through the Assistant (seam S5). Never reaches the network — it runs against the stub provider — but it is a suite of its own, so `make check` deselects it and `make eval-stub` runs it.",
+]

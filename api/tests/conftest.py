@@ -31,6 +31,19 @@ APP_LOGGER_PREFIX = "cadre."
 LogReader = Callable[[], list[dict[str, Any]]]
 
 
+@pytest.fixture(autouse=True)
+def langfuse_is_never_configured(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No test may build a live tracer, whatever the developer running it has exported.
+
+    The `settings` fixture below pins the keys empty, but several tests build their own
+    `Settings()` straight from the environment — so the variables are taken out of it for the
+    duration of every test in this package. CI never has them; a laptop that runs the app does
+    (global constraint 4: a unit test reaches Langfuse never).
+    """
+    monkeypatch.delenv("LANGFUSE_PUBLIC_KEY", raising=False)
+    monkeypatch.delenv("LANGFUSE_SECRET_KEY", raising=False)
+
+
 @pytest.fixture
 def web_dist(tmp_path: Path) -> Path:
     """A stand-in for `web/dist`, so the HTTP tests never depend on a Vite build."""
@@ -48,6 +61,11 @@ def settings() -> Settings:
         loglevel="INFO",
         app_version="0.1.0",
         session_cookie_secret=COOKIE_SECRET,
+        # Pinned empty rather than left to the environment: a developer who has exported the
+        # real keys to run the app would otherwise turn the unit suite into a live exporter,
+        # filling the Langfuse project with Traces of fixtures (global constraint 4).
+        langfuse_public_key="",
+        langfuse_secret_key="",
     )
 
 
