@@ -15,20 +15,24 @@ from pathlib import Path
 from fastapi import FastAPI
 
 from api.chat import create_chat_router
+from api.console import create_console_router
 from api.health import create_health_router
 from api.knowledge import create_knowledge_router
 from api.middleware import RequestContextMiddleware
 from api.web import mount_web_app
+from core.adapters.fake_verifier import DevTokenVerifier
 from core.adapters.knowledge_files import FileKnowledgeSource
 from core.adapters.memory_store import InMemoryConversationStore
 from core.adapters.openrouter_provider import OpenRouterModelProvider
 from core.adapters.stub_demo_script import demo_fallback, demo_scripts
 from core.adapters.stub_provider import StubModelProvider
+from core.auth import ClosedTokenVerifier, TokenVerifier, parse_allowlist
 from core.config import MissingConfigurationError, Settings, load_settings
 from core.knowledge import KnowledgeSource, compile_knowledge_base, render_knowledge_block
 from core.logging import configure_logging, get_logger
 from core.prompt import SystemPrompt, build_system_prompt
 from core.provider import ModelProvider
+from core.redaction import refuse
 from core.store import ConversationStore
 from core.tools import default_tools
 from core.turn import TurnRunner
@@ -96,12 +100,57 @@ def build_store(settings: Settings) -> ConversationStore:
     return FirestoreConversationStore(project=settings.google_cloud_project)
 
 
+def build_token_verifier(settings: Settings, allowlist: frozenset[str]) -> TokenVerifier:
+    """The `TokenVerifier` seam: who the Console believes a request comes from (ADR-0010).
+
+    `fake` is a demonstration mode: it turns `fake:<email>` into a Strategist, so the Console
+    can be opened and clicked through without a Google Workspace account. It accepts an
+    identity anyone can type, so selecting it outside development is a startup failure rather
+    than a surprising one at the first request.
+
+    An empty allowlist means this deployment has no Console — nobody could be admitted even
+    with a perfectly valid token — so it gets the closed verifier rather than a demand for a
+    Firebase project. That is what keeps CI, the unit tests and a bare `make dev` from needing
+    one.
+
+    The order of those two matters. The demo-mode refusal comes first, because a service
+    configured to accept typed identities is misconfigured whether or not anyone is on the
+    allowlist yet: starting it closed would hide the mistake until the day a Strategist is
+    added, and then open the Console to anyone who can type their address.
+    """
+    if settings.console_auth == "fake" and settings.env != "development":
+        raise MissingConfigurationError(
+            "CONSOLE_AUTH=fake accepts any identity a caller types and is refused when "
+            f"ENV={settings.env}. The Console shows every Lead's Contact Details, so the "
+            "deployed service must verify real Firebase ID tokens (CONSOLE_AUTH=firebase)."
+        )
+    if not allowlist:
+        return ClosedTokenVerifier()
+    if settings.console_auth == "fake":
+        logger.warning(
+            "CONSOLE_AUTH=fake: the Console accepts fake:<email> credentials without Google"
+        )
+        return DevTokenVerifier()
+    # Imported here, not at the top: `google-auth`'s transport is only needed by a deployment
+    # that actually verifies tokens, and the demo mode should not pay for the import.
+    from core.adapters.firebase_verifier import FirebaseTokenVerifier
+
+    if not settings.firebase_audience:
+        raise MissingConfigurationError(
+            "CONSOLE_AUTH=firebase needs the Firebase project whose ID tokens it accepts. "
+            "Set GOOGLE_CLOUD_PROJECT (or FIREBASE_PROJECT_ID) — a token verified against no "
+            "audience is a token from any Firebase project's users (see .env.example)."
+        )
+    return FirebaseTokenVerifier(project_id=settings.firebase_audience)
+
+
 def create_app(
     settings: Settings | None = None,
     web_dist: Path | None = None,
     provider: ModelProvider | None = None,
     store: ConversationStore | None = None,
     knowledge: KnowledgeSource | None = None,
+    verifier: TokenVerifier | None = None,
 ) -> FastAPI:
     """Wire the application. A missing required variable fails fast here, before serving."""
     resolved = load_settings() if settings is None else settings
@@ -135,6 +184,9 @@ def create_app(
             conversation_store, qualification_threshold=resolved.qualification_threshold
         ),
         build_prompt=build_prompt,
+        # The one pre-model, pre-store hook: the Refuse Set stops here, at the only place
+        # both the provider call and the Session write can be reached from (ADR-0006).
+        prepare_message=refuse,
         max_turns=resolved.max_turns_per_session,
     )
 
@@ -154,6 +206,22 @@ def create_app(
         prefix="/api",
     )
     app.include_router(create_knowledge_router(sections), prefix="/api")
+    # The allowlist is parsed once, here, and the same environment variable renders
+    # `firestore.rules` (`make rules`) — the two enforcement points ADR-0010 accepted have one
+    # source, even though they cannot share a runtime.
+    allowlist = parse_allowlist(resolved.admin_allowed_emails)
+    if not allowlist:
+        logger.warning("ADMIN_ALLOWED_EMAILS is not set; the Console will admit nobody")
+    app.include_router(
+        create_console_router(
+            conversation_store,
+            verifier=(
+                verifier if verifier is not None else build_token_verifier(resolved, allowlist)
+            ),
+            allowlist=allowlist,
+        ),
+        prefix="/api",
+    )
     mount_web_app(app, DEFAULT_WEB_DIST if web_dist is None else web_dist)
     return app
 

@@ -11,6 +11,7 @@ Layout, per docs/architecture.md:
     sessions/{session_id}/messages/{seq}  sequence, role, content, tool fields, created_at
     leads/{session_id}                    created_at, updated_at, session ref, Contact Details,
                                           signals, score, qualified
+    strategists/{uid}                     online, email, name, updated_at
 
 The document id of a message is its zero-padded sequence, and `sequence` is written as a field
 as well, because ordering is the one thing this store must never get wrong: messages out of
@@ -28,16 +29,22 @@ from typing import Any
 from google.cloud import firestore
 from google.cloud.firestore_v1.async_document import AsyncDocumentReference
 from google.cloud.firestore_v1.async_transaction import AsyncTransaction
+from google.cloud.firestore_v1.base_query import FieldFilter
 
+from core.auth import StrategistIdentity
 from core.logging import get_logger
 from core.provider import MessageRole, ModelMessage, ToolCall
-from core.store import CONTACT_DETAIL_NAMES, Lead
+from core.store import CONTACT_DETAIL_NAMES, DEFAULT_LEAD_PAGE, Lead
 
 SESSIONS = "sessions"
 MESSAGES = "messages"
 # A top-level collection, keyed by the Session id: one Lead per Session, and a Console that
 # lists Leads without walking every Session first (docs/architecture.md §5).
 LEADS = "leads"
+# Presence, keyed by the Strategist's Firebase uid: one document per Strategist, which is what
+# lets a Console listener render who is online and lets `firestore.rules` say "you may write
+# your own and nobody else's" in one line.
+STRATEGISTS = "strategists"
 
 # Wide enough that a Session hits its Turn cap long before the padding runs out, and fixed, so
 # the document ids of one Session sort the way the sequence does.
@@ -56,10 +63,12 @@ class FirestoreConversationStore:
         client: firestore.AsyncClient | None = None,
         collection: str = SESSIONS,
         leads_collection: str = LEADS,
+        strategists_collection: str = STRATEGISTS,
     ) -> None:
         self._project = project
         self._collection = collection
         self._leads_collection = leads_collection
+        self._strategists_collection = strategists_collection
         self._client = client
 
     def _connect(self) -> firestore.AsyncClient:
@@ -121,6 +130,66 @@ class FirestoreConversationStore:
             extra={"qualification_score": lead.score, "qualified": lead.qualified},
         )
         return lead
+
+    async def list_leads(self, limit: int = DEFAULT_LEAD_PAGE) -> tuple[Lead, ...]:
+        """The Console's page of Leads, most recently updated first.
+
+        `updated_at` and not `created_at`: a Lead the Assistant just learned a phone number
+        for is newer work than one it has not touched since this morning. Ordering on one
+        field needs no composite index, which is why `firestore.indexes.json` is empty.
+        """
+        query = (
+            self._connect()
+            .collection(self._leads_collection)
+            .order_by("updated_at", direction=firestore.Query.DESCENDING)
+            .limit(limit)
+        )
+        return tuple(
+            [_lead(document.id, document.to_dict() or {}) async for document in query.stream()]
+        )
+
+    async def set_availability(self, strategist: StrategistIdentity, online: bool) -> None:
+        """Write this Strategist's presence document.
+
+        `merge=True` and keyed by the uid: signing in on a second device moves the same
+        presence rather than adding a second Strategist to the Availability count. The email
+        and name travel with it because the Console renders who is online, and a uid is not a
+        person to a human reading the list.
+        """
+        await (
+            self._connect()
+            .collection(self._strategists_collection)
+            .document(strategist.uid)
+            .set(
+                {
+                    "online": online,
+                    "email": strategist.email,
+                    "name": strategist.name,
+                    "updated_at": firestore.SERVER_TIMESTAMP,
+                },
+                merge=True,
+            )
+        )
+
+    async def get_availability(self, uid: str) -> bool:
+        document = (
+            await self._connect().collection(self._strategists_collection).document(uid).get()
+        )
+        return bool((document.to_dict() or {}).get("online", False)) if document.exists else False
+
+    async def any_strategist_online(self) -> bool:
+        """Whether anyone is online, asked as cheaply as Firestore allows.
+
+        `limit(1)`: the answer is a boolean, so reading every Strategist to count them would
+        be a document charge per Strategist per Turn that reaches this question.
+        """
+        query = (
+            self._connect()
+            .collection(self._strategists_collection)
+            .where(filter=FieldFilter("online", "==", True))
+            .limit(1)
+        )
+        return any([True async for _ in query.stream()])
 
 
 @firestore.async_transactional

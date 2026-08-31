@@ -22,3 +22,4 @@
 - Ruling: `maturity.get-scored` resolves to the published contact form (external) — never an invented page; the contact URL is the KB-published `https://www.cadreai.com/contact`.
 - Carried forward: optional `language` on the escalation payload (from ticket 04); `OPEN_CHAT_EVENT` in the host page (from ticket 02). Parked: an English-only CTA label (`destination.label` is server-side); the internal CTA is a button, so cmd-click/open-in-new-tab is unavailable (matches the artboard).
 - Deployed-app click-through (CTA opens the Portal page in the same tab with the widget open; the Maturity Index card goes to the contact form) is recorded by the controller after the merge.
+- Deployed-app check recorded: [docs/transcripts/2026-08-31-deployed-checks-05-08-09.md](../../../docs/transcripts/2026-08-31-deployed-checks-05-08-09.md) — revision `93e79e6` on the public URL.

@@ -5,6 +5,10 @@ description = "Cadre AI Support Agent — FastAPI API and the built web app in o
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "fastapi>=0.115",
+    # Verifies the Console's Firebase ID tokens (signature, audience, expiry) against Google's
+    # published certificates — ADR-0010's whole server-side auth. Imported only inside
+    # core/adapters/firebase_verifier.py.
+    "google-auth>=2.35",
     # The ConversationStore's database. Its async client is imported only inside
     # core/adapters/firestore_store.py, which is the only place that knows Firestore exists.
     "google-cloud-firestore>=2.21",

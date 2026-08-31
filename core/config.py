@@ -18,6 +18,7 @@ Environment = Literal["development", "production"]
 LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
 ModelProviderName = Literal["stub", "openrouter"]
 ConversationStoreName = Literal["memory", "firestore"]
+ConsoleAuthName = Literal["firebase", "fake"]
 CacheTtl = Literal["5m", "1h"]
 
 # Variables that must be present before the app may start. Only the variables the selected
@@ -77,6 +78,26 @@ class Settings(BaseSettings):
     # --- GCP ---
     # Firestore reads this when it is set; on Cloud Run the metadata server supplies it.
     google_cloud_project: str = ""
+
+    # --- Strategist Console (ADR-0010) ---
+    # The whole authorisation model: the emails allowed to open the Console, comma-separated.
+    # Blank admits nobody — a deploy that forgets this closes the Console rather than
+    # publishing every Lead's Contact Details.
+    admin_allowed_emails: str = ""
+    # Which implementation sits behind the `TokenVerifier` seam. `fake` decodes `fake:<email>`
+    # so the Console can be demonstrated without Google sign-in, and is refused outside
+    # development (see `build_token_verifier` in api/main.py).
+    console_auth: ConsoleAuthName = "firebase"
+    # The audience a Firebase ID token must carry. Blank falls back to GOOGLE_CLOUD_PROJECT,
+    # which is the same project here; it is separate because Firebase Auth and Firestore do
+    # not have to live in one project, and a token verified against the wrong audience is a
+    # token from another app's users.
+    firebase_project_id: str = ""
+
+    @property
+    def firebase_audience(self) -> str:
+        """The Firebase project whose ID tokens this deployment accepts."""
+        return self.firebase_project_id.strip() or self.google_cloud_project.strip()
 
 
 def load_settings(
