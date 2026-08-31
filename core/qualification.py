@@ -35,7 +35,7 @@ def present_signals(signals: Mapping[str, str]) -> tuple[str, ...]:
 
 
 def qualification_score(signals: Mapping[str, str]) -> int:
-    """The Qualification Score: the count of Qualification Signals present, 0–5.
+    """The Qualification Score: the count of Qualification Signals present, 0 to 5.
 
     Anything in the mapping that is not one of the five is ignored, so the Contact Details that
     travel with the signals in the same tool call never move the score.

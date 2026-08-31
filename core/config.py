@@ -12,6 +12,8 @@ from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from core.qualification import DEFAULT_QUALIFICATION_THRESHOLD
+
 Environment = Literal["development", "production"]
 LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
 ModelProviderName = Literal["stub", "openrouter"]
@@ -65,6 +67,12 @@ class Settings(BaseSettings):
     session_cookie_secret: str = ""
     # A burst guard: past this many Turns a Session is closed politely with the contact path.
     max_turns_per_session: int = 40
+
+    # --- Leads ---
+    # The Qualification Score at which a Lead becomes a Qualified Lead and the Hand-over offer
+    # is unlocked (ADR-0009). It lives here rather than in the prompt because it is a business
+    # decision a Strategist may want to move without a deploy of new wording.
+    qualification_threshold: int = DEFAULT_QUALIFICATION_THRESHOLD
 
     # --- GCP ---
     # Firestore reads this when it is set; on Cloud Run the metadata server supplies it.

@@ -9,6 +9,8 @@ Layout, per docs/architecture.md:
 
     sessions/{session_id}                 created_at, updated_at, turn_count, message_count
     sessions/{session_id}/messages/{seq}  sequence, role, content, tool fields, created_at
+    leads/{session_id}                    created_at, updated_at, session ref, Contact Details,
+                                          signals, score, qualified
 
 The document id of a message is its zero-padded sequence, and `sequence` is written as a field
 as well, because ordering is the one thing this store must never get wrong: messages out of
@@ -29,9 +31,13 @@ from google.cloud.firestore_v1.async_transaction import AsyncTransaction
 
 from core.logging import get_logger
 from core.provider import MessageRole, ModelMessage, ToolCall
+from core.store import CONTACT_DETAIL_NAMES, Lead
 
 SESSIONS = "sessions"
 MESSAGES = "messages"
+# A top-level collection, keyed by the Session id: one Lead per Session, and a Console that
+# lists Leads without walking every Session first (docs/architecture.md §5).
+LEADS = "leads"
 
 # Wide enough that a Session hits its Turn cap long before the padding runs out, and fixed, so
 # the document ids of one Session sort the way the sequence does.
@@ -49,9 +55,11 @@ class FirestoreConversationStore:
         project: str = "",
         client: firestore.AsyncClient | None = None,
         collection: str = SESSIONS,
+        leads_collection: str = LEADS,
     ) -> None:
         self._project = project
         self._collection = collection
+        self._leads_collection = leads_collection
         self._client = client
 
     def _connect(self) -> firestore.AsyncClient:
@@ -86,6 +94,33 @@ class FirestoreConversationStore:
         # the same document ids, and the later commit would erase the earlier Turn.
         await _append_in_sequence(client.transaction(), session, messages)
         logger.info("Session written", extra={"messages": len(messages)})
+
+    async def get_lead(self, session_id: str) -> Lead | None:
+        document = (
+            await self._connect().collection(self._leads_collection).document(session_id).get()
+        )
+        if not document.exists:
+            return None
+        return _lead(session_id, document.to_dict() or {})
+
+    async def upsert_lead(self, session_id: str, lead: Lead) -> Lead:
+        client = self._connect()
+        reference = client.collection(self._leads_collection).document(session_id)
+        document = _lead_document(lead, client.collection(self._collection).document(session_id))
+        # Read first, so `created_at` records when the Visitor first identified themselves
+        # rather than the last time they mentioned anything. `merge=True` for the same reason:
+        # a field this build does not know about is kept, not dropped.
+        snapshot = await reference.get()
+        if not snapshot.exists:
+            document["created_at"] = firestore.SERVER_TIMESTAMP
+        await reference.set(document, merge=True)
+        # Counts only: the Contact Details on the Lead are raw, and a log line is not the place
+        # for them (constraint 8).
+        logger.info(
+            "Lead written",
+            extra={"qualification_score": lead.score, "qualified": lead.qualified},
+        )
+        return lead
 
 
 @firestore.async_transactional
@@ -158,4 +193,37 @@ def _tool_call(stored: Mapping[str, Any]) -> ToolCall:
         id=stored.get("id", ""),
         name=stored.get("name", ""),
         arguments=arguments if isinstance(arguments, dict) else {},
+    )
+
+
+def _lead_document(lead: Lead, session: AsyncDocumentReference) -> dict[str, Any]:
+    """One Lead as a Firestore document.
+
+    The Contact Details are written raw and deliberately so (ADR-0006): the Refuse Set never
+    reaches storage, and these are the opposite — the typed fields the product exists to
+    collect, and the only way a Strategist reaches the Visitor back. `session` is a reference
+    rather than a copy of the conversation, so the Console can open the Turn history from the
+    Lead without either document duplicating the other.
+    """
+    document: dict[str, Any] = {
+        "session": session,
+        "session_id": lead.session_id,
+        "signals": dict(lead.signals),
+        "score": lead.score,
+        "qualified": lead.qualified,
+        "updated_at": firestore.SERVER_TIMESTAMP,
+    }
+    for name in CONTACT_DETAIL_NAMES:
+        document[name] = str(getattr(lead, name, "") or "")
+    return document
+
+
+def _lead(session_id: str, document: Mapping[str, Any]) -> Lead:
+    signals = document.get("signals") or {}
+    return Lead(
+        session_id=str(document.get("session_id") or session_id),
+        signals={str(name): str(value) for name, value in signals.items()},
+        score=int(document.get("score", 0)),
+        qualified=bool(document.get("qualified", False)),
+        **{name: str(document.get(name) or "") for name in CONTACT_DETAIL_NAMES},
     )
