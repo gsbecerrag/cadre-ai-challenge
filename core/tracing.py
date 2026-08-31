@@ -39,6 +39,11 @@ _ExcInfo = tuple[type[BaseException], BaseException, TracebackType] | tuple[None
 # column of Turns and a filter on the name is a filter on "conversations".
 TRACE_NAME = "turn"
 
+# What a Visitor's thumb is called on the Trace it judges. One name, so "the Turns Visitors
+# disliked" is one filter in Langfuse and one number on a dashboard — and the same name the
+# Triage Agent's summary is attached under (ticket 14).
+FEEDBACK_SCORE_NAME = "feedback"
+
 # The tag a Turn that ended in a `ProviderError` carries: the Turns worth reading first.
 PROVIDER_ERROR_TAG = "provider_error"
 # The tag a Turn the Visitor walked out of carries. It is not a failure — an answer that took
@@ -128,6 +133,15 @@ class Tracer(Protocol):
 
     def start_turn(self, session_id: str, request_id: str, input_text: str) -> TurnTrace: ...
 
+    def score(self, trace_id: str, name: str, value: float, comment: str = "") -> None:
+        """Attach a number to a Trace that has already been closed.
+
+        This is the one thing said about a Turn from outside it: the Visitor reads the answer,
+        thinks about it, and only then presses a thumb — a whole request later, on a Trace the
+        Turn finished and forgot. So it takes a Trace id rather than a `TurnTrace`, which is
+        also what lets the Feedback endpoint be a plain handler with no Turn in sight.
+        """
+
     def shutdown(self) -> None:
         """Send whatever is still queued, because the process is going away.
 
@@ -188,6 +202,9 @@ class NoopTracer:
     def start_turn(self, session_id: str, request_id: str, input_text: str) -> TurnTrace:
         return NOOP_TRACE
 
+    def score(self, trace_id: str, name: str, value: float, comment: str = "") -> None:
+        return
+
     def shutdown(self) -> None:
         return
 
@@ -214,6 +231,23 @@ class TraceBoundary:
         except Exception:
             logger.exception("Tracing could not start a Trace")
             return NOOP_TRACE
+
+    def score(self, trace_id: str, name: str, value: float, comment: str = "") -> None:
+        """Score a Trace under the same two rules a Trace body obeys.
+
+        The comment is a Visitor's own sentence, so it leaves through the `full` Redaction
+        Profile like every other body here — and a vendor that refuses the score costs the
+        Feedback its mirror, never its Firestore document or the Visitor their answer.
+        """
+        try:
+            self.inner.score(
+                trace_id=trace_id,
+                name=name,
+                value=value,
+                comment=redaction.full(comment).text,
+            )
+        except Exception:
+            logger.exception("Tracing could not score a Trace")
 
     def shutdown(self) -> None:
         try:

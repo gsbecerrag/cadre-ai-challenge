@@ -240,6 +240,28 @@ class LangfuseTracer:
             logger.exception("Could not set the Trace's attributes")
         return LangfuseTurnTrace(root=root, input_text=input_text)
 
+    def score(self, trace_id: str, name: str, value: float, comment: str = "") -> None:
+        """Attach a Visitor's Feedback to a Trace that is already closed and exported.
+
+        `NUMERIC` rather than `BOOLEAN`, with 1 for a thumbs-up and 0 for a thumbs-down: the
+        average of a numeric score is the share of Turns Visitors liked, which is the number a
+        dashboard wants, and Langfuse still filters on it either way.
+
+        Not flushed. `create_score` queues the event and the exporter sends it on its own
+        thread; flushing here would block the event loop of a process that is streaming other
+        Visitors' answers, and the shutdown hook drains whatever is left (ADR-0007).
+        """
+        self._client.create_score(
+            name=name,
+            value=value,
+            trace_id=trace_id,
+            data_type="NUMERIC",
+            # Empty rather than absent would put a blank note on every score that came
+            # without one, which reads as a Visitor who typed nothing rather than one who
+            # was never asked.
+            comment=comment or None,
+        )
+
     def shutdown(self) -> None:
         """Drain the queue. Called once, from the application's shutdown hook."""
         self._client.shutdown()
