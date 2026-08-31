@@ -6,7 +6,7 @@
 
 **Design reference:** [docs/design](../../../docs/design/README.md) — brief §2.5 kind 4 and §6: the Walkthrough Card (cream header band with title, numbered steps with circular badges, CTA "Open demo Portal", optional citations) and the reference flow: cited text ("Here's where that lives — the Portal tracks tools, agents, training, and results:") followed by the card "See your agents' results in the Portal" with its three steps.
 
-**Status:** ready-for-agent
+**Status:** in-progress
 
 - [ ] A Turn in which the provider calls `show_walkthrough` with a known destination streams a card event with the resolved link and the steps; an unknown destination id is rejected with a tool error the loop can recover from; covered at seam S1 with the stub.
 - [ ] The chat reducer places the card in the transcript at the right position relative to text; covered at seam S4 (extend the existing reducer test).
