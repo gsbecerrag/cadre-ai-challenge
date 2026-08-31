@@ -101,7 +101,9 @@ class TurnRunner:
             for _iteration in range(self.max_iterations):
                 deltas: list[str] = []
                 tool_calls: list[ToolCall] = []
-                request = ProviderRequest(prompt, tuple(history), self.tools.definitions)
+                request = ProviderRequest(
+                    prompt, tuple(history), self.tools.definitions, session_id
+                )
 
                 async for event in self.provider.stream(request):
                     match event:
