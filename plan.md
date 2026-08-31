@@ -10,8 +10,8 @@ A customer-support **Assistant** for Cadre AI that a prospect or client can plau
 
 ## 2. Hard deliverables
 
-- [ ] Public URL (Cloud Run) — hello-world first, features after
-- [ ] Code on GitHub with small PRs (`main` moves only by PR — see [CLAUDE.md](CLAUDE.md))
+- [x] Public URL: <https://cadre-support-agent-495870119371.us-central1.run.app> (Cloud Run, us-central1) — hello-world live 31 Aug; features iterate against it
+- [x] Code on GitHub with small PRs — [gsbecerrag/cadre-ai-challenge](https://github.com/gsbecerrag/cadre-ai-challenge), one PR per ticket (`main` moves only by PR — see [CLAUDE.md](CLAUDE.md))
 - [x] `CLAUDE.md` at the root
 - [x] `plan.md` at the root (this file)
 
@@ -43,7 +43,7 @@ Tickets are the unit of work (one branch, one PR, one TDD-driven subagent run ea
 
 | Phase | Tickets | Hours | Demoable outcome | Status |
 |---|---|---|---|---|
-| **P0 Foundations** | 01 scaffold + hello-world live on Cloud Run · strategy docs · super spec · tickets · credentials wizard | 1.5 | Public URL answers `/healthz`; docs reviewable | 🟡 in progress |
+| **P0 Foundations** | 01 scaffold + hello-world live on Cloud Run · strategy docs · super spec · tickets · credentials wizard | 1.5 | Public URL answers `/api/healthz`; docs reviewable | ✅ done — [PR #6](https://github.com/gsbecerrag/cadre-ai-challenge/pull/6) |
 | **P1 Grounded chat** | 02 first Turn with the stub provider (seams, tool loop, SSE, KB compiler) · 03 real Grounded Answers (OpenRouter + Firestore Sessions) · 04 Knowledge Base + Escalation · 05 Refuse Set redaction · 06 Langfuse Traces · 07 demo Portal (parallel) | 2.5 | Ask about services/industries/Maturity Index → Grounded Answers with citations; Trap Questions escalate | ⚪ |
 | **P2 Leads & hand-over** | 08 Walkthrough Cards · 09 Lead capture + Qualification Score · 10 Strategist Console (Firebase Auth, Availability) · 11 Callback Hand-over + Console queue | 2 | A Qualified Lead appears in the Console the instant the Assistant creates it | ⚪ |
 | **P3 Evals & CI** | 13 50 Eval Cases, four metrics, judge, Langfuse datasets; CI stub subset | 1.5 | `make eval` prints the scorecard; PRs run lint + unit + stub-provider evals | ⚪ |
