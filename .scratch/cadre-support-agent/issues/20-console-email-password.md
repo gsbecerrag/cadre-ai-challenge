@@ -17,3 +17,4 @@
 - Delivered in [PR #25](https://github.com/gsbecerrag/cadre-ai-challenge/pull/25). Reviewer: Approved, no Critical/Important findings; two cosmetic minors parked (shared error slot; dead prop on the refusal branch).
 - Ruling: zero server-side changes — the demo account is provisioned with a verified email, so the strict verifier and the rules stay exactly as reviewed in ticket 10; the credential is the secret and the allowlist stays the gate.
 - The deployed check (the demo credentials reach the Console on the public URL) is recorded here after the merge + deploy + deploy-rules.
+- Deployed-app check recorded: [docs/transcripts/2026-08-31-deployed-checks-14-15-20.md](../../../docs/transcripts/2026-08-31-deployed-checks-14-15-20.md) — revision `e619c71`; the Triage Function is live.
