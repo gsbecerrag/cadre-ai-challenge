@@ -8,14 +8,16 @@ seam.
 from collections import defaultdict
 from collections.abc import Sequence
 
+from core.auth import StrategistIdentity
 from core.provider import ModelMessage
-from core.store import Lead
+from core.store import DEFAULT_LEAD_PAGE, Lead
 
 
 class InMemoryConversationStore:
     def __init__(self) -> None:
         self._sessions: defaultdict[str, list[ModelMessage]] = defaultdict(list)
         self._leads: dict[str, Lead] = {}
+        self._online: set[str] = set()
 
     async def load(self, session_id: str) -> tuple[ModelMessage, ...]:
         return tuple(self._sessions[session_id])
@@ -27,6 +29,27 @@ class InMemoryConversationStore:
         return self._leads.get(session_id)
 
     async def upsert_lead(self, session_id: str, lead: Lead) -> Lead:
-        # Keyed by the Session, so a second call updates the Lead instead of adding one.
+        # Keyed by the Session, so a second call updates the Lead instead of adding one, and
+        # re-inserted rather than assigned in place: `list_leads` reads insertion order as
+        # "least recently written first", which is what Firestore's `updated_at` gives it.
+        self._leads.pop(session_id, None)
         self._leads[session_id] = lead
         return lead
+
+    async def list_leads(self, limit: int = DEFAULT_LEAD_PAGE) -> tuple[Lead, ...]:
+        return tuple(reversed(list(self._leads.values())))[:limit]
+
+    async def set_availability(self, strategist: StrategistIdentity, online: bool) -> None:
+        # A set, not a map: in memory there is no presence document to keep, only the one
+        # fact anybody asks about. The Firestore adapter keeps the email and the name too,
+        # because a Console listener there renders who is online.
+        if online:
+            self._online.add(strategist.uid)
+        else:
+            self._online.discard(strategist.uid)
+
+    async def get_availability(self, uid: str) -> bool:
+        return uid in self._online
+
+    async def any_strategist_online(self) -> bool:
+        return bool(self._online)
