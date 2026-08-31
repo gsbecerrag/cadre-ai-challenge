@@ -27,7 +27,10 @@ function WalkthroughNavigation() {
   useEffect(() => {
     function follow(event: Event) {
       const href = (event as CustomEvent<{ href?: string }>).detail?.href
-      if (!href) {
+      // Only a relative, same-origin path is ours to navigate. `//evil.example` is a
+      // protocol-relative URL, not a route, and anything absolute belongs in a new tab —
+      // the event is on the window, so this guard does not assume a trustworthy dispatcher.
+      if (!href || !href.startsWith('/') || href.startsWith('//')) {
         return
       }
       void navigate(href)

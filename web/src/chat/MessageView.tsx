@@ -69,7 +69,12 @@ function WalkthroughCta({
 }) {
   if (destination.external) {
     return (
-      <a href={destination.href} target="_blank" rel="noopener" className={`${CTA} inline-block`}>
+      <a
+        href={destination.href}
+        target="_blank"
+        rel="noopener noreferrer"
+        className={`${CTA} inline-block`}
+      >
         {destination.label} →
       </a>
     )
@@ -152,10 +157,15 @@ export function MessageView({
             <ol className="flex flex-col gap-[9px]">
               {message.steps.map((step, index) => (
                 <li
-                  key={step}
+                  key={index}
                   className="flex items-start gap-2.5 text-[13.5px] leading-[1.45] text-[#4c4c4c]"
                 >
-                  <span className="mt-px flex size-5 flex-shrink-0 items-center justify-center rounded-full bg-[#0c0407] text-[11px] font-bold text-white">
+                  {/* The `<ol>` already numbers these for a screen reader, so the badge is
+                      decoration: without this it hears "one one Open the Cadre Portal". */}
+                  <span
+                    aria-hidden="true"
+                    className="mt-px flex size-5 flex-shrink-0 items-center justify-center rounded-full bg-[#0c0407] text-[11px] font-bold text-white"
+                  >
                     {index + 1}
                   </span>
                   {step}
