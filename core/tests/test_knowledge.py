@@ -3,7 +3,13 @@
 from core.adapters.knowledge_files import FileKnowledgeSource
 from core.adapters.stub_demo_script import demo_fallback, demo_scripts
 from core.citations import CITATION_PATTERN
-from core.knowledge import compile_knowledge_base, compile_topic, render_knowledge_block
+from core.knowledge import (
+    KNOWLEDGE_TOKEN_BUDGET,
+    compile_knowledge_base,
+    compile_topic,
+    estimate_tokens,
+    render_knowledge_block,
+)
 from core.provider import TextDelta, ToolCall
 
 SERVICES = """\
@@ -143,3 +149,20 @@ def test_what_cadre_does_not_publish_is_itself_a_citable_topic() -> None:
         "not-published#outcome-guarantees",
         "not-published#anything-not-listed-here",
     } <= not_published
+
+
+def test_the_token_estimate_rounds_against_the_budget_rather_than_towards_it() -> None:
+    """No tokeniser is installed and none is wanted for a guard rail: 3.5 characters per token
+    is below what English prose actually costs, so the estimate reads high and the budget bites
+    before the provider does."""
+    assert estimate_tokens("") == 0
+    assert estimate_tokens("x" * 350) == 100
+    assert estimate_tokens("x" * 351) == 101
+
+
+def test_the_compiled_knowledge_base_fits_inside_the_cached_prompt_budget() -> None:
+    """The whole Knowledge Base sits in the cached prefix of every prompt (ADR-0001), and
+    docs/architecture.md prices a Turn on it, so its size is a decision with a number."""
+    block = render_knowledge_block(compile_knowledge_base(FileKnowledgeSource().documents()))
+
+    assert estimate_tokens(block) < KNOWLEDGE_TOKEN_BUDGET

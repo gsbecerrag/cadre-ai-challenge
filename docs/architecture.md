@@ -322,6 +322,13 @@ Solid boxes are MVP; grey dashed boxes are Phase 2 (triggered upgrades) and Phas
 | **Per 6-turn conversation** | | | **≈ $0.072 (7¢)** |
 | Cache write, 1h TTL | 25,000 | $4.00 | $0.10, at most once per active hour |
 
+The 25,000 tokens are a budget, not a measurement: `KNOWLEDGE_TOKEN_BUDGET` in
+`core/knowledge.py` holds the compiled Knowledge Base under it and a unit test fails if the
+authored topics grow past it. The Knowledge Base as authored in ticket 04 is 62 KB Sections,
+24,929 characters, about **7,100 tokens** by the conservative 3.5-characters-per-token
+estimate — so the rows above are priced with roughly 3.5x of headroom for the rules, the tool
+definitions and the topics later tickets add.
+
 Without caching the same turn costs about 5.7¢, so caching removes roughly 80% of per-turn spend and the same share of rate-limited input tokens. Each extra tool-loop iteration re-reads the cache and adds about 0.5¢. The 1h TTL was chosen over the 5-minute default (write $2.50/M) so continuous traffic pays one write per hour instead of one per idle gap.
 
 **Worked table.** Assumptions: Cloud Run default concurrency of 80 requests per instance (each open SSE stream is one request); about 2,300 uncached input tokens per turn including tool round-trips; an active conversation issues at most two turns per minute. Provider tiers are illustrative, since OpenRouter does not publish numeric limits for paid keys.
