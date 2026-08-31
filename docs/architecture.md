@@ -105,6 +105,18 @@ sequenceDiagram
 
 The refuse profile runs before the model and before storage, so nothing in Firestore or in the prompt carries payment cards, government IDs or credentials. The full profile (emails and phones tokenised as well) applies only to traces, logs and notification free text; lead typed fields stay raw because the product needs them.
 
+**What a trace carries** (`core/tracing.py` is the seam, `core/adapters/langfuse_tracer.py` the implementation). One trace per turn, named `turn`, on the Langfuse session id that is the chat session id, opened when the visitor's message has been through the refuse profile and closed after the `done` event has been streamed — so a flush is never on the visitor's critical path:
+
+| On the trace | Value |
+| --- | --- |
+| input / output | the prepared message and the assistant's answer, both through the `full` profile |
+| tags | `escalated`, `lead_captured`, `walkthrough_shown`, `handover_offered` (ticket 11), `language:<en\|es>`, `provider_error`, and `redacted:<category>` per redaction category |
+| metadata | `request_id`, `model`, cited KB section ids, the redaction manifest (counts, never values), the turn's token and cost totals |
+| generation per provider call | the model id, that call's input, output and cached tokens, and the cost OpenRouter reported (`cost_details.total`) — the trace's cost is the sum, never a price table |
+| span per tool execution | the tool's name and whether it produced events for the visitor |
+
+Tracing is a seam like the model provider and the store: without `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` it is a no-op, which is what CI, `make dev` and the unit tests run on, and a tracer that fails cannot fail a turn — the boundary redacts and swallows.
+
 ### 4b. Hand-over to a strategist
 
 ```mermaid
