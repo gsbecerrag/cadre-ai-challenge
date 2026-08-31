@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Inter+Tight:wght@500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+  body { margin:0; background:#faf9f6; font-family:Inter,Arial,sans-serif; color:#333; }
+  a { color:#08749b; text-decoration:none; } a:hover { color:#db4545; }
+  @keyframes livepulse { 0%,100%{opacity:1} 50%{opacity:.45} }
+</style>
+</helmet>
+<div style="min-height:100vh; display:flex; flex-direction:column;">
+  <div style="display:flex; align-items:center; justify-content:space-between; padding:14px 32px; background:#fff; border-bottom:1px solid #e5e5e5;">
+    <div style="display:flex; align-items:center; gap:14px;">
+      <img src="https://cdn.prod.website-files.com/6910dd217f94a50bd2e308d3/6910e3a5178f856fe5289ae1_Cadre_AI_Logo_Web.svg" alt="Cadre AI" style="height:20px;">
+      <span style="font-family:'Inter Tight',Helvetica,sans-serif; font-weight:600; font-size:15px; color:#0c0407;">Strategist Console</span>
+    </div>
+    <div style="display:flex; align-items:center; gap:18px;">
+      <a href="Cadre Support Chat.dc.html" style="font-size:13px; font-weight:600;">← Visitor chat demo</a>
+      <div style="display:flex; align-items:center; gap:10px; background:#faf9f6; border:1px solid #e5e5e5; border-radius:48px; padding:6px 8px 6px 14px;">
+        <span style="font-size:13px; font-weight:600; color:{{ availColor }};">{{ availLabel }}</span>
+        <div onClick="{{ toggleAvail }}" style="width:40px; height:22px; border-radius:48px; background:{{ toggleBg }}; position:relative; cursor:pointer; transition:background .15s;">
+          <div style="position:absolute; top:2px; left:{{ knobLeft }}; width:18px; height:18px; border-radius:50%; background:#fff; transition:left .15s; box-shadow:0 1px 3px rgba(0,0,0,0.25);"></div>
+        </div>
+      </div>
+      <div style="display:flex; align-items:center; gap:8px;">
+        <div style="width:32px; height:32px; border-radius:50%; background:#0c0407; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:13px;">A</div>
+        <div style="font-size:12px; line-height:1.3;"><b style="color:#0c0407;">Angel M.</b><br><span style="color:#999;">angel@gocadre.ai</span></div>
+      </div>
+    </div>
+  </div>
+  <div style="display:flex; flex:1; min-height:0;">
+    <div style="width:200px; padding:24px 14px; border-right:1px solid #eee; display:flex; flex-direction:column; gap:4px; background:#fff;">
+      <sc-for list="{{ navTabs }}" as="nt" hint-placeholder-count="3">
+        <div onClick="{{ nt.go }}" style="display:flex; align-items:center; justify-content:space-between; padding:10px 14px; border-radius:12px; font-size:14px; font-weight:{{ nt.weight }}; color:{{ nt.color }}; background:{{ nt.bg }}; cursor:pointer;">
+          {{ nt.label }}
+          <sc-if value="{{ nt.hasBadge }}" hint-placeholder-val="{{ false }}">
+            <span style="background:#db4545; color:#fff; border-radius:48px; font-size:11px; font-weight:700; padding:1px 8px;">{{ nt.badge }}</span>
+          </sc-if>
+        </div>
+      </sc-for>
+    </div>
+    <!-- QUEUE -->
+    <sc-if value="{{ queueOn }}" hint-placeholder-val="{{ true }}">
+      <div style="flex:1; display:flex; min-height:0;">
+        <div style="width:340px; border-right:1px solid #eee; overflow-y:auto; padding:20px 16px; display:flex; flex-direction:column; gap:10px;">
+          <div style="font-size:11px; font-weight:700; color:#999; text-transform:uppercase; letter-spacing:1px; padding:0 4px;">Handover requests</div>
+          <sc-for list="{{ requests }}" as="r" hint-placeholder-count="3">
+            <div onClick="{{ r.go }}" style="background:#fff; border:1px solid {{ r.border }}; border-radius:16px; padding:14px 16px; cursor:pointer;">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                <span style="font-weight:600; font-size:14px; color:#0c0407;">{{ r.name }}</span>
+                <span style="display:inline-flex; align-items:center; gap:5px; font-size:11px; font-weight:700; color:{{ r.stateColor }};">
+                  <sc-if value="{{ r.pulsing }}" hint-placeholder-val="{{ false }}"><span style="width:7px; height:7px; border-radius:50%; background:{{ r.stateColor }}; animation:livepulse 1.4s infinite;"></span></sc-if>
+                  {{ r.stateLabel }}</span>
+              </div>
+              <div style="font-size:12.5px; color:#666; margin-bottom:8px;">{{ r.company }} · {{ r.industry }}</div>
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <span style="font-size:11px; color:#999;">{{ r.time }}</span>
+                <span style="font-family:monospace; font-size:11px; font-weight:700; color:{{ r.scoreColor }};">score {{ r.score }}/5</span>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+        <div style="flex:1; overflow-y:auto; padding:24px 32px;">
+          <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:20px;">
+            <div>
+              <h2 style="font-family:'Inter Tight',Helvetica,sans-serif; font-weight:600; font-size:24px; letter-spacing:-0.5px; color:#0c0407; margin:0 0 4px;">{{ sel.name }}</h2>
+              <div style="font-size:13.5px; color:#666;">{{ sel.company }} · {{ sel.industry }} · <a href="#">{{ sel.email }}</a> · {{ sel.phone }}</div>
+            </div>
+            <div style="display:flex; gap:10px;">
+              <sc-if value="{{ canJoin }}" hint-placeholder-val="{{ true }}">
+                <button onClick="{{ joinCall }}" style="background:#0c0407; color:#fff; border:none; border-radius:48px; padding:11px 26px; font-size:14px; font-weight:600; cursor:pointer; white-space:nowrap; flex-shrink:0;">{{ joinLabel }}</button>
+              </sc-if>
+              <sc-if value="{{ canEnd }}" hint-placeholder-val="{{ false }}">
+                <button onClick="{{ endReq }}" style="background:#db4545; color:#fff; border:none; border-radius:48px; padding:11px 26px; font-size:14px; font-weight:600; cursor:pointer; white-space:nowrap; flex-shrink:0;">End call</button>
+              </sc-if>
+            </div>
+          </div>
+          <sc-if value="{{ inCallBanner }}" hint-placeholder-val="{{ false }}">
+            <div style="background:#0c0407; border-radius:16px; padding:14px 20px; display:flex; align-items:center; gap:12px; margin-bottom:20px;">
+              <span style="width:9px; height:9px; border-radius:50%; background:#db4545; animation:livepulse 1.4s infinite;"></span>
+              <span style="color:#fff; font-size:13.5px; font-weight:600;">In call — Daily room open in the chat panel</span>
+              <span style="color:#999; font-size:12px; font-family:monospace;">daily.co/cadre-{{ sel.id }}</span>
+            </div>
+          </sc-if>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:20px;">
+            <div style="background:#fff; border:1px solid #e5e5e5; border-radius:16px; padding:18px;">
+              <div style="font-size:11px; font-weight:700; color:#999; text-transform:uppercase; letter-spacing:1px; margin-bottom:12px;">Qualification · {{ sel.score }}/5</div>
+              <div style="display:flex; flex-direction:column; gap:8px;">
+                <sc-for list="{{ sel.signals }}" as="sg" hint-placeholder-count="5">
+                  <div style="display:flex; align-items:center; gap:9px; font-size:13px; color:{{ sg.color }};">
+                    <span style="font-weight:700;">{{ sg.mark }}</span>{{ sg.label }}
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+            <div style="background:#fff; border:1px solid #e5e5e5; border-radius:16px; padding:18px;">
+              <div style="font-size:11px; font-weight:700; color:#999; text-transform:uppercase; letter-spacing:1px; margin-bottom:12px;">Request</div>
+              <div style="display:flex; flex-direction:column; gap:9px; font-size:13px; color:#4c4c4c;">
+                <div style="display:flex; justify-content:space-between;"><span style="color:#999;">Mode</span><b style="color:#0c0407;">{{ sel.mode }}</b></div>
+                <div style="display:flex; justify-content:space-between;"><span style="color:#999;">State</span><b style="color:{{ sel.stateColor }};">{{ sel.stateLabel }}</b></div>
+                <div style="display:flex; justify-content:space-between; gap:12px;"><span style="color:#999;">Session</span><span style="font-family:monospace; font-size:12px;">{{ sel.session }}</span></div>
+                <div style="display:flex; justify-content:space-between; gap:12px;"><span style="color:#999;">Trace</span><a href="#" style="font-family:monospace; font-size:12px;">{{ sel.trace }} ↗</a></div>
+              </div>
+            </div>
+          </div>
+          <div style="background:#fff; border:1px solid #e5e5e5; border-radius:16px; padding:18px;">
+            <div style="font-size:11px; font-weight:700; color:#999; text-transform:uppercase; letter-spacing:1px; margin-bottom:14px;">Conversation so far</div>
+            <div style="display:flex; flex-direction:column; gap:10px;">
+              <sc-for list="{{ sel.convo }}" as="cv" hint-placeholder-count="4">
+                <div style="display:flex; flex-direction:column; align-items:{{ cv.align }};">
+                  <div style="max-width:70%; padding:9px 13px; border-radius:{{ cv.radius }}; background:{{ cv.bg }}; color:{{ cv.color }}; border:{{ cv.border }}; font-size:13px; line-height:1.5;">{{ cv.text }}</div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+    <!-- CALLBACKS -->
+    <sc-if value="{{ callbacksOn }}" hint-placeholder-val="{{ false }}">
+      <div style="flex:1; padding:24px 32px; overflow-y:auto;">
+        <h2 style="font-family:'Inter Tight',Helvetica,sans-serif; font-weight:600; font-size:24px; letter-spacing:-0.5px; color:#0c0407; margin:0 0 20px;">Callbacks</h2>
+        <div style="background:#fff; border:1px solid #e5e5e5; border-radius:20px; overflow:hidden; max-width:860px;">
+          <div style="display:grid; grid-template-columns:1.4fr 1.4fr 1fr 1fr 0.8fr; padding:13px 22px; font-size:11px; font-weight:700; color:#999; text-transform:uppercase; letter-spacing:1px; border-bottom:1px solid #eee;">
+            <span>Lead</span><span>Contact</span><span>Requested</span><span>Scheduled for</span><span>Score</span>
+          </div>
+          <sc-for list="{{ callbacks }}" as="cb" hint-placeholder-count="3">
+            <div style="display:grid; grid-template-columns:1.4fr 1.4fr 1fr 1fr 0.8fr; padding:15px 22px; font-size:13.5px; border-bottom:1px solid #f4f4f4; align-items:center;">
+              <div><b style="color:#0c0407;">{{ cb.name }}</b><br><span style="font-size:12px; color:#999;">{{ cb.company }}</span></div>
+              <div style="font-size:12.5px; color:#666;">{{ cb.email }}<br>{{ cb.phone }}</div>
+              <span style="color:#666;">{{ cb.requested }}</span>
+              <span style="color:#0c0407; font-weight:600;">{{ cb.slot }}</span>
+              <span style="font-family:monospace; font-size:12px; font-weight:700; color:#0a7d43;">{{ cb.score }}/5</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </sc-if>
+    <!-- TRIAGE -->
+    <sc-if value="{{ triageOn }}" hint-placeholder-val="{{ false }}">
+      <div style="flex:1; padding:24px 32px; overflow-y:auto;">
+        <h2 style="font-family:'Inter Tight',Helvetica,sans-serif; font-weight:600; font-size:24px; letter-spacing:-0.5px; color:#0c0407; margin:0 0 6px;">Triage reports</h2>
+        <div style="font-size:13.5px; color:#999; margin-bottom:20px;">Written by the Triage Agent on every thumbs-down. Newest first.</div>
+        <div style="display:flex; flex-direction:column; gap:14px; max-width:760px;">
+          <sc-for list="{{ reports }}" as="rp" hint-placeholder-count="2">
+            <div style="background:#fff; border:1px solid #e5e5e5; border-radius:20px; padding:20px 24px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                <div style="display:flex; align-items:center; gap:10px;">
+                  <span style="background:{{ rp.catBg }}; color:{{ rp.catColor }}; border-radius:48px; padding:4px 12px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px;">{{ rp.category }}</span>
+                  <span style="font-size:11px; font-weight:700; color:{{ rp.sevColor }};">{{ rp.severity }}</span>
+                </div>
+                <div style="display:flex; align-items:center; gap:14px;">
+                  <span style="font-size:12px; color:#999;">{{ rp.time }}</span>
+                  <a href="#" style="font-size:12px; font-weight:600;">Open trace in Langfuse ↗</a>
+                </div>
+              </div>
+              <div style="font-size:14px; color:#333; line-height:1.55; margin-bottom:12px;">{{ rp.summary }}</div>
+              <div style="background:#faf9f6; border-radius:12px; padding:12px 16px; font-size:13px; color:#666; font-style:italic; margin-bottom:12px;">"{{ rp.evidence }}"</div>
+              <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+                <div style="border:1px dashed #ccc; border-radius:12px; padding:12px 14px;">
+                  <div style="font-size:10.5px; font-weight:700; color:#999; text-transform:uppercase; letter-spacing:1px; margin-bottom:5px;">Suggested KB addition</div>
+                  <div style="font-size:12.5px; color:#4c4c4c; line-height:1.5;">{{ rp.kb }}</div>
+                </div>
+                <div style="border:1px dashed #ccc; border-radius:12px; padding:12px 14px;">
+                  <div style="font-size:10.5px; font-weight:700; color:#999; text-transform:uppercase; letter-spacing:1px; margin-bottom:5px;">Suggested eval case</div>
+                  <div style="font-size:12.5px; color:#4c4c4c; font-family:monospace; line-height:1.5;">{{ rp.evalCase }}</div>
+                </div>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </sc-if>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { tab: 'queue', online: true, selId: 'r1', reqStates: { r1: 'pending', r2: 'in_call', r3: 'ended' } };
+
+  data() {
+    return [
+      { id: 'r1', name: 'Alex Rivera', company: 'Acme Construction', industry: 'Construction', email: 'alex@acmeconstruction.com', phone: '(415) 555-0132', time: '2 min ago', score: 4, mode: 'Video (Daily)', session: 'sess_8f2ka1', trace: 'tr_b91x2c',
+        signals: [['Decision authority', true], ['Budget conversation welcome', true], ['Timeline < 6 months', true], ['Fit industry', true], ['Team size stated', false]],
+        convo: [['user', 'Do you work with construction companies?'], ['bot', 'Yes — Construction is one of nine industries Cadre serves, with agents like the Change Order Tracker and Automated Takeoff Generator. [industries#construction]'], ['user', 'What would an engagement cost us?'], ['bot', "Cadre doesn't publish pricing. A strategist can scope it — want to jump on a call now?"], ['user', 'Yes, let’s do it.']] },
+      { id: 'r2', name: 'María Fernández', company: 'Grupo Andino', industry: 'Manufacturing & Logistics', email: 'mfernandez@grupoandino.ec', phone: '+593 99 555 0184', time: '14 min ago', score: 5, mode: 'Video (Daily)', session: 'sess_2mc0v8', trace: 'tr_77qp0d',
+        signals: [['Decision authority', true], ['Budget conversation welcome', true], ['Timeline < 6 months', true], ['Fit industry', true], ['Team size stated', true]],
+        convo: [['user', '¿Pueden automatizar la comunicación con proveedores?'], ['bot', 'Sí — un caso publicado: automatización de proveedores con Zendesk + NetSuite, 220 horas/mes ahorradas y 90% de precisión. [case-studies#supplier-automation]'], ['user', 'Me interesa hablar con alguien hoy.']] },
+      { id: 'r3', name: 'Dana Okafor', company: 'Bluepeak Capital', industry: 'Private Equity', email: 'dana@bluepeak.com', phone: '(212) 555-0177', time: '1 hr ago', score: 3, mode: 'Video (Daily)', session: 'sess_x01b44', trace: 'tr_5ke9na',
+        signals: [['Decision authority', true], ['Budget conversation welcome', false], ['Timeline < 6 months', true], ['Fit industry', true], ['Team size stated', false]],
+        convo: [['user', 'How do you assess AI maturity across a portfolio?'], ['bot', 'Through the AI Maturity Index — a 1–100 score across the eight-pillar framework; the PE Playbook includes a portfolio-wide version. [maturity-index#pe]']] },
+    ];
+  }
+
+  renderVals() {
+    const s = this.state, data = this.data();
+    const stateMeta = { pending: ['Pending', '#db4545', true], in_call: ['In call', '#0a7d43', true], ended: ['Ended', '#999', false] };
+    const requests = data.map(r => {
+      const st = s.reqStates[r.id], m = stateMeta[st];
+      return { ...r, go: () => this.setState({ selId: r.id }), border: r.id === s.selId ? '#0c0407' : '#e5e5e5', stateLabel: m[0], stateColor: m[1], pulsing: m[2], scoreColor: r.score >= 4 ? '#0a7d43' : '#996' };
+    });
+    const raw = data.find(r => r.id === s.selId);
+    const st = s.reqStates[s.selId], m = stateMeta[st];
+    const sel = { ...raw, stateLabel: m[0], stateColor: m[1],
+      signals: raw.signals.map(([label, on]) => ({ label, mark: on ? '✓' : '—', color: on ? '#0a7d43' : '#b3b3b3' })),
+      convo: raw.convo.map(([role, text]) => ({ text, align: role === 'user' ? 'flex-end' : 'flex-start', bg: role === 'user' ? '#0c0407' : '#faf9f6', color: role === 'user' ? '#fff' : '#333', border: role === 'user' ? 'none' : '1px solid #eee', radius: role === 'user' ? '14px 14px 4px 14px' : '14px 14px 14px 4px' })) };
+    const pending = Object.values(s.reqStates).filter(x => x === 'pending').length;
+    const navTabs = [
+      { id: 'queue', label: 'Handover queue', badge: pending },
+      { id: 'callbacks', label: 'Callbacks', badge: 0 },
+      { id: 'triage', label: 'Triage', badge: 0 },
+    ].map(n => ({ ...n, go: () => this.setState({ tab: n.id }), hasBadge: n.badge > 0,
+      weight: n.id === s.tab ? '600' : '500', color: n.id === s.tab ? '#db4545' : '#666', bg: n.id === s.tab ? '#faf9f6' : 'transparent' }));
+    return {
+      queueOn: s.tab === 'queue', callbacksOn: s.tab === 'callbacks', triageOn: s.tab === 'triage',
+      navTabs, requests, sel,
+      canJoin: st === 'pending', canEnd: st === 'in_call', inCallBanner: st === 'in_call',
+      joinLabel: 'Claim & join call',
+      joinCall: () => this.setState({ reqStates: { ...s.reqStates, [s.selId]: 'in_call' } }),
+      endReq: () => this.setState({ reqStates: { ...s.reqStates, [s.selId]: 'ended' } }),
+      toggleAvail: () => this.setState({ online: !s.online }),
+      availLabel: s.online ? 'Online' : 'Offline', availColor: s.online ? '#0a7d43' : '#999',
+      toggleBg: s.online ? '#0a7d43' : '#ccc', knobLeft: s.online ? '20px' : '2px',
+      callbacks: [
+        { name: 'Jordan Lee', company: 'Harbor Retail Group', email: 'jordan@harborretail.com', phone: '(310) 555-0119', requested: 'Today, 9:41 AM', slot: 'Sep 8, 10:30 AM', score: 4 },
+        { name: 'Priya Nair', company: 'Northgate Lending', email: 'priya@northgate.com', phone: '(646) 555-0102', requested: 'Yesterday', slot: 'Sep 9, 1:00 PM', score: 3 },
+        { name: 'Tom Aldana', company: 'Vista Hospitality', email: 'tom@vistahosp.com', phone: '(858) 555-0166', requested: 'Yesterday', slot: 'Sep 10, 9:00 AM', score: 4 },
+      ],
+      reports: [
+        { category: 'Knowledge gap', catBg: '#f2efe4', catColor: '#996', severity: 'MEDIUM', sevColor: '#996', time: 'Today, 11:02 AM',
+          summary: 'Visitor asked whether Cadre offers SOC 2 documentation for procurement. The Assistant escalated correctly but could not name the published data-security commitments, so the answer felt thin.',
+          evidence: 'It just said it couldn’t confirm anything — I needed the security basics for my vendor form.',
+          kb: 'Add the three /ai-engineering data-security commitments (black-box data, never used to train, secure compliant tools) to security#commitments so escalations can cite them.',
+          evalCase: 'trap: "Do you have SOC 2?" → escalate + cite security#commitments' },
+        { category: 'Wrong escalation', catBg: '#fdeaea', catColor: '#db4545', severity: 'HIGH', sevColor: '#db4545', time: 'Yesterday, 4:37 PM',
+          summary: 'Assistant offered the contact form for a Portal-access question from an existing client instead of explaining that access is provisioned by their Cadre team.',
+          evidence: 'I’m already a client — the contact form loops me back to sales.',
+          kb: 'Clarify portal#access: existing clients get access through their Cadre team; hello@gocadre.ai is the fallback.',
+          evalCase: 'in-kb: "How do I log into the portal?" → cite portal#access, no form-only answer' },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

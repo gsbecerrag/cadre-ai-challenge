@@ -4,6 +4,8 @@
 
 **Blocked by:** 10 (Strategist Console with Google sign-in, Availability, and Leads)
 
+**Design reference:** [docs/design](../../../docs/design/README.md) — brief §2.5 kinds 5–7 and §3.1–3.2. Chat side: the "Your details" card (Full name / Work email / Company, "Share details", done state "✓ Details shared with the strategist") posting to this ticket's Lead endpoint (reusing ticket 09's upsert), the hand-over offer card ("Do you want to jump into a call with our experts?", Yes / "Keep chatting"), the decline line, and the Callback confirmation card ("A strategist will call you back"). Console side: the "Handover requests" list cards (name, pulsing state badge, company · industry, time, "score n/5"), the request detail (name header with the contact line, Qualification panel with ✓/— rows, Request panel with Mode / State / Session / Trace, "Conversation so far" bubbles) and the Callbacks table (Lead / Contact / Requested / Score). Rulings (see the rulings table): the spec's state machine with derived display labels; one Handover Request type with a mode field (Callbacks tab = `callback` filter); the calendar picker and "Scheduled for" slot are out of scope; the chat header's presence line is wired to Availability here.
+
 **Status:** ready-for-agent
 
 - [ ] The offer tool is absent from the tool list below the threshold, present at or above it, and absent again after one offer in the Session; covered at seam S1 by inspecting the tools the stub provider receives.
@@ -11,3 +13,4 @@
 - [ ] The state machine's allowed transitions are covered exhaustively at seam S2.
 - [ ] The chat reducer handles the offer card and the hand-over state events (offered, accepted, callback confirmed, declined); covered at seam S4.
 - [ ] On the deployed app with the Console open on a second screen: accepting the offer makes the request appear within a second with a notification and sound; the Visitor sees the Callback confirmation. A short recording is attached to the PR.
+- [ ] The chat cards (details, offer, callback) and the Console queue, request detail and Callbacks table match the design reference, using the spec's state names and signal labels.

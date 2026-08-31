@@ -4,6 +4,8 @@
 
 **Blocked by:** 10 (Strategist Console with Google sign-in, Availability, and Leads), 12 (Thumbs up/down becomes Feedback and a Langfuse score)
 
+**Design reference:** [docs/design](../../../docs/design/README.md) — brief §3.3: the Triage tab (heading "Triage reports", subtitle "Written by the Triage Agent on every thumbs-down. Newest first."), report cards with the category chip (Knowledge gap on `#f2efe4`/`#996`, Wrong escalation on `#fdeaea`/`#db4545`; add chip styles for the other five categories), severity label, timestamp, "Open trace in Langfuse ↗", summary, italic evidence block on cream, and the dashed boxes "Suggested KB addition" / "Suggested eval case" (monospace).
+
 **Status:** ready-for-agent
 
 - [ ] The handler, invoked with a fake Firestore event for a thumbs-up, writes nothing; for a thumbs-down it writes a Triage Report with every field of the schema; invoked twice for the same Feedback id it writes once; covered at seam S3 with a fake Firestore client and the stub provider returning a structured-output fixture.
@@ -11,3 +13,4 @@
 - [ ] The Console Triage tab lists reports via a realtime listener with category, severity, summary, suggestions, and the Trace link; allowlist enforced as in ticket 10.
 - [ ] The function deploys with `make deploy-functions` (core package copied in), and the emulator flow fires it locally; on the deployed app a real thumbs-down produces a report in the Console within a minute. Screenshots attached to the PR.
 - [ ] If the Functions deploy is blocked after a bounded effort, the fallback (a background task in the API) is implemented behind the same handler and recorded in the ADR and plan.md's cut log.
+- [ ] The Triage tab matches the design reference for all seven categories.

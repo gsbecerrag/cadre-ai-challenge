@@ -72,7 +72,7 @@ Model choice is asserted from priors today and **verified by a benchmark in P6**
 ## 6. How the work is executed (the Claude Code workflow)
 
 1. **Grilling session** (done 30 Aug) — 20 decisions, recorded as the [decision brief](docs/research/decision-brief-2026-08-30.md), then as ADRs. Facts were gathered by parallel research subagents ([docs/research/](docs/research/)).
-2. **Super spec** via `/to-spec` — the conversation synthesised into one spec; test seams agreed before any code.
+2. **Super spec** via `/to-spec` — the conversation synthesised into one spec; test seams agreed before any code. **Design** in Claude Design from the spec and research: the chat widget, host page + Portal, and Strategist Console artboards are the visual spec for the UI tickets ([docs/design/](docs/design/README.md)); where they simplify the spec, the spec wins and the ruling is recorded.
 3. **Tickets** via `/to-tickets` — vertical slices with explicit `Blocked by` edges; the frontier (unblocked tickets) is what runs next.
 4. **Build** via subagent-driven development — per ticket: a fresh implementer subagent with **TDD required** (failing test shown before code), an independent reviewer subagent (spec compliance + quality), rulings ledgered and copied into `docs/process/`. File-disjoint tickets (demo Portal, KB authoring) run in parallel worktrees.
 5. **One PR per ticket** with Conventional Commits; deploy from the laptop with `make deploy`; CI on PRs runs lint, unit tests, and the stub-provider eval subset (no API spend in CI).
@@ -87,6 +87,8 @@ Model choice is asserted from priors today and **verified by a benchmark in P6**
 | 2026-08-30 | Slack/email notification → Phase 2 | No Slack workspace; Console realtime notification is enough for the demo |
 | 2026-08-30 | RAGAS → pytest suite | No retrieval to score; kept the faithfulness idea as a groundedness metric |
 | 2026-08-30 | Voice, in-page navigation on cadreai.com → out | No surface / no destination today |
+| 2026-08-31 | Design's calendar picker and "Scheduled for" callback slot → Phase 2 | No scheduling concept in the spec; a Callback means a Strategist reaches out |
+| 2026-08-31 | Design's qualification labels ("Decision authority", "Team size stated", …) → replaced by the spec's five signals | The score must be computable from `capture_lead` arguments ([ADR-0009](docs/adr/0009-bant-lite-qualification.md)) |
 
 ## 8. Risks and fallbacks
 
@@ -108,5 +110,6 @@ Model choice is asserted from priors today and **verified by a benchmark in P6**
 | [docs/architecture.md](docs/architecture.md) | Diagrams, tech-stack table, data model, capacity model |
 | [docs/adr/](docs/adr/) | The ten decision records |
 | [docs/research/](docs/research/) | Evidence: cadreai.com facts, OpenRouter and Claude API facts, decision brief |
+| [docs/design/](docs/design/README.md) | Claude Design artboards (chat widget, mock site + Portal, Strategist Console), the design brief, and the spec-vs-design rulings |
 | [docs/agents/](docs/agents/) | Conventions for the engineering skills (issue tracker, triage labels, domain docs) |
 | [.claude/skills/](.claude/skills/) | Project skills: `pii-redaction` (adapted for B2B), `mvp-prioritization` |

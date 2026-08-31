@@ -4,6 +4,8 @@
 
 **Blocked by:** 01 (Hello-world Assistant live on Cloud Run)
 
+**Design reference:** [docs/design](../../../docs/design/README.md) — artboard `cadre-support-chat.dc.html`, brief §2.3–2.5 and §2.7: the launcher (fixed bottom-right, 58 px circle, ink `#0c0407`), the panel shell (docked 392 px / expanded, radius 24 px, header gradient with the avatar "C", title "Cadre AI Assistant", presence line, EN/ES toggle for chrome strings, expand and close), the `text` and `typing` message kinds, citation chips (monospace pill on `#f2efe4`), the input bar (placeholder "Ask about services, industries, pricing…", send `↑`), quick-reply chips, and the `msgin` entrance. The presence line shows the offline copy until ticket 11 wires Availability; the host page under the widget is ticket 07 (keep a stable mount point).
+
 **Status:** ready-for-agent
 
 - [ ] Posting a message to the chat endpoint streams the event sequence text deltas → done, and the done event carries usage; covered at seam S1 with the stub provider and in-memory store.
@@ -13,3 +15,4 @@
 - [ ] The compiler produces a KB Section for every heading in the topic files with ids of the form `topic#heading`, and the assembled system prompt lists the Knowledge Base block before any volatile content; covered at seam S2.
 - [ ] The chat reducer turns a recorded event sequence into the expected chat state (streamed text accumulates, error renders as a friendly message); covered at seam S4 with one Vitest test.
 - [ ] Running locally with the stub provider, the browser shows a streamed answer that cites a section id; a short screen recording or screenshot is attached to the PR.
+- [ ] The chat widget matches the design reference for the launcher, panel shell, text/typing bubbles, citation chips, input bar and quick replies (tokens, radii, copy); any deviation is listed in the PR.
