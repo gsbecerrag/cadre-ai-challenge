@@ -76,7 +76,11 @@ def _steps(value: object) -> list[str]:
         raise ValueError(
             f"`steps` must be a list of {MIN_STEPS} to {MAX_STEPS} strings, one action each"
         )
-    steps = [str(step).strip() for step in value]
+    if not all(isinstance(step, str) for step in value):
+        # Coercing would satisfy every check below and show the Visitor a card whose steps
+        # read "1" and "2" — validated, rendered, and useless.
+        raise ValueError("every step is text the Visitor can act on, not a number or an object")
+    steps = [step.strip() for step in value if isinstance(step, str)]
     if not all(steps):
         raise ValueError("every step needs text the Visitor can act on")
     if not MIN_STEPS <= len(steps) <= MAX_STEPS:

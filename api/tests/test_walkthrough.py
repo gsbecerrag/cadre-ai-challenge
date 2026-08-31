@@ -149,6 +149,22 @@ def test_a_walkthrough_the_visitor_cannot_follow_is_sent_back_to_the_assistant(
     assert "2 to 4 steps" in provider.requests[1].messages[-1].content
 
 
+def test_a_step_that_is_not_text_is_sent_back_rather_than_rendered_as_one(
+    client: TestClient, provider: StubModelProvider
+) -> None:
+    """`steps: [1, 2]` satisfies the count and is not a walkthrough. Coercing it would show
+    the Visitor a card whose steps read "1" and "2" — a card that survived validation and
+    tells them nothing."""
+    provider.script("numbered", [walkthrough_with(steps=[1, 2])], [TextDelta(CLOSING), SPEND])
+
+    response = client.post("/api/chat", json={"message": "numbered steps please"})
+
+    names = [name for name, _ in sse_events(response)]
+    assert "card" not in names
+    assert names == ["tool", "tool", "text", "done"]
+    assert "every step is text" in provider.requests[1].messages[-1].content
+
+
 def test_an_escalation_names_the_language_the_visitor_is_reading_it_in(
     client: TestClient, provider: StubModelProvider
 ) -> None:
