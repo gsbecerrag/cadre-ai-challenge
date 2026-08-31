@@ -4,7 +4,7 @@
 
 **Blocked by:** 13 (Fifty Eval Cases, four metrics, and the CI stub subset), 14 (Triage Agent on thumbs-down and the Console Triage tab), 15 (Live Hand-over on video inside the chat) — or whichever of these were completed; anything not completed is recorded as cut in this ticket
 
-**Status:** ready-for-agent
+**Status:** in-progress
 
 - [ ] plan.md: every phase row has a final status; every cut is in the cut log with a reason; the "if forced to choose" note reflects what actually happened.
 - [ ] README: run, test, `make eval`, deploy, the public URL, and the document map; no stale command.
