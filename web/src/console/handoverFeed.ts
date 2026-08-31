@@ -68,7 +68,7 @@ export const LABEL_STYLE: Record<HandoverLabel, { color: string; pulsing: boolea
   'In call': { color: '#0a7d43', pulsing: true },
   Ended: { color: '#999999', pulsing: false },
   Declined: { color: '#999999', pulsing: false },
-  Callback: { color: '#998866', pulsing: false },
+  Callback: { color: '#999966', pulsing: false },
 }
 
 /** Work a Strategist has not dealt with yet — what the nav badge counts. */
