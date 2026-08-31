@@ -21,3 +21,4 @@
 - Ruling: the handler is seam-pure in `core/triage.py` (S3 with fakes); the report is keyed by the Feedback id so redelivery overwrites; malformed output degrades to `other`; the triage score has its own name so it can never overwrite the Visitor's thumb; the trigger is document WRITES with the rating-became-down guard (ADR-0005 amended).
 - Parked: secret-copy rotation drift; `functions/main.py` outside mypy (watched via the two log lines on the first deploy); the ADR summary line + the spec's stale creation wording → ticket 19; the emulator run (host crashes) — superseded by the deployed check.
 - The deployed check (a real thumbs-down → a Triage Report in the Console within a minute; screenshots) is recorded here after the merge + make deploy-functions.
+- Deployed-app check recorded: [docs/transcripts/2026-08-31-deployed-checks-14-15-20.md](../../../docs/transcripts/2026-08-31-deployed-checks-14-15-20.md) — revision `e619c71`; the Triage Function is live.

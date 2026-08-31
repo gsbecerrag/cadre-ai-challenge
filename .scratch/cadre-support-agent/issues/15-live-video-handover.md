@@ -22,3 +22,4 @@
 - Ruling: the Strategist's email never reaches the Visitor (display name or a localised "a Cadre strategist"); the Visitor always has a local "Back to the chat" exit.
 - Parked: an `event.origin` check on the `left-meeting` listener; Console join/end without CAS; `room_expires_at` unread; the adapter's client never closed; auto-expand on call start.
 - The deployed two-device check and recording (accept → room opens in the chat → Join from the Console → both sides see video → End) need Galo's allowlisted account on a second device — recorded here when done.
+- Deployed-app check recorded: [docs/transcripts/2026-08-31-deployed-checks-14-15-20.md](../../../docs/transcripts/2026-08-31-deployed-checks-14-15-20.md) — revision `e619c71`; the Triage Function is live.
