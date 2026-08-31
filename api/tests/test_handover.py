@@ -34,7 +34,12 @@ from api.session import SESSION_COOKIE, session_id_from_cookie
 from api.tests.conftest import COOKIE_SECRET, sse_events
 from core.adapters.memory_notifier import InMemoryNotifier
 from core.adapters.memory_store import InMemoryConversationStore
-from core.adapters.recording_video import FAKE_DOMAIN, FailingVideoRooms, RecordingVideoRooms
+from core.adapters.recording_video import (
+    FAKE_DOMAIN,
+    BrokenVideoRooms,
+    FailingVideoRooms,
+    RecordingVideoRooms,
+)
 from core.adapters.stub_provider import StubModelProvider
 from core.auth import StrategistIdentity
 from core.config import Settings
@@ -573,6 +578,32 @@ def test_a_hand_over_degrades_to_a_callback_when_the_room_cannot_be_created(
     stored = asyncio.run(store.get_handover(request_id))
     assert stored is not None
     assert (stored.state, stored.mode, stored.room_url) == ("pending_strategist", "callback", "")
+
+
+def test_a_video_adapter_that_fails_in_an_unforeseen_way_still_yields_a_callback(
+    build_client: ClientFor,
+    provider: StubModelProvider,
+    store: InMemoryConversationStore,
+) -> None:
+    """The acceptance is guarded against the adapter, not against one exception type.
+
+    A `VideoRoomError` is the failure this code knows about; a `RuntimeError` out of a response
+    that was not the JSON the vendor's documentation promised is the failure the next version of
+    the adapter will have. Either way the Visitor pressed Yes, and losing that to a 500 loses
+    the Lead — which is the one thing this feature may never do.
+    """
+    broken = BrokenVideoRooms()
+    client = build_client(live_handover_enabled=True, video_rooms=broken)
+    go_online(store)
+    qualify(client, provider)
+    request_id = offer(client, provider)["request_id"]
+
+    response = client.post(f"/api/handover/{request_id}/accept")
+
+    assert response.status_code == 200
+    assert response.json()["mode"] == "callback"
+    assert response.json()["room_url"] is None
+    assert broken.requested == [request_id]
 
 
 def test_with_the_flag_off_the_video_adapter_is_never_reached(

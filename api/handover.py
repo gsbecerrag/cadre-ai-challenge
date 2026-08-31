@@ -32,7 +32,7 @@ from core.logging import get_logger
 from core.qualification import DEFAULT_QUALIFICATION_THRESHOLD
 from core.store import ConversationStore, lead_snapshot
 from core.tools.capture_lead import merged_lead
-from core.video import NoVideoRooms, Room, VideoRoomError, VideoRooms
+from core.video import NoVideoRooms, Room, VideoRooms
 
 # Long enough for a real name, a real company and a real work email; short enough that the
 # field is not a place to paste a document into.
@@ -214,9 +214,15 @@ def create_handover_router(
         """
         try:
             return await rooms.create_room(request_id)
-        except VideoRoomError:
+        except Exception:
+            # Deliberately every exception, not only `VideoRoomError`. That one is the failure
+            # the adapter knows about; a `KeyError` from a field the vendor moved, or whatever
+            # a future adapter's SDK raises, is the failure it does not — and both cost the
+            # same thing, which is a Visitor's Yes turned into a 500. The room is optional and
+            # the Lead is not, so nothing thrown below this line may reach the Visitor.
+            #
             # The vendor's own words never reach the Visitor, and never reach a log line
-            # either — the exception is a `repr` of somebody else's API.
+            # either — an exception message is a `repr` of somebody else's API.
             logger.warning(
                 "A video room could not be opened; the Hand-over degrades to a Callback",
                 extra={"request_id": request_id},

@@ -84,13 +84,31 @@ class DailyVideoRooms:
                 extra={"request_id": request_id, "handover_mode": "video"},
             )
             raise VideoRoomError(f"Daily could not be reached: {unreachable!r}") from unreachable
-        if response.status_code >= 400:
+        # Anything that is not a 2xx, including a redirect: this client does not follow them,
+        # so a 3xx here is a room that was not created and a body that is not a room.
+        if not (200 <= response.status_code < 300):
             logger.warning(
                 "Daily refused to create a room",
                 extra={"request_id": request_id, "status": response.status_code},
             )
             raise VideoRoomError(f"Daily answered {response.status_code} creating a room.")
-        document = response.json()
+        try:
+            document = response.json()
+        except ValueError as unreadable:
+            # A 200 whose body is not JSON — a proxy's error page, a truncated response. Every
+            # way this call can fail has to leave by the same door, because the caller degrades
+            # a `VideoRoomError` to a Callback and lets anything else become a lost acceptance.
+            logger.warning(
+                "Daily answered with something that is not JSON",
+                extra={"request_id": request_id, "status": response.status_code},
+            )
+            raise VideoRoomError("Daily's answer could not be read as JSON.") from unreadable
+        if not isinstance(document, dict):
+            logger.warning(
+                "Daily answered with JSON that is not a room",
+                extra={"request_id": request_id, "status": response.status_code},
+            )
+            raise VideoRoomError("Daily's answer was not a room document.")
         url = str(document.get("url") or f"https://{self._domain}/{name}")
         logger.info("Video room created", extra={"request_id": request_id, "room": name})
         return Room(

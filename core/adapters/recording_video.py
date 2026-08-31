@@ -19,6 +19,8 @@ FAKE_DOMAIN = "cadre-demo.daily.invalid"
 
 REFUSED = "The video provider refused to create a room."
 
+BROKEN = "A bug in a video adapter that is not a VideoRoomError."
+
 
 class RecordingVideoRooms:
     """Hands back a room and remembers who asked for one."""
@@ -46,3 +48,20 @@ class FailingVideoRooms:
     async def create_room(self, request_id: str) -> Room:
         self.requested.append(request_id)
         raise VideoRoomError(REFUSED)
+
+
+class BrokenVideoRooms:
+    """An adapter that fails in a way its own author did not think of.
+
+    Not a `VideoRoomError` — a plain `RuntimeError`, standing in for the class of bug a future
+    adapter will have: a response that is not JSON, a key that moved, an SDK raising its own
+    exception type. The acceptance has to survive it, because what is at stake is not the call
+    but the Lead.
+    """
+
+    def __init__(self) -> None:
+        self.requested: list[str] = []
+
+    async def create_room(self, request_id: str) -> Room:
+        self.requested.append(request_id)
+        raise RuntimeError(BROKEN)
