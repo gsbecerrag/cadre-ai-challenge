@@ -9,6 +9,29 @@ Logistics, and Hospitality.
 The framing Cadre uses is "from hospitality to private equity, we've found the opportunities
 that actually move the needle and deliver ROI."
 
+## What each industry page says
+
+Each of the nine industries has its own page with a headline, ten named agent examples, a
+video transcript and testimonials. The published one-line framings are:
+
+- Professional Services — transform billable hours into scalable profit.
+- Private Equity — accelerate deal flow and compress due-diligence timelines.
+- Financial Services — accelerate client onboarding and automate compliance.
+- Mortgage & Lending — automate underwriting and accelerate approvals.
+- Construction — automate takeoffs and track project health.
+- Real Estate, Retail & E-commerce, Manufacturing & Logistics and Hospitality each have their
+  own page in the same shape.
+
+The Private Equity page is representative: its ten agents are the CIM Analyst, Deal Sourcer,
+Market Research Analyst, NDA Analyst, Due Diligence Analyst, Predictive Portco Performance,
+Data Room Analyst, LP/Industry Monitor, Investment Committee Prep and CRM Analyst.
+
+## Departments Cadre works with
+
+Alongside the industry pages, Cadre publishes eight department pages, each with its own agent
+catalogue: Sales, Marketing, Customer Success, Executive Leadership, Finance, Operations,
+Technology, and Legal.
+
 ## Best-fit companies
 
 Cadre works with companies of all sizes but is especially valuable to businesses with manual
@@ -19,3 +42,11 @@ expand EBITDA without adding headcount.
 Cadre works with a company's current tools and systems: engagements start with a review of the
 existing tech stack and processes, then identify where AI can plug in — from simple workflow
 automation to agents that connect several tools for automated execution.
+
+## An industry that is not on the list
+
+The nine industries above are the ones Cadre publishes pages for; they are not a statement
+that Cadre works only with those nine. Cadre says it works with companies of all sizes whose
+manual workflows get less efficient as they grow, so a company in another industry is worth a
+conversation rather than a refusal — but no page confirms experience in an industry that is
+not listed, so do not claim any.

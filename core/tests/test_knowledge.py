@@ -99,3 +99,47 @@ def test_every_id_the_demo_script_cites_resolves_to_a_kb_section() -> None:
 
     assert cited, "the demo script cites nothing, so this guard proves nothing"
     assert cited <= ids
+
+
+def test_the_knowledge_base_covers_every_topic_the_brief_asks_about() -> None:
+    """The brief's scenarios are the coverage bar: what Cadre does, industries, booking a
+    call, the Portal, the AI Maturity Index, LLM selection and data security — plus the
+    topic that exists so the Assistant can escalate instead of inventing."""
+    sections = compile_knowledge_base(FileKnowledgeSource().documents())
+
+    assert {section.topic for section in sections} == {
+        "case-studies",
+        "contact",
+        "data-security",
+        "industries",
+        "maturity-index",
+        "not-published",
+        "partners-and-models",
+        "portal",
+        "services",
+    }
+
+
+def test_every_kb_section_id_is_unique_across_the_whole_knowledge_base() -> None:
+    """A citation is only worth rendering if one id names exactly one KB Section."""
+    ids = [section.id for section in compile_knowledge_base(FileKnowledgeSource().documents())]
+
+    assert len(ids) == len(set(ids))
+
+
+def test_what_cadre_does_not_publish_is_itself_a_citable_topic() -> None:
+    """Escalating honestly means citing the section that says the fact is not published, so
+    every Trap Question the prompt lists needs a KB Section of its own."""
+    sections = compile_knowledge_base(FileKnowledgeSource().documents())
+
+    not_published = {section.id for section in sections if section.topic == "not-published"}
+    assert {
+        "not-published#pricing",
+        "not-published#portal-login",
+        "not-published#security-certifications-and-data-agreements",
+        "not-published#company-size-founding-and-funding",
+        "not-published#named-availability-and-start-dates",
+        "not-published#comparisons-with-other-firms",
+        "not-published#outcome-guarantees",
+        "not-published#anything-not-listed-here",
+    } <= not_published
