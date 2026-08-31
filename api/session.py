@@ -27,6 +27,13 @@ SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 7
 _SESSION_ID_BYTES = 24
 _ISSUED_ID = re.compile(r"^[A-Za-z0-9_-]{16,64}$")
 
+# The signature is a SHA-256 digest in urlsafe-base64 with the padding stripped: exactly 43
+# characters from a fixed alphabet. Its shape is checked before it is compared, because the
+# whole cookie is attacker-controlled and a constant-time comparison refuses a non-ASCII
+# string outright — a header decodes as latin-1, so one high byte would otherwise be a 500
+# on every Turn, and a browser resends the cookie it was never given a replacement for.
+_SIGNATURE = re.compile(r"^[A-Za-z0-9_-]{43}$")
+
 
 def new_session_id() -> str:
     return secrets.token_urlsafe(_SESSION_ID_BYTES)
@@ -45,10 +52,11 @@ def sign_session_id(session_id: str, secret: str) -> str:
 def session_id_from_cookie(cookie: str, secret: str) -> str | None:
     """The id inside a cookie this service signed, or `None` for anything else."""
     session_id, separator, signature = cookie.partition(".")
-    if not separator or not _ISSUED_ID.match(session_id):
+    if not separator or not _ISSUED_ID.match(session_id) or not _SIGNATURE.match(signature):
         return None
-    # Constant time, so a signature cannot be discovered one byte at a time.
-    if not hmac.compare_digest(signature, _signature(session_id, secret)):
+    # Constant time, over bytes, so a signature cannot be discovered one byte at a time.
+    expected = _signature(session_id, secret).encode("ascii")
+    if not hmac.compare_digest(signature.encode("ascii"), expected):
         return None
     return session_id
 

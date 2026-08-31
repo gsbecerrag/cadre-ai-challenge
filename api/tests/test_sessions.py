@@ -92,6 +92,26 @@ def test_a_cookie_this_service_did_not_issue_earns_a_fresh_session(
     assert not asyncio.run(store.load(cookie.partition(".")[0]))
 
 
+def test_a_cookie_carrying_a_raw_byte_earns_a_fresh_session_rather_than_a_500(
+    client: TestClient, provider: StubModelProvider, store: InMemoryConversationStore
+) -> None:
+    """The signature half of the cookie is attacker-controlled bytes.
+
+    A header decodes as latin-1, so one high byte makes the signature a non-ASCII string --
+    which a constant-time comparison refuses outright. Left unchecked that is a 500 on every
+    Turn, and because the cookie is only replaced on a response the browser never gets, the
+    Visitor would resend the same broken cookie forever. It has to be an ordinary fresh
+    Session. Sent as raw bytes because no cookie jar will encode this for us.
+    """
+    provider.script("hello", [TextDelta(ANSWER), SPEND])
+    raw = "cadre_session=aaaaaaaaaaaaaaaaaaaaaaaa.s\u00edgnature".encode("latin-1")
+
+    response = client.post("/api/chat", json={"message": "hello"}, headers={b"cookie": raw})
+
+    assert response.status_code == 200
+    assert asyncio.run(store.load(stored_session_id(client)))
+
+
 def test_the_assistant_refuses_to_start_in_production_without_a_cookie_secret(
     web_dist: object,
 ) -> None:
