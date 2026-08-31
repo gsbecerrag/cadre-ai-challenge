@@ -6,7 +6,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A take-home challenge for Cadre AI: build a **customer support chatbot for Cadre AI** (an AI strategy and implementation consultancy), deploy it to a public URL, and walk through it in a live review. The full brief is in [Cadre_AI_Chatbot_Take_Home_Candidate.docx.md](./Cadre_AI_Chatbot_Take_Home_Candidate.docx.md) — read it before making scope or architecture decisions.
 
-There is **no application code yet**. When the stack is chosen and scaffolded, update this file with the actual build/run/test commands and architecture (see the placeholder section at the bottom).
+**Start with [plan.md](./plan.md)** — phases, scope decisions, status, and the document map. Then [CONTEXT.md](./CONTEXT.md) for the vocabulary every name and test must use, the super spec at `.scratch/cadre-support-agent/spec.md`, and [docs/architecture.md](./docs/architecture.md). Decisions with reasoning live in `docs/adr/`; evidence in `docs/research/`.
+
+Application code is not scaffolded yet. When it is, replace the "Commands & Architecture" placeholder below with the real commands and architecture.
 
 ## Hard Deliverables
 
@@ -49,6 +51,17 @@ Evaluation weights, for prioritizing effort: Claude Code proficiency 30%, system
 - **Commit** in [Conventional Commits](https://www.conventionalcommits.org) form (`type(scope?): imperative summary`), one logical change per commit; the body says *why*.
 - **Open the PR** with `gh pr create --base main`; the body names the plan.md phase or `.scratch/` ticket it delivers.
 - **Merge** with `gh pr merge --merge --delete-branch` — a merge commit keeps the granular commits and the branch shape visible in history.
+
+## Build Process
+
+Work is tracked as tickets: the spec is `.scratch/cadre-support-agent/spec.md`, tickets are `.scratch/cadre-support-agent/issues/NN-slug.md`, and `.scratch/cadre-support-agent/tasks.md` is the generated index that subagent tooling reads. Work the frontier: any ticket whose `Blocked by` tickets are all done.
+
+- **One ticket = one branch = one PR.** Claim it by setting its `**Status:**` to `in-progress`; on merge set `done` with the PR link under `## Comments`, and tick the matching box in `plan.md` in the same PR.
+- **Execute tickets with `superpowers:subagent-driven-development`**, `PLAN_FILE=.scratch/cadre-support-agent/tasks.md`: a fresh implementer subagent per ticket, an independent reviewer after it, rulings ledgered and the ledger copied to `docs/process/`. File-disjoint tickets may run in parallel worktrees.
+- **TDD is required for every implementing subagent**: `superpowers:test-driven-development` is the loop (show the failing test before the code), `mattpocock-skills:tdd` sets test quality and seams. Tests exist only at the seams named in the spec's Testing Decisions; the subagent's report shows RED then GREEN output.
+- **Unit tests and CI use the stub provider and the in-memory store** — OpenRouter, Firestore, Langfuse, Daily, and Firebase Auth are reached only from `make eval` and the deployed app.
+- **Personal data:** follow the `pii-redaction` skill (`.claude/skills/pii-redaction/`) — Contact Details are captured, the Refuse Set is never held; tests and fixtures use obviously fake values.
+- **Downgrade rule:** a ticket that exceeds 2× its estimate or reaches fix-round 3 is finished directly by the controller (still TDD, one `mattpocock-skills:code-review`) and the ruling is logged in `plan.md`.
 
 ## Commands & Architecture
 
