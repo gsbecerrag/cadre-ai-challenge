@@ -54,13 +54,19 @@ MAX_INSTANCES = 5
 
 logger = get_logger("functions.triage")
 
-# Built on the first event and kept for the life of the instance: the Knowledge Base is
-# compiled once (it is ~25K tokens of cached prompt prefix, and recompiling it per event would
-# be both wasted work and a chance to differ from the API's copy), and the Firestore client's
-# gRPC channel belongs to the loop that will use it. Lazy rather than at import, because the
-# Firebase CLI imports this module to discover the functions in it — during a deploy, on a
-# laptop, with no secrets bound — and a missing key must not fail that discovery.
-_agent: dict[str, Any] = {}
+# The seams, built on the first event and kept for the life of the instance under the one key
+# `"seams"`: the Knowledge Base is compiled once (it is ~25K tokens of cached prompt prefix,
+# and recompiling it per event would be both wasted work and a chance to differ from the API's
+# copy), and the Firestore client's gRPC channel belongs to the loop that will use it. Lazy
+# rather than at import, because the Firebase CLI imports this module to discover the
+# functions in it — during a deploy, on a laptop, with no secrets bound — and a missing key
+# must not fail that discovery. `None` under that key means "this instance cannot triage
+# anything", which is decided once and logged once (see `_build`).
+_agent: dict[str, dict[str, Any] | None] = {}
+
+# What is missing when there is no OpenRouter key: the Secret Manager id the function declares
+# in SECRETS, named in the log line so the fix is the message rather than a deduction.
+OPENROUTER_SECRET_ID = "OPENROUTER_API_KEY"
 
 
 def _tracer(settings: Settings) -> Tracer:
@@ -82,30 +88,52 @@ def _tracer(settings: Settings) -> Tracer:
     )
 
 
-def _seams() -> dict[str, Any]:
-    """The production seams, built once per instance and passed to the handler."""
-    if not _agent:
-        settings = Settings()
-        configure_logging(level=settings.loglevel)
-        store: ConversationStore = FirestoreConversationStore(project=settings.google_cloud_project)
-        _agent.update(
-            store=store,
-            provider=OpenRouterModelProvider(
-                api_key=settings.openrouter_api_key,
-                model=settings.triage_model_id,
-                app_url=settings.openrouter_app_url,
-                app_name=settings.openrouter_app_name,
-                cache_ttl=settings.prompt_cache_ttl,
-                base_url=settings.openrouter_base_url,
-            ),
-            tracer=_tracer(settings),
-            knowledge=render_knowledge_block(
-                compile_knowledge_base(FileKnowledgeSource().documents())
-            ),
-            model=settings.triage_model_id,
+def _build() -> dict[str, Any] | None:
+    """The production seams, or `None` because this instance cannot write a report.
+
+    The one thing worth refusing to start over is the OpenRouter key. Without it every event
+    would reach the provider, fail, and be swallowed by the handler's own error branch — no
+    reports, no complaint, and a Console Triage tab that is empty for a reason nobody can see.
+    A secret that failed to bind is a deployment mistake, so it is said once, loudly, at
+    ERROR, naming the secret id to fix. Langfuse is the opposite case and stays a warning
+    inside `_tracer`: a report written without its Trace summary is still a report.
+    """
+    settings = Settings()
+    configure_logging(level=settings.loglevel)
+    if not settings.openrouter_api_key.strip():
+        logger.error(
+            "The Triage Agent has no OpenRouter key, so no Feedback can be triaged on this "
+            "instance. Bind the secret and redeploy: make deploy-secrets && make "
+            "deploy-functions",
+            extra={"missing_secret": OPENROUTER_SECRET_ID},
         )
-        logger.info("The Triage Agent is ready", extra={"model": settings.triage_model_id})
-    return _agent
+        return None
+    store: ConversationStore = FirestoreConversationStore(project=settings.google_cloud_project)
+    seams: dict[str, Any] = {
+        "store": store,
+        "provider": OpenRouterModelProvider(
+            api_key=settings.openrouter_api_key,
+            model=settings.triage_model_id,
+            app_url=settings.openrouter_app_url,
+            app_name=settings.openrouter_app_name,
+            cache_ttl=settings.prompt_cache_ttl,
+            base_url=settings.openrouter_base_url,
+        ),
+        "tracer": _tracer(settings),
+        "knowledge": render_knowledge_block(
+            compile_knowledge_base(FileKnowledgeSource().documents())
+        ),
+        "model": settings.triage_model_id,
+    }
+    logger.info("The Triage Agent is ready", extra={"model": settings.triage_model_id})
+    return seams
+
+
+def _seams() -> dict[str, Any] | None:
+    """The seams for this instance, built once — including the decision not to have any."""
+    if "seams" not in _agent:
+        _agent["seams"] = _build()
+    return _agent["seams"]
 
 
 @firestore_fn.on_document_written(
@@ -131,6 +159,11 @@ def triage_on_feedback_written(
     if after is None:
         return
     try:
-        asyncio.run(triage_feedback(after.to_dict() or {}, **_seams()))
+        seams = _seams()
+        if seams is None:
+            # `_build` has already said why, once, at ERROR. Saying it again per event would
+            # bury the one line that matters under one line per thumb.
+            return
+        asyncio.run(triage_feedback(after.to_dict() or {}, **seams))
     except Exception:
         logger.exception("The Triage Agent could not finish a Feedback event")
