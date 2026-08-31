@@ -17,16 +17,21 @@ import { useState } from 'react'
 import type { Chrome } from './strings'
 import type { FeedbackEntry, FeedbackRating } from './types'
 
-const THUMB =
-  'rounded-[48px] border border-[#e5e5e5] bg-white px-[18px] py-1.5 text-[15px] leading-none'
-const CHOSEN = 'border-[#0c0407]'
+const THUMB = 'rounded-[48px] border bg-white px-[18px] py-1.5 text-[15px] leading-none'
 
-// Written out per rating rather than interpolated: Tailwind generates the classes it can see
-// in the source, and `hover:border-[${colour}]` is a class it cannot see (artboard §2.5).
-const HOVER: Record<FeedbackRating, string> = {
-  up: 'hover:border-[#0a7d43]',
-  down: 'hover:border-[#db4545]',
+// The thumb that stands is outlined in ink, so a Visitor coming back to a rated answer can see
+// which way they voted and that the other thumb is the change still on offer. The border
+// colour is chosen here rather than overridden on top of a default: two arbitrary Tailwind
+// border colours on one element are resolved by stylesheet order, not by the order they are
+// written in, and the marked thumb loses that race about half the time.
+const RESTING: Record<FeedbackRating, string> = {
+  // Hover colours from the artboard (§2.5, kind 9): green for the thumbs-up, the Cadre red
+  // for the thumbs-down. Written out per rating because Tailwind generates the classes it can
+  // see in the source, and `hover:border-[${colour}]` is a class it cannot see.
+  up: 'border-[#e5e5e5] hover:border-[#0a7d43]',
+  down: 'border-[#e5e5e5] hover:border-[#db4545]',
 }
+const CHOSEN = 'border-[#0c0407]'
 
 export function FeedbackControl({
   traceId,
@@ -58,7 +63,7 @@ export function FeedbackControl({
         aria-label={label}
         aria-pressed={rating === option}
         onClick={() => onChoose(traceId, option)}
-        className={`${THUMB} ${rating === option ? CHOSEN : HOVER[option]}`}
+        className={`${THUMB} ${rating === option ? CHOSEN : RESTING[option]}`}
       >
         {glyph}
       </button>
@@ -66,7 +71,7 @@ export function FeedbackControl({
   }
 
   return (
-    <div className="mt-1.5 flex flex-col items-start gap-1.5">
+    <div className="mt-1.5 flex w-full flex-col items-start gap-1.5">
       {!done && <div className="text-[12.5px] text-[#666]">{chrome.feedbackPrompt}</div>}
 
       {done && (
@@ -84,7 +89,7 @@ export function FeedbackControl({
 
       {status === 'chosen' && rating !== null && (
         <form
-          className="flex items-center gap-2 rounded-[48px] border border-[#e5e5e5] bg-white py-1 pr-1 pl-3.5"
+          className="flex w-[88%] items-center gap-2 rounded-[48px] border border-[#e5e5e5] bg-white py-1 pr-1 pl-3.5"
           onSubmit={(event) => {
             event.preventDefault()
             onSend(traceId, rating, comment.trim())

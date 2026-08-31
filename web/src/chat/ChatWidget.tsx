@@ -57,9 +57,12 @@ export function ChatWidget() {
   const launcher = useRef<HTMLButtonElement>(null)
   const wasOpen = useRef(false)
 
+  // Also on `state.feedback`: pressing a thumb opens a comment box under the answer, and at
+  // the bottom of a full transcript that box would otherwise open below the fold — the Visitor
+  // would press 👎 and watch nothing happen.
   useEffect(() => {
     transcript.current?.scrollTo({ top: transcript.current.scrollHeight })
-  }, [state.messages])
+  }, [state.messages, state.feedback])
 
   // Opening moves focus into the composer, closing puts it back on the launcher — otherwise
   // a keyboard Visitor is dropped at the top of the document by both.
