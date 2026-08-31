@@ -25,6 +25,7 @@ export interface Chrome {
   collapse: string
   send: string
   language: string
+  typing: string
   connectionError: string
 }
 
@@ -47,6 +48,7 @@ const EN: Chrome = {
   collapse: 'Shrink',
   send: 'Send',
   language: 'Language',
+  typing: 'The Assistant is typing',
   connectionError:
     'I lost the connection before I could answer. Please try again — or reach the team at ' +
     'hello@gocadre.ai or (619) 324-3223.',
@@ -71,6 +73,7 @@ const ES: Chrome = {
   collapse: 'Reducir',
   send: 'Enviar',
   language: 'Idioma',
+  typing: 'El asistente está escribiendo',
   connectionError:
     'Perdí la conexión antes de poder responder. Inténtalo de nuevo — o escribe a ' +
     'hello@gocadre.ai o llama al (619) 324-3223.',

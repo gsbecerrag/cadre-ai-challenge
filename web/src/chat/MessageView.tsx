@@ -24,7 +24,7 @@ function Citations({ ids }: { ids: string[] }) {
   )
 }
 
-export function MessageView({ message }: { message: Message }) {
+export function MessageView({ message, typingLabel }: { message: Message; typingLabel: string }) {
   const alignment = message.role === 'visitor' ? 'items-end' : 'items-start'
 
   return (
@@ -46,7 +46,7 @@ export function MessageView({ message }: { message: Message }) {
 
       {message.kind === 'typing' && (
         <div
-          aria-label="The Assistant is typing"
+          aria-label={typingLabel}
           className="flex gap-[5px] rounded-[16px_16px_16px_4px] border border-[#e5e5e5] bg-white px-4 py-3.5"
         >
           <span className="cadre-tdot size-1.5 rounded-full bg-[#999]" />
