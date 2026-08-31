@@ -63,6 +63,14 @@ export function ConsoleLayout() {
   )
 }
 
+/** What the Availability control says: the state, or why it cannot say one. */
+function availabilityLabel(availability: Availability | undefined, problem?: string): string {
+  if (availability !== undefined) {
+    return availability.online ? 'Online' : 'Offline'
+  }
+  return problem ? 'Unavailable' : '…'
+}
+
 function Splash({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-screen items-center justify-center bg-cadre-sand font-sans text-sm text-cadre-muted">
@@ -91,32 +99,55 @@ function ConsoleShell({
 }) {
   const [availability, setAvailabilityState] = useState<Availability>()
   const [saving, setSaving] = useState(false)
+  // Anything that is not a 403. A 403 means "you are not one of Cadre's" and replaces the
+  // whole page; a 500 or a dropped connection means "Availability is not readable right now",
+  // and the Strategist has to be told — otherwise the control sits at "…" and disabled
+  // forever and they have no idea whether the Assistant thinks they are online.
+  const [problem, setProblem] = useState<string>()
   const { leads, status, error } = useLeads(authorization)
+
+  const handleFailure = useCallback(
+    (failure: unknown, whenItFailed: string) => {
+      if (failure instanceof NotAllowlisted) {
+        onRefused(failure.message)
+        return
+      }
+      setProblem(whenItFailed)
+    },
+    [onRefused],
+  )
 
   useEffect(() => {
     let live = true
     fetchAvailability(authorization)
-      .then((state) => live && setAvailabilityState(state))
+      .then((state) => {
+        if (live) {
+          setAvailabilityState(state)
+          setProblem(undefined)
+        }
+      })
       .catch((failure: unknown) => {
-        if (live && failure instanceof NotAllowlisted) {
-          onRefused(failure.message)
+        if (live) {
+          handleFailure(failure, 'Could not read your Availability. Reload to try again.')
         }
       })
     return () => {
       live = false
     }
-  }, [authorization, onRefused])
+  }, [authorization, handleFailure])
 
   const online = availability?.online ?? false
+  const unknown = availability === undefined
 
   function toggle() {
     setSaving(true)
     setAvailability(authorization, !online)
-      .then(setAvailabilityState)
+      .then((state) => {
+        setAvailabilityState(state)
+        setProblem(undefined)
+      })
       .catch((failure: unknown) => {
-        if (failure instanceof NotAllowlisted) {
-          onRefused(failure.message)
-        }
+        handleFailure(failure, 'Could not change your Availability. Please try again.')
       })
       .finally(() => setSaving(false))
   }
@@ -141,14 +172,18 @@ function ConsoleShell({
               className="text-[13px] font-semibold"
               style={{ color: online ? ONLINE_GREEN : '#999999' }}
             >
-              {availability === undefined ? '…' : online ? 'Online' : 'Offline'}
+              {availabilityLabel(availability, problem)}
             </span>
             <button
               type="button"
               onClick={toggle}
-              disabled={availability === undefined || saving}
-              aria-pressed={online}
-              aria-label="Availability"
+              disabled={unknown || saving}
+              // A switch, not a toggle button: `aria-checked` is what a screen reader reads
+              // as on/off, and the name carries the state the sighted user can see, so both
+              // are told the same thing.
+              role="switch"
+              aria-checked={online}
+              aria-label={`Availability: ${availabilityLabel(availability, problem)}`}
               className="relative h-[22px] w-10 rounded-pill transition-colors disabled:opacity-60"
               style={{ background: online ? ONLINE_GREEN : '#cccccc' }}
             >
@@ -178,6 +213,15 @@ function ConsoleShell({
           </div>
         </div>
       </header>
+
+      {problem ? (
+        <p
+          role="status"
+          className="border-b border-[#e5e5e5] bg-cadre-sand-dark px-4 py-2.5 text-[13px] text-[#8a5a5a] sm:px-8"
+        >
+          {problem}
+        </p>
+      ) : null}
 
       <div className="flex min-h-0 flex-1 flex-col md:flex-row">
         <nav
