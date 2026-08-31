@@ -4,6 +4,10 @@ SERVICE := cadre-support-agent
 PROJECT := cadre-ai-challenge
 REGION  := us-central1
 
+# Secret Manager names the deployed service binds at runtime.
+OPENROUTER_SECRET := openrouter-api-key
+COOKIE_SECRET     := session-cookie-secret
+
 # The deployed build reports its git sha from /healthz.
 VERSION := $(shell git rev-parse --short HEAD 2>/dev/null || echo dev)
 
@@ -11,7 +15,7 @@ VERSION := $(shell git rev-parse --short HEAD 2>/dev/null || echo dev)
 # exists in CI or in the container, so tests and Cloud Run cannot pick up a stray .env.
 ENV_FILE := $(if $(wildcard .env),--env-file .env,)
 
-.PHONY: help install dev check test build-web deploy
+.PHONY: help install dev check test build-web deploy deploy-secrets
 
 help:
 	@echo "install    install Python (uv) and web (pnpm) dependencies"
@@ -47,14 +51,34 @@ test:
 build-web:
 	cd web && pnpm build
 
-deploy:
+# The Session cookie is signed, so the deployed service needs a key that outlives an
+# instance. It is generated here on first deploy and never leaves Secret Manager: not in the
+# repository, not in the image, not in a log line. Idempotent, so re-running is free.
+deploy-secrets:
+	@gcloud secrets describe $(COOKIE_SECRET) --project $(PROJECT) >/dev/null 2>&1 || { \
+	  echo "Creating $(COOKIE_SECRET) in Secret Manager"; \
+	  openssl rand -hex 32 \
+	    | gcloud secrets create $(COOKIE_SECRET) --project $(PROJECT) \
+	        --replication-policy=automatic --data-file=- >/dev/null; \
+	  gcloud secrets add-iam-policy-binding $(COOKIE_SECRET) --project $(PROJECT) \
+	    --member="serviceAccount:$$(gcloud projects describe $(PROJECT) \
+	        --format='value(projectNumber)')-compute@developer.gserviceaccount.com" \
+	    --role=roles/secretmanager.secretAccessor >/dev/null; \
+	}
+
+# --update-env-vars, not --set-env-vars: a variable another ticket set on the service stays
+# set. Secrets are bound from Secret Manager and never passed as values.
+deploy: deploy-secrets
+	@url=$$(gcloud run services describe $(SERVICE) --project $(PROJECT) --region $(REGION) \
+	    --format='value(status.url)' 2>/dev/null); \
 	gcloud run deploy $(SERVICE) \
 	  --source . \
 	  --project $(PROJECT) \
 	  --region $(REGION) \
 	  --port 8080 \
 	  --allow-unauthenticated \
-	  --set-env-vars ENV=production,APP_VERSION=$(VERSION)
+	  --update-env-vars ENV=production,APP_VERSION=$(VERSION),MODEL_PROVIDER=openrouter,CONVERSATION_STORE=firestore,GOOGLE_CLOUD_PROJECT=$(PROJECT),OPENROUTER_APP_URL=$${url:-https://cadreai.com} \
+	  --set-secrets OPENROUTER_API_KEY=$(OPENROUTER_SECRET):latest,SESSION_COOKIE_SECRET=$(COOKIE_SECRET):latest
 	@url=$$(gcloud run services describe $(SERVICE) --project $(PROJECT) --region $(REGION) \
 	    --format='value(status.url)'); \
 	  echo "Service URL: $$url"; \
