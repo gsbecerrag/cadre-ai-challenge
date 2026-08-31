@@ -1,0 +1,16 @@
+## Global Constraints
+
+Binding for every task and every review. Quoted verbatim into each implementer and reviewer brief.
+
+1. **TDD is required.** Loop: `superpowers:test-driven-development` — no production code without a failing test; run the test and confirm it fails for the expected reason (RED); write the minimum to pass (GREEN); small refactors only while green and only in files this task touches. Test quality and seams: `mattpocock-skills:tdd` (`tests.md`, `mocking.md`) — no mocking of internals, no tautological assertions, expected values come from the spec or a known-good literal.
+2. **Tests exist only at the agreed seams** (spec → Testing Decisions): S1 HTTP through the API with the stub provider, in-memory store, in-memory notifier, fake auth verifier; S2 pure units in core; S3 the Triage Agent handler with fake event and client; S4 one web reducer test; S5 the evaluation suite. Nothing else gets tests; the ticket says which seams it uses.
+3. **The report must contain TDD evidence** for each test added: the RED command with its failing output and why the failure was expected, and the GREEN command with its passing output. No evidence, task not done.
+4. **Unit tests and CI never reach the network.** No call to OpenRouter, Firestore, Langfuse, Daily.co, or Firebase Auth from a unit test or from CI. Real providers are reached only by `make eval`, `make benchmark`, and the deployed app.
+5. **Personal data:** no real names, emails, phones, card numbers, or ids in tests, fixtures, logs, or commits — obviously fake values only (`jane@example.com`, `+1 555 0100`, the skill catalog's synthetic ids). The `refuse` Redaction Profile runs before the model and before any store write; the `full` profile runs before any trace or log emission; typed Contact Details on the Lead stay raw.
+6. **Vocabulary:** names, test names, and messages use the terms in CONTEXT.md (Assistant, Visitor, Session, Turn, KB Section, Grounded Answer, Trap Question, Escalation, Hand-over, Handover Request, Strategist, Availability, Console, Lead, Qualification Signal/Score, Walkthrough Card, Portal, Feedback, Trace, Triage Agent, Triage Report, Eval Case, Refuse Set, Redaction Profile). Respect the ADRs in docs/adr; if a change contradicts one, say so in the report instead of quietly deviating.
+7. **Seams are interfaces with one production implementation each** — `ModelProvider`, `ConversationStore`, `KnowledgeSource`, `Notifier` (and the video adapter). Third-party SDKs are imported only inside their adapter module.
+8. **Logging:** structured JSON through the core logging module, level from `LOGLEVEL`; every line carries `request_id` and `session_id` when known; no `print`; never log a secret or unredacted personal data.
+9. **Git:** Conventional Commits, small commits, on the ticket's branch only — never `main`, never force-push. The PR body names the ticket.
+10. **Dependencies:** any new dependency is listed in the report with a one-line reason. Python via uv, web via pnpm.
+11. **Scope:** when the ticket's acceptance criteria are met, stop. Follow-ups go in the report, not the code.
+12. **Verification before done:** run the focused tests while iterating, then `make check` (lint, typecheck, full unit suite) once before the final commit and paste its summary in the report.
