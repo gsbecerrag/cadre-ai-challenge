@@ -11,7 +11,7 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-    "httpx>=0.27",
+    "httpx2>=2.12.0",
     "mypy>=1.11",
     "pytest>=8.3",
     "ruff>=0.6",
@@ -45,6 +45,9 @@ select = [
     "T20", # no print — logging goes through core.logging (global constraint 8)
     "UP",  # pyupgrade
 ]
+
+[tool.ruff.lint.isort]
+known-first-party = ["api", "core"]
 
 [tool.mypy]
 python_version = "3.12"
