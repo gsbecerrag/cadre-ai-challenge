@@ -56,7 +56,9 @@ def test_every_portal_destination_names_a_page_the_demo_portal_actually_renders(
     for destination in portal_destinations:
         route, _, fragment = destination.href.partition("#")
         assert route.startswith("/portal"), destination.id
-        assert route in rendered, f"{destination.id} links to {route}, which the Portal has no tab for"
+        assert route in rendered, (
+            f"{destination.id} links to {route}, which the Portal has no tab for"
+        )
         assert f'id="{fragment}"' in rendered, (
             f"{destination.id} scrolls to #{fragment}, which no Portal page renders"
         )

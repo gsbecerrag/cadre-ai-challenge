@@ -272,9 +272,7 @@ def demo_scripts() -> dict[str, Sequence[StubResponse]]:
         # the stub matches the longest one, so "what is the Maturity Index" still reads as
         # prose while "how do I get scored" gets the card.
         "my agents": _walkthrough(PORTAL_WALKTHROUGH_INTRO, PORTAL_WALKTHROUGH, anything_else),
-        "get scored": _walkthrough(
-            MATURITY_WALKTHROUGH_INTRO, MATURITY_WALKTHROUGH, anything_else
-        ),
+        "get scored": _walkthrough(MATURITY_WALKTHROUGH_INTRO, MATURITY_WALKTHROUGH, anything_else),
         # Trap Questions.
         "cost": _after(PRICING_ESCALATION, anything_else),
         "price": _after(PRICING_ESCALATION, anything_else),

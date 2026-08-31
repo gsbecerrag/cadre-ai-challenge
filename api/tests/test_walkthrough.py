@@ -102,7 +102,9 @@ def test_getting_scored_on_the_maturity_index_walks_to_the_published_contact_for
     )
     provider.script("maturity index", [scored], [TextDelta(CLOSING), SPEND])
 
-    response = client.post("/api/chat", json={"message": "How do I get scored on the Maturity Index?"})
+    response = client.post(
+        "/api/chat", json={"message": "How do I get scored on the Maturity Index?"}
+    )
 
     assert card_payload(response)["destination"] == {
         "id": "maturity.get-scored",
