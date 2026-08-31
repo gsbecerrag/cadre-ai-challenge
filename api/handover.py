@@ -149,16 +149,18 @@ def create_handover_router(
             raise HTTPException(status.HTTP_404_NOT_FOUND, NO_SUCH_REQUEST)
         return stored
 
-    async def move(
+    def validated(
         stored: HandoverRequest, target: HandoverState, mode: HandoverMode | None = None
     ) -> HandoverRequest:
-        """Validate a move against the state machine, then write it."""
+        """The request as it would be after this move, or 409.
+
+        Pure: nothing is written until the caller has validated every hop it means to make.
+        """
         try:
-            moved = transition(stored, target, mode)
+            return transition(stored, target, mode)
         except InvalidTransitionError as refused:
             logger.info("Handover transition refused", extra={"request_id": stored.id})
             raise HTTPException(status.HTTP_409_CONFLICT, str(refused)) from None
-        return await store.update_handover(moved.id, moved.state, moved.mode)
 
     @router.post("/handover/{request_id}/accept")
     async def accept(request: Request, request_id: str) -> HandoverStatus:
@@ -169,10 +171,15 @@ def create_handover_router(
         Visitor is about to be promised. `video` only names the mode — the room is ticket 15.
         """
         stored = await owned_request(request, request_id)
-        accepted = await move(stored, "accepted_by_user")
+        accepted = validated(stored, "accepted_by_user")
         online = await store.any_strategist_online()
         mode: HandoverMode = "video" if live_handover_enabled and online else "callback"
-        pending = await move(accepted, "pending_strategist", mode)
+        # Both hops are validated against the machine, then written once. `accepted_by_user` is
+        # a moment, not a state anybody waits in: persisting it separately would mean a crash
+        # between the two writes could strand a request there — a state only the Visitor's
+        # browser could move on from, and it has already had its answer.
+        moved = validated(accepted, "pending_strategist", mode)
+        pending = await store.update_handover(moved.id, moved.state, moved.mode)
         logger.info("Hand-over accepted", extra={"request_id": pending.id, "handover_mode": mode})
         return HandoverStatus(
             request_id=pending.id, state=pending.state, mode=pending.mode, lead=contact_of(pending)
@@ -183,7 +190,8 @@ def create_handover_router(
         """The Visitor pressed "Keep chatting". The conversation carries on exactly as it was;
         the request is recorded as declined so the Console does not show it as work."""
         stored = await owned_request(request, request_id)
-        declined = await move(stored, "declined")
+        moved = validated(stored, "declined")
+        declined = await store.update_handover(moved.id, moved.state, moved.mode)
         logger.info("Hand-over declined", extra={"request_id": declined.id})
         return HandoverStatus(
             request_id=declined.id,
