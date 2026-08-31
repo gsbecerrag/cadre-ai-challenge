@@ -68,11 +68,15 @@ CALLBACK = HandoverRequest(
     lead=JANE,
 )
 
+# Obviously not a real Daily domain, the way a fixture's email is example.com.
+ROOM_URL = "https://cadre-demo.daily.invalid/cadre-hr-video"
+
 LIVE = HandoverRequest(
     id="hr-video",
     session_id="session-0002",
     state="pending_strategist",
     mode="video",
+    room_url=ROOM_URL,
     lead=SAM,
 )
 
@@ -258,3 +262,112 @@ def test_a_handover_request_that_does_not_exist_is_not_found(console_client: Tes
     )
 
     assert response.status_code == 404
+
+
+# --------------------------------------------------------------------- claim, join and end
+
+
+def test_claiming_a_pending_video_request_puts_the_strategist_in_the_call(
+    console_client: TestClient, store: InMemoryConversationStore
+) -> None:
+    """ "Claim & join call" is one button (docs/design §3.1), so it is one write: the two hops
+    the machine names — `strategist_joined` then `in_call` — are validated and then persisted
+    together, because `strategist_joined` is a moment nobody waits in and a queue that
+    flickered through it would be showing a state that was never true for longer than a
+    round trip."""
+    seed(store, LIVE)
+
+    response = console_client.post(
+        "/api/console/handovers/hr-video/join", headers=as_strategist(ANGEL_TOKEN)
+    )
+
+    assert response.status_code == 200
+    assert response.json()["state"] == "in_call"
+    assert response.json()["room_url"] == ROOM_URL
+    # The name the Visitor's panel says they are being assisted by — a person, not an account.
+    assert response.json()["strategist_name"] == "Angel M."
+    stored = asyncio.run(store.get_handover("hr-video"))
+    assert stored is not None
+    assert (stored.state, stored.strategist_name) == ("in_call", "Angel M.")
+
+
+def test_ending_a_call_closes_the_handover_request(
+    console_client: TestClient, store: InMemoryConversationStore
+) -> None:
+    seed(store, LIVE)
+    console_client.post("/api/console/handovers/hr-video/join", headers=as_strategist(ANGEL_TOKEN))
+
+    response = console_client.post(
+        "/api/console/handovers/hr-video/end", headers=as_strategist(ANGEL_TOKEN)
+    )
+
+    assert response.status_code == 200
+    assert response.json()["state"] == "ended"
+    stored = asyncio.run(store.get_handover("hr-video"))
+    assert stored is not None and stored.state == "ended"
+
+
+def test_joining_a_request_that_is_already_in_a_call_is_refused(
+    console_client: TestClient, store: InMemoryConversationStore
+) -> None:
+    """A second Strategist on a stale Console tab, or a double-clicked button. The state
+    machine is the door (ADR-0007), whatever the browser believes."""
+    seed(store, LIVE)
+    console_client.post("/api/console/handovers/hr-video/join", headers=as_strategist(ANGEL_TOKEN))
+
+    response = console_client.post(
+        "/api/console/handovers/hr-video/join", headers=as_strategist(ANGEL_TOKEN)
+    )
+
+    assert response.status_code == 409
+
+
+def test_joining_a_callback_is_refused_and_says_why(
+    console_client: TestClient, store: InMemoryConversationStore
+) -> None:
+    """A Callback has no room to join: the Visitor was promised a phone call, and the button
+    that would open a video call is not the one a Strategist should be able to press."""
+    seed(store, CALLBACK)
+
+    response = console_client.post(
+        "/api/console/handovers/hr-callback/join", headers=as_strategist(ANGEL_TOKEN)
+    )
+
+    assert response.status_code == 409
+    assert "Callback" in response.json()["detail"]
+
+
+def test_ending_a_call_nobody_joined_is_refused(
+    console_client: TestClient, store: InMemoryConversationStore
+) -> None:
+    seed(store, LIVE)
+
+    response = console_client.post(
+        "/api/console/handovers/hr-video/end", headers=as_strategist(ANGEL_TOKEN)
+    )
+
+    assert response.status_code == 409
+
+
+def test_joining_a_request_that_does_not_exist_is_not_found(console_client: TestClient) -> None:
+    response = console_client.post(
+        "/api/console/handovers/hr-nothing/join", headers=as_strategist(ANGEL_TOKEN)
+    )
+
+    assert response.status_code == 404
+
+
+def test_the_queue_carries_the_room_and_the_strategist_the_console_draws(
+    console_client: TestClient, store: InMemoryConversationStore
+) -> None:
+    """The in-call banner shows the room URL and the queue card decides whether to draw
+    "Claim & join call", so both travel on the row the Console already reads."""
+    seed(store, LIVE)
+    console_client.post("/api/console/handovers/hr-video/join", headers=as_strategist(ANGEL_TOKEN))
+
+    request = console_client.get(
+        "/api/console/handovers", headers=as_strategist(ANGEL_TOKEN)
+    ).json()["handovers"][0]
+
+    assert request["room_url"] == ROOM_URL
+    assert request["strategist_name"] == "Angel M."
