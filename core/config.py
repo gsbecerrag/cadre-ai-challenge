@@ -12,6 +12,7 @@ from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from core.handover import DEFAULT_JOIN_TIMEOUT_SECONDS
 from core.qualification import DEFAULT_QUALIFICATION_THRESHOLD
 
 Environment = Literal["development", "production"]
@@ -82,6 +83,17 @@ class Settings(BaseSettings):
     # simply a Callback. That is the point of the flag, and why it is not a secret: a video
     # outage must never block lead capture.
     live_handover_enabled: bool = False
+    # The Daily.co account the rooms are created in (ADR-0007). The key is a secret, bound
+    # from Secret Manager on Cloud Run; the domain is the account's own subdomain and is part
+    # of every room URL a Visitor sees. With the key blank the flag cannot turn video on:
+    # `build_video_rooms` gives the deployment `NoVideoRooms` and every acceptance is a
+    # Callback, which is the honest behaviour for a service that has no video provider.
+    daily_api_key: str = ""
+    daily_domain: str = ""
+    # How long a Visitor watches the connecting spinner before the Hand-over degrades to a
+    # Callback. It is a setting because it is a promise about attention, not a constant: a
+    # team with the Console on a second screen can afford a shorter one.
+    handover_join_timeout_seconds: int = DEFAULT_JOIN_TIMEOUT_SECONDS
 
     # --- Observability (Langfuse) ---
     # Both keys present turns tracing on; either one missing leaves it off, which is the

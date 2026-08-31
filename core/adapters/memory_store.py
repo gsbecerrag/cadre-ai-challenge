@@ -14,6 +14,7 @@ from core.auth import StrategistIdentity
 from core.handover import HandoverMode, HandoverRequest, HandoverState, LeadSnapshot
 from core.provider import ModelMessage
 from core.store import DEFAULT_HANDOVER_PAGE, DEFAULT_LEAD_PAGE, Lead
+from core.video import Room
 
 
 class InMemoryConversationStore:
@@ -81,6 +82,9 @@ class InMemoryConversationStore:
         state: HandoverState,
         mode: HandoverMode | None = None,
         lead: LeadSnapshot | None = None,
+        *,
+        room: Room | None = None,
+        strategist_name: str | None = None,
     ) -> HandoverRequest:
         request = self._handovers[request_id]
         updated = replace(
@@ -88,6 +92,11 @@ class InMemoryConversationStore:
             state=state,
             mode=mode if mode is not None else request.mode,
             lead=lead if lead is not None else request.lead,
+            room_url=room.url if room is not None else request.room_url,
+            room_expires_at=(room.expires_at if room is not None else request.room_expires_at),
+            strategist_name=(
+                strategist_name if strategist_name is not None else request.strategist_name
+            ),
             updated_at=datetime.now(tz=UTC),
         )
         self._handovers[request_id] = updated

@@ -21,22 +21,27 @@ Every personal value here is obviously fake.
 
 import asyncio
 from collections.abc import Callable, Iterator
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
 
+import api.handover
 from api.main import create_app
 from api.session import SESSION_COOKIE, session_id_from_cookie
 from api.tests.conftest import COOKIE_SECRET, sse_events
 from core.adapters.memory_notifier import InMemoryNotifier
 from core.adapters.memory_store import InMemoryConversationStore
+from core.adapters.recording_video import FAKE_DOMAIN, FailingVideoRooms, RecordingVideoRooms
 from core.adapters.stub_provider import StubModelProvider
 from core.auth import StrategistIdentity
 from core.config import Settings
+from core.handover import DEFAULT_JOIN_TIMEOUT_SECONDS
 from core.provider import ProviderRequest, TextDelta, ToolCall, Usage
 from core.tools.offer_live_handover import OFFER_TOOL_NAME
+from core.video import VideoRooms
 
 SPEND = Usage(input_tokens=900, output_tokens=24, cached_tokens=800, cost_usd=0.0004)
 
@@ -81,23 +86,37 @@ def notifier() -> InMemoryNotifier:
 
 
 @pytest.fixture
+def video() -> RecordingVideoRooms:
+    """The `VideoRooms` seam's test implementation: it records the Handover Requests it was
+    asked to open a room for, which is how "one room per video Hand-over and none for a
+    Callback" is asserted at the place Daily.co would have been called (constraint 4)."""
+    return RecordingVideoRooms()
+
+
+@pytest.fixture
 def build_client(
     settings: Settings,
     web_dist: Path,
     provider: StubModelProvider,
     store: InMemoryConversationStore,
     notifier: InMemoryNotifier,
+    video: RecordingVideoRooms,
 ) -> Iterator[ClientFor]:
     """A chat client whose deployment either has the Live Hand-over flag on or does not."""
     clients: list[TestClient] = []
 
     def build(
-        *, live_handover_enabled: bool = False, qualification_threshold: int = 3
+        *,
+        live_handover_enabled: bool = False,
+        qualification_threshold: int = 3,
+        video_rooms: VideoRooms | None = None,
+        join_timeout_seconds: int = DEFAULT_JOIN_TIMEOUT_SECONDS,
     ) -> TestClient:
         configured = settings.model_copy(
             update={
                 "live_handover_enabled": live_handover_enabled,
                 "qualification_threshold": qualification_threshold,
+                "handover_join_timeout_seconds": join_timeout_seconds,
             }
         )
         app = create_app(
@@ -106,6 +125,7 @@ def build_client(
             provider=provider,
             store=store,
             notifier=notifier,
+            video_rooms=video if video_rooms is None else video_rooms,
         )
         client = TestClient(app, base_url="https://testserver")
         client.__enter__()
@@ -483,3 +503,225 @@ def test_availability_tells_the_chat_header_whether_a_strategist_is_online(
     go_online(store)
 
     assert client.get("/api/availability").json() == {"any_online": True}
+
+
+# --------------------------------------------------------------------- the video room
+
+
+def test_accepting_in_video_mode_opens_exactly_one_room_and_stores_it_on_the_request(
+    build_client: ClientFor,
+    provider: StubModelProvider,
+    store: InMemoryConversationStore,
+    video: RecordingVideoRooms,
+) -> None:
+    """The room is created before the write and stored on the request in the same write, so
+    the URL is already there when the widget asks for the Hand-over's status a moment later
+    (ADR-0007). One room per Handover Request, and one only."""
+    client = build_client(live_handover_enabled=True)
+    go_online(store)
+    qualify(client, provider)
+    request_id = offer(client, provider)["request_id"]
+
+    body = client.post(f"/api/handover/{request_id}/accept").json()
+
+    assert video.requested == [request_id]
+    assert body["mode"] == "video"
+    assert body["room_url"] == f"https://{FAKE_DOMAIN}/cadre-{request_id.casefold()}"
+    stored = asyncio.run(store.get_handover(request_id))
+    assert stored is not None
+    assert stored.room_url == body["room_url"]
+    assert stored.room_expires_at is not None
+
+
+def test_a_callback_hand_over_never_asks_for_a_room(
+    client: TestClient,
+    provider: StubModelProvider,
+    video: RecordingVideoRooms,
+) -> None:
+    """Nobody is online, so the Visitor is promised a Callback. Paying a vendor for a room
+    neither of them will ever open is the definition of a call that should not be made."""
+    qualify(client, provider)
+    request_id = offer(client, provider)["request_id"]
+
+    body = client.post(f"/api/handover/{request_id}/accept").json()
+
+    assert body["mode"] == "callback"
+    assert body["room_url"] is None
+    assert video.requested == []
+
+
+def test_a_hand_over_degrades_to_a_callback_when_the_room_cannot_be_created(
+    build_client: ClientFor,
+    provider: StubModelProvider,
+    store: InMemoryConversationStore,
+) -> None:
+    """A video outage must never block lead capture. The Visitor is told a Strategist will
+    call back — with the Lead already captured — rather than shown an error for a room they
+    never asked for by name."""
+    failing = FailingVideoRooms()
+    client = build_client(live_handover_enabled=True, video_rooms=failing)
+    go_online(store)
+    qualify(client, provider)
+    request_id = offer(client, provider)["request_id"]
+
+    response = client.post(f"/api/handover/{request_id}/accept")
+
+    assert response.status_code == 200
+    assert response.json()["mode"] == "callback"
+    assert response.json()["room_url"] is None
+    assert failing.requested == [request_id]
+    stored = asyncio.run(store.get_handover(request_id))
+    assert stored is not None
+    assert (stored.state, stored.mode, stored.room_url) == ("pending_strategist", "callback", "")
+
+
+def test_with_the_flag_off_the_video_adapter_is_never_reached(
+    client: TestClient,
+    provider: StubModelProvider,
+    store: InMemoryConversationStore,
+    video: RecordingVideoRooms,
+) -> None:
+    """`LIVE_HANDOVER_ENABLED=false` is the whole path behaving as it did before ticket 15,
+    with a Strategist online and everything: no room, no vendor call, a Callback."""
+    go_online(store)
+    qualify(client, provider)
+    request_id = offer(client, provider)["request_id"]
+
+    body = client.post(f"/api/handover/{request_id}/accept").json()
+
+    assert body["mode"] == "callback"
+    assert video.requested == []
+
+
+def test_a_deployment_with_the_flag_off_needs_no_video_provider_at_all(
+    settings: Settings,
+    web_dist: Path,
+    provider: StubModelProvider,
+    store: InMemoryConversationStore,
+) -> None:
+    """Built with no video adapter passed in and no Daily key configured — CI, `make dev` and
+    the deployed service until this ticket. It starts, and an acceptance is a Callback."""
+    app = create_app(settings=settings, web_dist=web_dist, provider=provider, store=store)
+    with TestClient(app, base_url="https://testserver") as client:
+        go_online(store)
+        qualify(client, provider)
+        request_id = offer(client, provider)["request_id"]
+
+        assert client.post(f"/api/handover/{request_id}/accept").json()["mode"] == "callback"
+
+
+# --------------------------------------------------------------------- the status poll
+
+
+def test_the_widget_reads_the_state_of_its_own_hand_over(
+    build_client: ClientFor, provider: StubModelProvider, store: InMemoryConversationStore
+) -> None:
+    """The Visitor is watching a spinner, so the widget asks the server what happened rather
+    than guessing. Same Session cookie, same ownership rule as accept and decline."""
+    client = build_client(live_handover_enabled=True)
+    go_online(store)
+    qualify(client, provider)
+    request_id = offer(client, provider)["request_id"]
+    accepted = client.post(f"/api/handover/{request_id}/accept").json()
+
+    response = client.get(f"/api/handover/{request_id}")
+
+    assert response.status_code == 200
+    assert response.json()["state"] == "pending_strategist"
+    assert response.json()["mode"] == "video"
+    assert response.json()["room_url"] == accepted["room_url"]
+    assert response.json()["strategist_name"] is None
+
+
+def test_the_status_names_the_strategist_once_one_has_joined(
+    build_client: ClientFor, provider: StubModelProvider, store: InMemoryConversationStore
+) -> None:
+    """The panel says "You're being assisted by Angel M." (docs/design §2.6), so the name has
+    to travel to the Visitor's side — and it is the Strategist's display name, because a
+    Visitor is meeting a person and not an account."""
+    client = build_client(live_handover_enabled=True)
+    go_online(store)
+    qualify(client, provider)
+    request_id = offer(client, provider)["request_id"]
+    client.post(f"/api/handover/{request_id}/accept")
+    asyncio.run(store.update_handover(request_id, "strategist_joined", strategist_name="Angel M."))
+
+    body = client.get(f"/api/handover/{request_id}").json()
+
+    assert body["state"] == "strategist_joined"
+    assert body["strategist_name"] == "Angel M."
+
+
+def test_the_status_of_a_hand_over_another_session_owns_is_not_found(
+    build_client: ClientFor, provider: StubModelProvider, store: InMemoryConversationStore
+) -> None:
+    """The status carries the room URL, and a room URL is the whole of the access control on
+    a Daily call — so this read is guarded exactly as accept is."""
+    client = build_client(live_handover_enabled=True)
+    go_online(store)
+    qualify(client, provider)
+    request_id = offer(client, provider)["request_id"]
+    client.post(f"/api/handover/{request_id}/accept")
+    somebody_else = build_client(live_handover_enabled=True)
+
+    assert somebody_else.get(f"/api/handover/{request_id}").status_code == 404
+
+
+def test_a_video_hand_over_nobody_joined_becomes_a_callback_on_the_next_status_read(
+    build_client: ClientFor,
+    provider: StubModelProvider,
+    store: InMemoryConversationStore,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The timeout is lazy and server-side: no scheduler, no second clock, just the question
+    asked on the read the widget is already making. Past the window the Visitor is told a
+    Strategist will call back, with the Lead already captured (ADR-0007)."""
+    client = build_client(live_handover_enabled=True, join_timeout_seconds=120)
+    go_online(store)
+    qualify(client, provider)
+    request_id = offer(client, provider)["request_id"]
+    client.post(f"/api/handover/{request_id}/accept")
+    monkeypatch.setattr(api.handover, "now", lambda: datetime.now(tz=UTC) + timedelta(seconds=121))
+
+    body = client.get(f"/api/handover/{request_id}").json()
+
+    assert body["state"] == "no_strategist_available"
+    assert body["mode"] == "callback"
+    stored = asyncio.run(store.get_handover(request_id))
+    assert stored is not None
+    assert (stored.state, stored.mode) == ("no_strategist_available", "callback")
+
+
+def test_a_video_hand_over_still_inside_the_window_is_left_pending(
+    build_client: ClientFor,
+    provider: StubModelProvider,
+    store: InMemoryConversationStore,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A Strategist reading the request before they claim it is the normal case."""
+    client = build_client(live_handover_enabled=True, join_timeout_seconds=120)
+    go_online(store)
+    qualify(client, provider)
+    request_id = offer(client, provider)["request_id"]
+    client.post(f"/api/handover/{request_id}/accept")
+    monkeypatch.setattr(api.handover, "now", lambda: datetime.now(tz=UTC) + timedelta(seconds=60))
+
+    assert client.get(f"/api/handover/{request_id}").json()["state"] == "pending_strategist"
+
+
+def test_a_callback_waiting_for_a_strategist_is_never_timed_out(
+    client: TestClient,
+    provider: StubModelProvider,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A Callback is already the fallback: timing one out would take a call a Strategist still
+    owes the Visitor away from them, hours after the tab was closed."""
+    qualify(client, provider)
+    request_id = offer(client, provider)["request_id"]
+    client.post(f"/api/handover/{request_id}/accept")
+    monkeypatch.setattr(api.handover, "now", lambda: datetime.now(tz=UTC) + timedelta(days=1))
+
+    body = client.get(f"/api/handover/{request_id}").json()
+
+    assert body["state"] == "pending_strategist"
+    assert body["mode"] == "callback"
