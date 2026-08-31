@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** in-progress
 
 - [ ] `GET /healthz` returns 200 with a JSON body naming the service and version; covered by an HTTP test at seam S1 (test client against the app).
 - [ ] The root URL serves the built web app; the page shows the Cadre wordmark/colours and an empty chat shell with a disabled composer ("coming soon").
