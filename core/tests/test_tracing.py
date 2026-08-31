@@ -3,9 +3,32 @@
 Tags are the vocabulary a Cadre engineer filters a week of conversations by, so they are worth
 pinning away from a running Turn: the same Turn always produces the same tags, in the same
 order, whatever order the tools happened to run in.
+
+The last test is the exception, and it is here rather than at S1 for a reason: a Visitor
+closing the tab is the browser abandoning a stream, and the HTTP test client cannot express
+that — it runs the whole Turn in-process before it hands the response back, so there is
+nothing left to abandon. So that one drives `TurnRunner.run` directly and closes the async
+generator, which is exactly what the ASGI server does when a connection drops.
 """
 
-from core.tracing import PROVIDER_ERROR_TAG, TOOL_TAGS, turn_tags
+import asyncio
+from collections.abc import AsyncGenerator
+from datetime import date
+from typing import cast
+
+from core.adapters.memory_store import InMemoryConversationStore
+from core.adapters.recording_tracer import RecordingTracer
+from core.adapters.stub_provider import StubModelProvider
+from core.events import ChatEvent
+from core.prompt import SystemPrompt, build_system_prompt
+from core.provider import TextDelta, Usage
+from core.tools import default_tools
+from core.tracing import PROVIDER_ERROR_TAG, TOOL_TAGS, TraceBoundary, turn_tags
+from core.turn import TurnRunner
+
+SPEND = Usage(input_tokens=12_400, output_tokens=48, cached_tokens=12_200, cost_usd=0.0031)
+KNOWLEDGE_BLOCK = "[services#what-cadre-does] What Cadre does\nCadre AI is a consultancy."
+SESSION = "sess-0100"
 
 
 def test_a_turn_that_ran_no_tools_and_redacted_nothing_carries_no_tags() -> None:
@@ -61,3 +84,45 @@ def test_every_tool_the_assistant_can_call_has_a_tag_waiting_for_it() -> None:
     """Ticket 11's `offer_live_handover` is in the table already: a Hand-over offer becomes a
     tag the day the tool is registered, with no change here or in the Turn."""
     assert TOOL_TAGS["offer_live_handover"] == "handover_offered"
+
+
+def test_a_visitor_who_closes_the_tab_mid_turn_still_leaves_a_trace() -> None:
+    """A closed tab is the one ending that leaves nothing else behind: the Turn is not stored,
+    because it did not complete, and there is no `done` event to carry a cost. The Trace is the
+    only record that the Visitor was here — so it is closed and tagged rather than left half
+    open, it holds what the Visitor actually read, and the Session is still untouched."""
+    store = InMemoryConversationStore()
+    provider = StubModelProvider()
+    provider.script(
+        "what does cadre", [TextDelta("Cadre AI is"), TextDelta(" a consultancy."), SPEND]
+    )
+    recorder = RecordingTracer()
+
+    def prompt() -> SystemPrompt:
+        return build_system_prompt(KNOWLEDGE_BLOCK, today=date(2026, 8, 30))
+
+    runner = TurnRunner(
+        provider=provider,
+        store=store,
+        tools=default_tools(store),
+        build_prompt=prompt,
+        tracer=TraceBoundary(recorder),
+        model="stub",
+    )
+
+    async def walk_away_after_the_first_frame() -> None:
+        # `run` is annotated as the iterator its callers consume; closing one is what an ASGI
+        # server does to the generator underneath when a connection drops.
+        stream = runner.run(SESSION, "What does Cadre AI do?")
+        turn = cast(AsyncGenerator[ChatEvent, None], stream)
+        await anext(turn)
+        await turn.aclose()
+
+    asyncio.run(walk_away_after_the_first_frame())
+
+    (trace,) = recorder.traces
+    assert trace.finished
+    assert "client_disconnected" in trace.tags
+    assert trace.output_text == "Cadre AI is"
+    assert [span.closed_with for span in trace.spans] == ["GeneratorExit"]
+    assert asyncio.run(store.load(SESSION)) == ()

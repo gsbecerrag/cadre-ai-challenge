@@ -19,9 +19,11 @@ nowhere else:
 service, so tests, CI and `make dev` run the whole Turn with tracing off and no key.
 """
 
+import sys
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass
+from types import TracebackType
 from typing import Any, Protocol
 
 from core import redaction
@@ -30,12 +32,19 @@ from core.provider import Usage
 
 logger = get_logger("tracing")
 
+# What `sys.exc_info()` returns: how a `with` block ended, in the shape `__exit__` takes.
+_ExcInfo = tuple[type[BaseException], BaseException, TracebackType] | tuple[None, None, None]
+
 # What one Turn is called in Langfuse. Every Trace has this name, so a Session reads as a
 # column of Turns and a filter on the name is a filter on "conversations".
 TRACE_NAME = "turn"
 
 # The tag a Turn that ended in a `ProviderError` carries: the Turns worth reading first.
 PROVIDER_ERROR_TAG = "provider_error"
+# The tag a Turn the Visitor walked out of carries. It is not a failure — an answer that took
+# too long, a question already answered, a closed laptop — but it is the one ending that leaves
+# nothing in the Session, so the Trace is all there is.
+CLIENT_DISCONNECTED_TAG = "client_disconnected"
 LANGUAGE_TAG_PREFIX = "language:"
 # One tag per redaction category the Turn saw, so "how often do Visitors paste a card" is a
 # filter rather than a query over metadata (ADR-0006).
@@ -59,6 +68,7 @@ def turn_tags(
     language: str | None = None,
     provider_error: bool = False,
     redactions: Mapping[str, int] | None = None,
+    disconnected: bool = False,
 ) -> tuple[str, ...]:
     """The tags for one Turn, in a fixed order and each one once.
 
@@ -72,6 +82,8 @@ def turn_tags(
         tags.append(f"{LANGUAGE_TAG_PREFIX}{language}")
     if provider_error:
         tags.append(PROVIDER_ERROR_TAG)
+    if disconnected:
+        tags.append(CLIENT_DISCONNECTED_TAG)
     tags.extend(f"{REDACTED_TAG_PREFIX}{category}" for category in sorted(redactions or {}))
     return tuple(dict.fromkeys(tags))
 
@@ -210,6 +222,16 @@ class TraceBoundary:
             logger.exception("Tracing could not flush what it had queued")
 
 
+def _close(manager: AbstractContextManager[Any] | None, failure: _ExcInfo) -> None:
+    """Leave the wrapped span, telling it how the block ended and swallowing what it says."""
+    if manager is None:
+        return
+    try:
+        manager.__exit__(*failure)
+    except Exception:
+        logger.exception("Tracing could not close a span")
+
+
 @dataclass(frozen=True)
 class _GuardedSpan:
     """A span whose recording cannot raise and whose text is redacted. `inner` is `None` when
@@ -274,8 +296,10 @@ class _GuardedTrace:
         """Enter the wrapped span, or carry on without one.
 
         The two `try` blocks are separate on purpose: an exception raised by the Turn inside
-        the `with` — a `ProviderError` mid-answer — must travel on out, and one `try` around
-        the `yield` would swallow it.
+        the `with` — a `ProviderError` mid-answer, or the `GeneratorExit` of a Visitor closing
+        the tab — must travel on out, and one `try` around the `yield` would swallow it. It is
+        also handed to the wrapped span on the way past, so that a model call that died halfway
+        is marked as failed in the Trace rather than reading like one that simply ended.
         """
         manager: AbstractContextManager[Any] | None = None
         span: Any = None
@@ -287,9 +311,8 @@ class _GuardedTrace:
             manager, span = None, None
         try:
             yield _GuardedSpan(span)
-        finally:
-            if manager is not None:
-                try:
-                    manager.__exit__(None, None, None)
-                except Exception:
-                    logger.exception("Tracing could not close a span")
+        except BaseException:
+            _close(manager, sys.exc_info())
+            raise
+        else:
+            _close(manager, (None, None, None))

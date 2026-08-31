@@ -129,98 +129,132 @@ class TurnRunner:
             "Visitor message", extra={"body": visitor.content, "redactions": dict(prepared.counts)}
         )
 
+        # Declared out here because both endings a Turn can have without finishing — a
+        # `ProviderError` and a Visitor closing the tab — need what was streamed but never
+        # recorded in `answered`. It is emptied as soon as its text lands there, so what is
+        # left is always exactly the part the Trace would otherwise lose.
+        deltas: list[str] = []
         try:
-            for iteration in range(self.max_iterations):
-                deltas: list[str] = []
-                tool_calls: list[ToolCall] = []
-                call_usage = Usage()
-                request = ProviderRequest(
-                    prompt, tuple(history), self.tools.definitions, session_id
+            try:
+                for iteration in range(self.max_iterations):
+                    deltas = []
+                    tool_calls: list[ToolCall] = []
+                    call_usage = Usage()
+                    request = ProviderRequest(
+                        prompt, tuple(history), self.tools.definitions, session_id
+                    )
+
+                    with trace.provider_span(model=self.model, iteration=iteration) as span:
+                        async for event in self.provider.stream(request):
+                            match event:
+                                case TextDelta():
+                                    deltas.append(event.text)
+                                    yield text_event(event.text)
+                                case ToolCall():
+                                    tool_calls.append(event)
+                                case Usage():
+                                    # Counted twice over, on purpose. The span reports this call
+                                    # alone, so a Turn's cost breaks down by call rather than
+                                    # making the last model call look like the expensive one; the
+                                    # Turn's total is added to as each frame arrives, so a spend
+                                    # already reported is not lost if the next frame is an error.
+                                    call_usage = call_usage + event
+                                    usage = usage + event
+                        span.record_usage(usage=call_usage, output_text="".join(deltas))
+
+                    assistant = ModelMessage("assistant", "".join(deltas), tuple(tool_calls))
+                    deltas = []
+                    history.append(assistant)
+                    answered.append(assistant)
+                    _remember(cited, split_citations(assistant.content)[1])
+                    if not tool_calls:
+                        break
+
+                    for call in tool_calls:
+                        yield tool_event(call.name, "started")
+                        tools_run.append(call.name)
+                        with trace.tool_span(name=call.name) as tool_run:
+                            outcome = await self.tools.run(call, session_id)
+                            tool_run.record_events(produced_events=bool(outcome.events))
+                        for tool_output in outcome.events:
+                            _remember(cited, tool_output.data.get("citations", ()))
+                            language = language or tool_output.data.get("language")
+                            yield tool_output
+                        yield tool_event(call.name, "finished")
+                        result = ModelMessage("tool", outcome.result, tool_call_id=call.id)
+                        history.append(result)
+                        answered.append(result)
+                else:
+                    logger.warning(
+                        "Turn hit the iteration cap", extra={"iterations": len(answered)}
+                    )
+                    yield text_event(GRACEFUL_STOP)
+                    answered.append(ModelMessage("assistant", GRACEFUL_STOP))
+            except ProviderError as failure:
+                logger.error("Turn failed", extra={"provider_error": failure.detail})
+                yield error_event(PROVIDER_ERROR_MESSAGE)
+                # A failed Turn is stored nowhere, so if it is not on the Trace it is nowhere at
+                # all — and a Turn that failed is the first one an engineer goes looking for. The
+                # provider's own words stay in the log line above: they are written for an
+                # engineer and may name a model, an account or a key.
+                trace.finish(
+                    output_text=_answer(answered, "".join(deltas), failed=True),
+                    usage=usage,
+                    tags=turn_tags(
+                        tools_run,
+                        language=language,
+                        provider_error=True,
+                        redactions=prepared.counts,
+                    ),
+                    metadata=self._metadata(prepared, cited),
                 )
+                return
 
-                with trace.provider_span(model=self.model, iteration=iteration) as span:
-                    async for event in self.provider.stream(request):
-                        match event:
-                            case TextDelta():
-                                deltas.append(event.text)
-                                yield text_event(event.text)
-                            case ToolCall():
-                                tool_calls.append(event)
-                            case Usage():
-                                # Per call, then added to the Turn's total: a span that
-                                # reported the running total would make the second model call
-                                # of a Turn look like the expensive one.
-                                call_usage = call_usage + event
-                    usage = usage + call_usage
-                    span.record_usage(usage=call_usage, output_text="".join(deltas))
-
-                assistant = ModelMessage("assistant", "".join(deltas), tuple(tool_calls))
-                history.append(assistant)
-                answered.append(assistant)
-                _remember(cited, split_citations(assistant.content)[1])
-                if not tool_calls:
-                    break
-
-                for call in tool_calls:
-                    yield tool_event(call.name, "started")
-                    tools_run.append(call.name)
-                    with trace.tool_span(name=call.name) as tool_run:
-                        outcome = await self.tools.run(call, session_id)
-                        tool_run.record_events(produced_events=bool(outcome.events))
-                    for tool_output in outcome.events:
-                        _remember(cited, tool_output.data.get("citations", ()))
-                        language = language or tool_output.data.get("language")
-                        yield tool_output
-                    yield tool_event(call.name, "finished")
-                    result = ModelMessage("tool", outcome.result, tool_call_id=call.id)
-                    history.append(result)
-                    answered.append(result)
-            else:
-                logger.warning("Turn hit the iteration cap", extra={"iterations": len(answered)})
-                yield text_event(GRACEFUL_STOP)
-                answered.append(ModelMessage("assistant", GRACEFUL_STOP))
-        except ProviderError as failure:
-            logger.error("Turn failed", extra={"provider_error": failure.detail})
-            yield error_event(PROVIDER_ERROR_MESSAGE)
-            # A failed Turn is stored nowhere, so if it is not on the Trace it is nowhere at
-            # all — and a Turn that failed is the first one an engineer goes looking for. The
-            # provider's own words stay in the log line above: they are written for an
-            # engineer and may name a model, an account or a key.
+            # A Turn is stored when it completes, or not at all. Storing the Visitor message up
+            # front would leave it behind whenever the Turn failed or the browser walked away
+            # mid-stream, and the next Turn would send two Visitor messages back to back —
+            # which is not a conversation any provider accepts.
+            await self.store.append(session_id, [visitor, *answered])
+            logger.info(
+                "Turn finished",
+                extra={
+                    "input_tokens": usage.input_tokens,
+                    "output_tokens": usage.output_tokens,
+                    "cached_tokens": usage.cached_tokens,
+                    "cost_usd": usage.cost_usd,
+                    # No trace id here: it is thirty-two hex characters, which is the shape of
+                    # an API key, so the `full` profile writes it out as `[CREDENTIAL]` and it
+                    # joins nothing. The join runs the other way — the Trace carries the
+                    # `request_id` that every one of this Turn's log lines carries.
+                },
+            )
+            yield done_event(usage, trace_id=trace.trace_id, redactions=prepared.counts)
+            # After the `done` event, never before it: closing a Trace is an observability
+            # vendor's work, and the Visitor's last frame does not wait behind it.
             trace.finish(
-                output_text=_answer(answered, failed=True),
+                output_text=_answer(answered),
                 usage=usage,
-                tags=turn_tags(tools_run, language, True, prepared.counts),
+                tags=turn_tags(tools_run, language=language, redactions=prepared.counts),
                 metadata=self._metadata(prepared, cited),
             )
-            return
-
-        # A Turn is stored when it completes, or not at all. Storing the Visitor message up
-        # front would leave it behind whenever the Turn failed or the browser walked away
-        # mid-stream, and the next Turn would send two Visitor messages back to back — which
-        # is not a conversation any provider accepts.
-        await self.store.append(session_id, [visitor, *answered])
-        logger.info(
-            "Turn finished",
-            extra={
-                "input_tokens": usage.input_tokens,
-                "output_tokens": usage.output_tokens,
-                "cached_tokens": usage.cached_tokens,
-                "cost_usd": usage.cost_usd,
-                # No trace id here: it is thirty-two hex characters, which is the shape of an
-                # API key, so the `full` profile writes it out as `[CREDENTIAL]` and it joins
-                # nothing. The join runs the other way — the Trace carries the `request_id`
-                # that every one of this Turn's log lines carries.
-            },
-        )
-        yield done_event(usage, trace_id=trace.trace_id, redactions=prepared.counts)
-        # After the `done` event, never before it: closing a Trace is an observability
-        # vendor's work, and the Visitor's last frame does not wait behind it.
-        trace.finish(
-            output_text=_answer(answered),
-            usage=usage,
-            tags=turn_tags(tools_run, language, False, prepared.counts),
-            metadata=self._metadata(prepared, cited),
-        )
+        except GeneratorExit:
+            # The Visitor closed the tab: the server drops the stream and this generator is
+            # closed where it stands. Nothing is written to the Session — the Turn did not
+            # complete — so the Trace is the only record that any of this happened, and it is
+            # closed here rather than left open, holding what the Visitor actually read.
+            logger.info("Visitor left before the Turn finished")
+            trace.finish(
+                output_text=_answer(answered, "".join(deltas)),
+                usage=usage,
+                tags=turn_tags(
+                    tools_run,
+                    language=language,
+                    redactions=prepared.counts,
+                    disconnected=True,
+                ),
+                metadata=self._metadata(prepared, cited),
+            )
+            raise
 
     def _metadata(self, prepared: Redaction, cited: Mapping[str, None]) -> Mapping[str, Any]:
         """What a Trace carries besides its bodies: never a value, only counts and ids."""
@@ -237,10 +271,13 @@ def _remember(cited: dict[str, None], sections: Iterable[str]) -> None:
         cited[section] = None
 
 
-def _answer(answered: Sequence[ModelMessage], failed: bool = False) -> str:
+def _answer(answered: Sequence[ModelMessage], partial: str = "", failed: bool = False) -> str:
     """What the Visitor was shown, which is what a Trace's output should be: the Assistant's
-    words, and on a failed Turn the message that replaced the rest of them."""
+    words, whatever was still mid-sentence when the Turn ended early, and on a failed Turn the
+    message that replaced the rest of them."""
     written = [message.content for message in answered if message.role == "assistant"]
+    if partial:
+        written.append(partial)
     if failed:
         written.append(PROVIDER_ERROR_MESSAGE)
     return "\n".join(part for part in written if part)

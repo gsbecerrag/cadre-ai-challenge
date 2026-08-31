@@ -307,10 +307,13 @@ def test_a_provider_error_is_still_a_trace_and_is_tagged_as_one(
     (trace,) = tracer.traces
     assert trace.finished
     assert "provider_error" in trace.tags
-    # The `full` profile is applied blind, so Cadre's own contact details in the fixed copy
-    # are tokenised along with everything else. Losing a published phone number from a Trace
-    # is the harmless half of a boundary that cannot be talked into an exception.
-    assert trace.output_text.startswith(PROVIDER_ERROR_MESSAGE.split(" Please try again")[0])
+    # What the Visitor read, in the order they read it: the half-written answer, then the
+    # apology that replaced the rest of it. The `full` profile is applied blind, so Cadre's own
+    # contact details in the fixed copy are tokenised along with everything else — losing a
+    # published phone number from a Trace is the harmless half of a boundary that cannot be
+    # talked into an exception.
+    assert trace.output_text.startswith("Cadre AI is")
+    assert PROVIDER_ERROR_MESSAGE.split(" Please try again")[0] in trace.output_text
 
 
 def test_the_instance_flushes_its_traces_on_the_way_out(
@@ -333,6 +336,26 @@ def test_the_instance_flushes_its_traces_on_the_way_out(
         assert tracer.shutdowns == 0
 
     assert tracer.shutdowns == 1
+
+
+def test_a_failed_turn_keeps_what_it_had_already_spent_and_streamed(
+    traced_client: TestClient, provider: StubModelProvider, tracer: RecordingTracer
+) -> None:
+    """A Turn that failed halfway still cost money and still put words on the screen. Both
+    belong on the Trace: the spend because it was spent, the words because they are what the
+    Visitor read before the apology. The span is marked with what went wrong, so the failure
+    is visible in Langfuse where the time went, not only on the Trace."""
+    provider.script(
+        "what does cadre",
+        [TextDelta("Cadre AI is a consultancy"), SPEND, ProviderError("upstream 502")],
+    )
+
+    traced_client.post("/api/chat", json={"message": "What does Cadre AI do?"})
+
+    (trace,) = tracer.traces
+    assert trace.usage == SPEND
+    assert "Cadre AI is a consultancy" in trace.output_text
+    assert [span.closed_with for span in trace.spans] == ["ProviderError"]
 
 
 def test_a_turn_is_served_normally_when_langfuse_is_not_configured(

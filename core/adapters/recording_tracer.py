@@ -28,6 +28,9 @@ class RecordedSpan:
     usage: Usage | None = None
     output_text: str = ""
     produced_events: bool | None = None
+    # How the span's block ended: the name of the exception that was travelling through it,
+    # or `None` where it simply finished.
+    closed_with: str | None = None
 
     def record_usage(self, usage: Usage, output_text: str) -> None:
         self.usage = usage
@@ -35,6 +38,15 @@ class RecordedSpan:
 
     def record_events(self, produced_events: bool) -> None:
         self.produced_events = produced_events
+
+
+@contextmanager
+def _recording_how_it_ends(span: RecordedSpan) -> Iterator[None]:
+    try:
+        yield
+    except BaseException as failure:
+        span.closed_with = type(failure).__name__
+        raise
 
 
 @dataclass
@@ -57,13 +69,15 @@ class RecordedTrace:
     def provider_span(self, model: str, iteration: int) -> Iterator[ProviderSpan]:
         span = RecordedSpan(kind="provider", name=model, iteration=iteration)
         self.spans.append(span)
-        yield span
+        with _recording_how_it_ends(span):
+            yield span
 
     @contextmanager
     def tool_span(self, name: str) -> Iterator[ToolSpan]:
         span = RecordedSpan(kind="tool", name=name)
         self.spans.append(span)
-        yield span
+        with _recording_how_it_ends(span):
+            yield span
 
     def finish(
         self,
