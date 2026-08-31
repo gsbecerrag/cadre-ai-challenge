@@ -28,6 +28,9 @@ ENV UV_COMPILE_BYTECODE=1 \
 COPY pyproject.toml uv.lock ./
 COPY core/ ./core/
 COPY api/ ./api/
+# The Knowledge Base is the cached prefix of every prompt; without it the Assistant refuses
+# to start (api/main.py). Both ignore files un-ignore `knowledge/*.md` for this line.
+COPY knowledge/ ./knowledge/
 RUN uv sync --frozen --no-dev
 
 COPY --from=web /app/web/dist ./web/dist

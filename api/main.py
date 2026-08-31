@@ -63,7 +63,16 @@ def create_app(
 
     # The Knowledge Base is compiled once, at startup: it is the cached prefix of every
     # prompt, and recompiling it per Turn would be both wasted work and a chance to differ.
-    sections = compile_knowledge_base((knowledge or FileKnowledgeSource()).documents())
+    source = knowledge if knowledge is not None else FileKnowledgeSource()
+    sections = compile_knowledge_base(source.documents())
+    if not sections:
+        # An empty Knowledge Base is silent: the prompt assembles, the Assistant starts, and
+        # every answer is ungrounded. This is what a container built without `knowledge/`
+        # looks like, so it has to be a startup failure rather than a runtime surprise.
+        raise MissingConfigurationError(
+            f"The Knowledge Base compiled to no KB Sections from {source.location}. "
+            "The Assistant may only state what a KB Section states, so it cannot start."
+        )
     knowledge_block = render_knowledge_block(sections)
 
     def build_prompt() -> SystemPrompt:

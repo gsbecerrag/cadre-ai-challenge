@@ -19,6 +19,10 @@ class FileKnowledgeSource:
     def __init__(self, directory: Path = KNOWLEDGE_DIR) -> None:
         self._directory = directory
 
+    @property
+    def location(self) -> str:
+        return str(self._directory)
+
     def documents(self) -> Mapping[str, str]:
         return {
             path.stem: path.read_text(encoding="utf-8")

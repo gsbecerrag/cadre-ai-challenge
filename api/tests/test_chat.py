@@ -1,10 +1,16 @@
 """One Turn through the chat endpoint — seam S1, with the stub provider and in-memory store."""
 
+from pathlib import Path
+
+import pytest
 from fastapi.testclient import TestClient
 
+from api.main import create_app
 from api.session import SESSION_COOKIE
 from api.tests.conftest import LogReader, sse_events
+from core.adapters.knowledge_files import FileKnowledgeSource
 from core.adapters.stub_provider import StubModelProvider
+from core.config import MissingConfigurationError, Settings
 from core.provider import ProviderError, TextDelta, ToolCall, Usage
 from core.turn import GRACEFUL_STOP, PROVIDER_ERROR_MESSAGE
 
@@ -166,3 +172,17 @@ def test_the_turn_is_logged_with_its_session_id(
     turn_lines = [record for record in captured_logs() if record["logger"] == "cadre.turn"]
     assert turn_lines and all(record["session_id"] for record in turn_lines)
     assert all(record["request_id"] for record in turn_lines)
+
+
+def test_the_assistant_refuses_to_start_without_a_knowledge_base(
+    tmp_path: Path, settings: Settings, web_dist: Path
+) -> None:
+    """An empty Knowledge Base is silent — the prompt still assembles, and the Assistant then
+    answers from nothing at all. Better to refuse to start, naming where it looked."""
+    empty = tmp_path / "no-knowledge-here"
+    empty.mkdir()
+
+    with pytest.raises(MissingConfigurationError) as refusal:
+        create_app(settings=settings, web_dist=web_dist, knowledge=FileKnowledgeSource(empty))
+
+    assert str(empty) in str(refusal.value)

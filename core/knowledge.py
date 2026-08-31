@@ -31,6 +31,12 @@ class KBSection:
 class KnowledgeSource(Protocol):
     """Where the Knowledge Base's topics come from (markdown files today, Firestore later)."""
 
+    @property
+    def location(self) -> str:
+        """Where this source looked — a directory, later a collection. For failure messages
+        and startup logs: "the Knowledge Base is empty" is only actionable with a path."""
+        ...
+
     def documents(self) -> Mapping[str, str]:
         """Topic name (the citation's left-hand side) to that topic's markdown."""
         ...
