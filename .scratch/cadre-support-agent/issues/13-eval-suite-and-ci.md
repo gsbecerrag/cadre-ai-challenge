@@ -4,7 +4,7 @@
 
 **Blocked by:** 04 (Complete Knowledge Base and honest Escalation on Trap Questions), 09 (Lead capture with a Qualification Score computed in code)
 
-**Status:** ready-for-agent
+**Status:** in-progress
 
 - [ ] The suite runs under its own pytest marker; the stub subset passes in CI without any external key; the full run requires the provider key and is skipped otherwise.
 - [ ] Each metric is a function of the Eval Case and the Assistant's Turn result: escalation and tool metrics are deterministic; correctness and groundedness use the judge and tolerate paraphrase; covered at seam S5 with a stub judge for the metric logic itself.
