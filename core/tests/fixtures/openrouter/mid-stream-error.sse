@@ -1,0 +1,7 @@
+: OPENROUTER PROCESSING
+
+data: {"id":"gen-1788156300-FIXTUREerrorSTREAM","object":"chat.completion.chunk","created":1788156300,"model":"anthropic/claude-sonnet-5","provider":"Claude Platform on AWS","choices":[{"index":0,"delta":{"content":"Let me check that","role":"assistant"},"finish_reason":null,"native_finish_reason":null}]}
+
+data: {"id":"gen-1788156300-FIXTUREerrorSTREAM","object":"chat.completion.chunk","created":1788156300,"model":"anthropic/claude-sonnet-5","provider":"Claude Platform on AWS","choices":[{"index":0,"delta":{"content":"","role":"assistant"},"finish_reason":"error","native_finish_reason":"error"}],"error":{"code":502,"message":"Provider returned error","metadata":{"provider_name":"Claude Platform on AWS","raw":"upstream connect error or disconnect/reset before headers"}}}
+
+data: [DONE]

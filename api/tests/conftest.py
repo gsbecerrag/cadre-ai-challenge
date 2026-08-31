@@ -21,6 +21,10 @@ from core.config import Settings
 from core.logging import configure_logging
 
 INDEX_HTML = "<!doctype html><title>Cadre AI</title><div id='root'></div>"
+# Obviously fake: the Session cookie's signing key for the HTTP tests.
+COOKIE_SECRET = "test-session-cookie-secret-not-a-real-one"
+# Low enough that three requests reach the cap without a long test.
+TEST_TURN_CAP = 2
 BUNDLE_JS = "console.log('cadre');"
 APP_LOGGER_PREFIX = "cadre."
 
@@ -39,7 +43,12 @@ def web_dist(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def settings() -> Settings:
-    return Settings(env="production", loglevel="INFO", app_version="0.1.0")
+    return Settings(
+        env="production",
+        loglevel="INFO",
+        app_version="0.1.0",
+        session_cookie_secret=COOKIE_SECRET,
+    )
 
 
 @pytest.fixture
@@ -65,6 +74,20 @@ def client(
     # https, because the settings above are the production ones and the Session cookie is
     # then marked Secure — over http the client would silently drop it and every Turn would
     # look like a new Session, which is exactly the bug the cookie tests exist to catch.
+    with TestClient(app, base_url="https://testserver") as test_client:
+        yield test_client
+
+
+@pytest.fixture
+def capped_client(
+    settings: Settings,
+    web_dist: Path,
+    provider: StubModelProvider,
+    store: InMemoryConversationStore,
+) -> Iterator[TestClient]:
+    """A client whose Session ends after two Turns, so the cap is reachable in a test."""
+    capped = settings.model_copy(update={"max_turns_per_session": TEST_TURN_CAP})
+    app = create_app(settings=capped, web_dist=web_dist, provider=provider, store=store)
     with TestClient(app, base_url="https://testserver") as test_client:
         yield test_client
 

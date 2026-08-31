@@ -94,6 +94,10 @@ class ProviderRequest:
     prompt: SystemPrompt
     messages: tuple[ModelMessage, ...]
     tools: tuple[ToolDefinition, ...] = ()
+    # Which Session this call belongs to. The adapter passes it to the provider for sticky
+    # routing, so consecutive Turns reach the upstream that already holds the cached prefix
+    # (ADR-0002). It is an opaque id, never anything about the Visitor.
+    session_id: str = ""
 
 
 class ModelProvider(Protocol):

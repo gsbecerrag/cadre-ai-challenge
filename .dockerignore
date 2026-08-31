@@ -7,6 +7,10 @@ docs
 scripts
 external_assets
 
+# Tests and their fixtures are not part of the runtime image (carried forward from ticket 01).
+**/tests/**
+**/fixtures/**
+
 **/node_modules
 **/dist
 **/.venv

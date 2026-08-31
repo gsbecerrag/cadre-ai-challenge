@@ -35,12 +35,12 @@ class TurnRequest(BaseModel):
     message: str = Field(min_length=1, max_length=MAX_MESSAGE_LENGTH, pattern=r"\S")
 
 
-def create_chat_router(runner: TurnRunner, *, secure_cookie: bool) -> APIRouter:
+def create_chat_router(runner: TurnRunner, *, cookie_secret: str, secure_cookie: bool) -> APIRouter:
     router = APIRouter(tags=["chat"])
 
     @router.post("/chat")
     async def chat(request: Request, turn: TurnRequest) -> StreamingResponse:
-        session_id = read_session_id(request) or new_session_id()
+        session_id = read_session_id(request, cookie_secret) or new_session_id()
 
         async def frames() -> AsyncIterator[str]:
             with session_context(session_id):
@@ -54,7 +54,7 @@ def create_chat_router(runner: TurnRunner, *, secure_cookie: bool) -> APIRouter:
                     yield format_sse_event(error_event(UNEXPECTED_ERROR_MESSAGE))
 
         response = StreamingResponse(frames(), media_type=SSE_MEDIA_TYPE, headers=SSE_HEADERS)
-        set_session_cookie(response, session_id, secure=secure_cookie)
+        set_session_cookie(response, session_id, secret=cookie_secret, secure=secure_cookie)
         return response
 
     return router

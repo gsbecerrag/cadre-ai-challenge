@@ -28,12 +28,22 @@ from core.store import ConversationStore
 from core.tools import ToolRegistry
 
 MAX_PROVIDER_ITERATIONS = 4
+MAX_TURNS_PER_SESSION = 40
 
 # What the Visitor reads when the model keeps asking for tools instead of answering. It is a
 # dead end, so it ends in the one thing that always works.
 GRACEFUL_STOP = (
     "I'm not getting to the bottom of that one. You can reach the team at hello@gocadre.ai "
     "or (619) 324-3223, and they will pick it up from here."
+)
+
+# What the Visitor reads when a Session has used up its Turn cap. It is the end of the
+# conversation, so it hands over the two contact paths a Visitor can use unaided — the wording
+# comes from the `contact` KB Section, and no phone script is invented for it.
+SESSION_CLOSED = (
+    "We have covered a lot in this conversation, and I have to stop here. To carry on, email "
+    "hello@gocadre.ai or use the contact form at https://www.cadreai.com/contact, and the team "
+    "will pick it up from where we left off."
 )
 
 # The only thing a Visitor is ever told about a provider failure. Whatever the provider said
@@ -64,10 +74,23 @@ class TurnRunner:
     build_prompt: Callable[[], SystemPrompt]
     prepare_message: Callable[[str], str] = keep_as_is
     max_iterations: int = field(default=MAX_PROVIDER_ITERATIONS)
+    max_turns: int = field(default=MAX_TURNS_PER_SESSION)
 
     async def run(self, session_id: str, message: str) -> AsyncIterator[ChatEvent]:
+        stored = await self.store.load(session_id)
+
+        # A Session is not an open tab on the model. Past the cap the Visitor gets the closing
+        # message and nothing else: no provider call, no write, so a stuck or automated
+        # browser cannot keep spending.
+        turns_taken = sum(1 for earlier in stored if earlier.role == "visitor")
+        if turns_taken >= self.max_turns:
+            logger.info("Session reached its Turn cap", extra={"turns_taken": turns_taken})
+            yield text_event(SESSION_CLOSED)
+            yield done_event(Usage())
+            return
+
         visitor = ModelMessage(role="visitor", content=self.prepare_message(message))
-        history = [*await self.store.load(session_id), visitor]
+        history = [*stored, visitor]
 
         prompt = self.build_prompt()
         answered: list[ModelMessage] = []
@@ -78,7 +101,9 @@ class TurnRunner:
             for _iteration in range(self.max_iterations):
                 deltas: list[str] = []
                 tool_calls: list[ToolCall] = []
-                request = ProviderRequest(prompt, tuple(history), self.tools.definitions)
+                request = ProviderRequest(
+                    prompt, tuple(history), self.tools.definitions, session_id
+                )
 
                 async for event in self.provider.stream(request):
                     match event:
