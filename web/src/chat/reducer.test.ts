@@ -129,6 +129,20 @@ const JANE: LeadContact = {
 
 const NOBODY_YET: LeadContact = { name: '', email: '', company: '' }
 
+/** Obviously not a real Daily domain, the way a fixture's email is example.com. */
+const ROOM_URL = 'https://cadre-demo.daily.invalid/cadre-hr-0001'
+
+/** The Visitor accepted while a Strategist was online: a room, and nobody in it yet. */
+function connecting(): ChatState {
+  return chatReducer(offered(), {
+    type: 'handover',
+    state: 'pending_strategist',
+    mode: 'video',
+    lead: JANE,
+    roomUrl: ROOM_URL,
+  })
+}
+
 function offered(): ChatState {
   return replay('Can I talk to someone?', HANDOVER_OFFER)
 }
@@ -573,6 +587,159 @@ describe('the chat reducer', () => {
     })
 
     expect(again).toBe(accepted)
+  })
+
+  // --- the Live Hand-over on video (ticket 15) -----------------------------------------------
+
+  it('opens the call frame with the room the moment the Visitor accepts a video Hand-over', () => {
+    const accepted = connecting()
+
+    expect(accepted.call).toEqual({
+      state: 'pending_strategist',
+      roomUrl: ROOM_URL,
+      strategistName: '',
+    })
+    expect(accepted.messages[2]).toMatchObject({ kind: 'offer', status: 'accepted' })
+    expect(accepted.messages.at(-1)).toMatchObject({ kind: 'note', note: 'handoverConnecting' })
+  })
+
+  it('shows the connecting state until there is a room to open', () => {
+    // The accept answered `video` but the room is not on the request yet: the panel spins
+    // rather than mounting an iframe with nowhere to point it.
+    const accepted = chatReducer(offered(), {
+      type: 'handover',
+      state: 'pending_strategist',
+      mode: 'video',
+      lead: JANE,
+    })
+
+    expect(accepted.call).toEqual({ state: 'pending_strategist', roomUrl: '', strategistName: '' })
+  })
+
+  it('names the Strategist once they have joined, without saying anything new', () => {
+    const waiting = connecting()
+
+    const joined = chatReducer(waiting, {
+      type: 'handover',
+      state: 'in_call',
+      mode: 'video',
+      lead: JANE,
+      roomUrl: ROOM_URL,
+      strategistName: 'Angel M.',
+    })
+
+    expect(joined.call).toEqual({
+      state: 'in_call',
+      roomUrl: ROOM_URL,
+      strategistName: 'Angel M.',
+    })
+    // A status poll is not a thing the Assistant said, so the transcript does not grow.
+    expect(joined.messages).toEqual(waiting.messages)
+  })
+
+  it('closes the call frame and says so when the call has ended', () => {
+    const joined = chatReducer(connecting(), {
+      type: 'handover',
+      state: 'in_call',
+      mode: 'video',
+      lead: JANE,
+      roomUrl: ROOM_URL,
+      strategistName: 'Angel M.',
+    })
+
+    const over = chatReducer(joined, {
+      type: 'handover',
+      state: 'ended',
+      mode: 'video',
+      lead: JANE,
+    })
+
+    expect(over.call).toBeNull()
+    expect(over.messages.at(-1)).toMatchObject({ kind: 'note', note: 'callEnded' })
+  })
+
+  it('turns a call nobody joined into the Callback the Visitor was promised', () => {
+    // The server's join timeout: `no_strategist_available` with the mode flipped to
+    // `callback`, and the Lead already captured — so this is the ticket 11 confirmation.
+    const timedOut = chatReducer(connecting(), {
+      type: 'handover',
+      state: 'no_strategist_available',
+      mode: 'callback',
+      lead: JANE,
+    })
+
+    expect(timedOut.call).toBeNull()
+    expect(timedOut.messages.at(-1)).toMatchObject({ kind: 'callback', lead: JANE })
+  })
+
+  it('asks for the details the Callback needs when a call nobody joined times out', () => {
+    const timedOut = chatReducer(connecting(), {
+      type: 'handover',
+      state: 'no_strategist_available',
+      mode: 'callback',
+      lead: NOBODY_YET,
+    })
+
+    expect(timedOut.messages.at(-1)).toMatchObject({ kind: 'details', done: false })
+  })
+
+  it('leaves the state untouched while the poll keeps saying the same thing', () => {
+    // Every five seconds, for as long as the Visitor waits. A new state object per poll would
+    // re-render the panel — and remount the iframe, which drops them out of the call.
+    const waiting = connecting()
+
+    const again = chatReducer(waiting, {
+      type: 'handover',
+      state: 'pending_strategist',
+      mode: 'video',
+      lead: JANE,
+      roomUrl: ROOM_URL,
+    })
+
+    expect(again).toBe(waiting)
+  })
+
+  it('says the call ended once, however many times the poll reports it', () => {
+    const over = chatReducer(connecting(), {
+      type: 'handover',
+      state: 'ended',
+      mode: 'video',
+      lead: JANE,
+    })
+
+    const again = chatReducer(over, {
+      type: 'handover',
+      state: 'ended',
+      mode: 'video',
+      lead: JANE,
+    })
+
+    expect(again).toBe(over)
+  })
+
+  it('lets the Visitor leave the call and go back to the conversation', () => {
+    // Nothing server-side: the Strategist may still be in the room, and the Lead is still a
+    // Lead. What changes is that the Visitor is looking at the transcript again — which
+    // without this they cannot do, because the call takes the message area and the composer.
+    const joined = chatReducer(connecting(), {
+      type: 'handover',
+      state: 'in_call',
+      mode: 'video',
+      lead: JANE,
+      roomUrl: ROOM_URL,
+      strategistName: 'Angel M.',
+    })
+
+    const left = chatReducer(joined, { type: 'left_call' })
+
+    expect(left.call).toBeNull()
+    expect(left.messages.at(-1)).toMatchObject({ kind: 'note', note: 'callLeft' })
+  })
+
+  it('says nothing when there is no call to leave', () => {
+    const state = offered()
+
+    expect(chatReducer(state, { type: 'left_call' })).toBe(state)
   })
 
   it('reduces a Hand-over that arrives on the wire the same way as one the browser asked for', () => {

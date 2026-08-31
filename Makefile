@@ -9,10 +9,17 @@ OPENROUTER_SECRET := openrouter-api-key
 COOKIE_SECRET     := session-cookie-secret
 LANGFUSE_PUBLIC   := langfuse-public-key
 LANGFUSE_SECRET   := langfuse-secret-key
+DAILY_SECRET      := daily-api-key
 
 # Where the Langfuse project lives. Not a secret, and the wrong region is an authentication
 # error rather than a redirect, so it is pinned here next to the keys it goes with.
 LANGFUSE_HOST     := https://us.cloud.langfuse.com
+
+# The Daily.co account the Live Hand-over's rooms are created in (ADR-0007). Not a secret —
+# it is half of every room URL a Visitor sees — so it is pinned here beside the key it goes
+# with. `LIVE_HANDOVER_ENABLED=true` in the deploy below is what turns video on: with it off,
+# or with the key unbound, every accepted Hand-over is a Callback and nothing breaks.
+DAILY_DOMAIN      := cadre-demo.daily.co
 
 # The deployed build reports its git sha from /healthz.
 VERSION := $(shell git rev-parse --short HEAD 2>/dev/null || echo dev)
@@ -95,7 +102,7 @@ deploy-secrets:
 	    | gcloud secrets create $(COOKIE_SECRET) --project $(PROJECT) \
 	        --replication-policy=automatic --data-file=- >/dev/null; \
 	}; \
-	for secret in $(OPENROUTER_SECRET) $(COOKIE_SECRET) $(LANGFUSE_PUBLIC) $(LANGFUSE_SECRET); do \
+	for secret in $(OPENROUTER_SECRET) $(COOKIE_SECRET) $(LANGFUSE_PUBLIC) $(LANGFUSE_SECRET) $(DAILY_SECRET); do \
 	  echo "Granting $$sa read access to $$secret"; \
 	  gcloud secrets add-iam-policy-binding "$$secret" --project $(PROJECT) \
 	    --member="serviceAccount:$$sa" \
@@ -117,8 +124,8 @@ deploy: deploy-secrets
 	  --region $(REGION) \
 	  --port 8080 \
 	  --allow-unauthenticated \
-	  --update-env-vars "^|^ENV=production|APP_VERSION=$(VERSION)|MODEL_PROVIDER=openrouter|CONVERSATION_STORE=firestore|GOOGLE_CLOUD_PROJECT=$(PROJECT)|ADMIN_ALLOWED_EMAILS=$(ADMIN_ALLOWED_EMAILS)|OPENROUTER_APP_URL=$${url:-https://cadreai.com}|LANGFUSE_HOST=$(LANGFUSE_HOST)" \
-	  --update-secrets OPENROUTER_API_KEY=$(OPENROUTER_SECRET):latest,SESSION_COOKIE_SECRET=$(COOKIE_SECRET):latest,LANGFUSE_PUBLIC_KEY=$(LANGFUSE_PUBLIC):latest,LANGFUSE_SECRET_KEY=$(LANGFUSE_SECRET):latest
+	  --update-env-vars "^|^ENV=production|APP_VERSION=$(VERSION)|MODEL_PROVIDER=openrouter|CONVERSATION_STORE=firestore|GOOGLE_CLOUD_PROJECT=$(PROJECT)|ADMIN_ALLOWED_EMAILS=$(ADMIN_ALLOWED_EMAILS)|OPENROUTER_APP_URL=$${url:-https://cadreai.com}|LANGFUSE_HOST=$(LANGFUSE_HOST)|LIVE_HANDOVER_ENABLED=true|DAILY_DOMAIN=$(DAILY_DOMAIN)" \
+	  --update-secrets OPENROUTER_API_KEY=$(OPENROUTER_SECRET):latest,SESSION_COOKIE_SECRET=$(COOKIE_SECRET):latest,LANGFUSE_PUBLIC_KEY=$(LANGFUSE_PUBLIC):latest,LANGFUSE_SECRET_KEY=$(LANGFUSE_SECRET):latest,DAILY_API_KEY=$(DAILY_SECRET):latest
 	@url=$$(gcloud run services describe $(SERVICE) --project $(PROJECT) --region $(REGION) \
 	    --format='value(status.url)'); \
 	  echo "Service URL: $$url"; \

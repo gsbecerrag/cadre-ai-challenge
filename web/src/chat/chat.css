@@ -12,6 +12,12 @@
   }
 }
 
+@keyframes cadre-spinring {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 @keyframes cadre-tdot {
   0%,
   60%,
@@ -33,9 +39,14 @@
   animation: cadre-tdot 1.2s infinite;
 }
 
+.cadre-spinring {
+  animation: cadre-spinring 0.9s linear infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .cadre-msgin,
-  .cadre-tdot {
+  .cadre-tdot,
+  .cadre-spinring {
     animation: none;
   }
 }

@@ -17,6 +17,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
 
+from api.handover import validated
 from core.auth import (
     InvalidTokenError,
     StrategistIdentity,
@@ -40,6 +41,20 @@ BEARER = "bearer"
 AUTHENTICATE_HEADER = {"WWW-Authenticate": "Bearer"}
 
 NO_SUCH_REQUEST = "There is no Handover Request with that id."
+
+# A Callback has no room to join. The Visitor was promised a phone call, so the refusal says
+# what to do instead rather than only what went wrong.
+NOT_A_LIVE_HAND_OVER = (
+    "This is a Callback, not a Live Hand-over: there is no room to join. Reach the Lead on "
+    "the Contact Details on this request."
+)
+
+# A request with no mode is one the Visitor has not answered. Calling that a Callback would
+# tell a Strategist to go and phone somebody who has not agreed to be phoned.
+NOT_ANSWERED_YET = (
+    "This Hand-over has not been accepted yet: the Visitor has not answered the offer, so "
+    "there is nothing to join and nobody expecting to hear from you."
+)
 
 # The two roles a Strategist reads in "Conversation so far". The tool traffic between them is
 # not conversation: a `capture_lead` result rendered as a bubble would show a Strategist an
@@ -109,6 +124,11 @@ class ConsoleHandover(BaseModel):
     created_at: str | None
     trace_id: str | None
     lead: ConsoleLead
+    # The Daily room, and who claimed it. Empty until a Visitor accepts in `video` mode and a
+    # Strategist joins — the queue card reads the first to decide whether to draw "Claim &
+    # join call", and the detail's in-call banner shows both.
+    room_url: str
+    strategist_name: str
 
 
 class ConsoleHandovers(BaseModel):
@@ -240,11 +260,68 @@ def create_console_router(
         requests = await store.list_handovers(mode, DEFAULT_HANDOVER_PAGE)
         return ConsoleHandovers(handovers=[console_handover(request) for request in requests])
 
-    @router.get("/handovers/{request_id}")
-    async def read_handover(request_id: str) -> ConsoleHandoverDetail:
+    async def stored_handover(request_id: str) -> HandoverRequest:
         stored = await store.get_handover(request_id)
         if stored is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, NO_SUCH_REQUEST)
+        return stored
+
+    @router.post("/handovers/{request_id}/join")
+    async def join_call(
+        request_id: str,
+        strategist: Annotated[StrategistIdentity, Depends(current_strategist)],
+    ) -> ConsoleHandover:
+        """ "Claim & join call": the Strategist takes the request and enters the room.
+
+        One button in the design (§3.1) and one write here, carrying both hops the machine
+        names. `strategist_joined` is a moment, not a state anybody waits in — persisting it
+        on its own would put a state nobody was ever in through every open Console's realtime
+        listener, and would strand the request there if the second write failed.
+
+        The name written is the verified identity's, never one the browser sent: the Visitor's
+        panel says "You're being assisted by ..." with it, and a Strategist's own client is not
+        the right authority on who is in the call.
+        """
+        stored = await stored_handover(request_id)
+        if stored.mode is None:
+            raise HTTPException(status.HTTP_409_CONFLICT, NOT_ANSWERED_YET)
+        if stored.mode != "video":
+            raise HTTPException(status.HTTP_409_CONFLICT, NOT_A_LIVE_HAND_OVER)
+        joined = validated(stored, "strategist_joined")
+        in_call = validated(joined, "in_call")
+        claimed = await store.update_handover(
+            in_call.id,
+            in_call.state,
+            in_call.mode,
+            # The display name only, never the email. This travels to the Visitor's panel
+            # ("You're being assisted by ..."), and a Strategist's work address is not
+            # something a stranger on the internet gets because their Google profile has no
+            # name on it. Empty is fine: the widget says "a Cadre strategist" in the Visitor's
+            # own language, which a string chosen here could not do.
+            strategist_name=strategist.name.strip(),
+        )
+        logger.info(
+            "Strategist joined a Live Hand-over",
+            extra={"request_id": claimed.id, "uid": strategist.uid},
+        )
+        return console_handover(claimed)
+
+    @router.post("/handovers/{request_id}/end")
+    async def end_call(request_id: str) -> ConsoleHandover:
+        """ "End call": the Hand-over is over, for both sides.
+
+        Validated like every other move, so a second click on a stale tab is a 409 rather than
+        a request reopened and closed again.
+        """
+        stored = await stored_handover(request_id)
+        ended = validated(stored, "ended")
+        closed = await store.update_handover(ended.id, ended.state, ended.mode)
+        logger.info("Live Hand-over ended", extra={"request_id": closed.id})
+        return console_handover(closed)
+
+    @router.get("/handovers/{request_id}")
+    async def read_handover(request_id: str) -> ConsoleHandoverDetail:
+        stored = await stored_handover(request_id)
         # The live Lead, because Contact Details keep arriving after the offer — and the
         # snapshot when the Session has none, so the panel is never empty.
         lead = await store.get_lead(stored.session_id)
@@ -301,4 +378,6 @@ def console_handover(request: HandoverRequest) -> ConsoleHandover:
         created_at=request.created_at.isoformat() if request.created_at else None,
         trace_id=request.trace_id,
         lead=console_lead_from_snapshot(request.session_id, request.lead),
+        room_url=request.room_url,
+        strategist_name=request.strategist_name,
     )
