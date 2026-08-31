@@ -1,9 +1,18 @@
 """One Turn: a Visitor message in, a stream of chat events out.
 
-The loop is hand-written and about eighty lines on purpose (ADR-0004): load the Session, build
-the messages with the cached Knowledge Base block first, call the provider with the tool
+The loop is hand-written rather than a framework's (ADR-0004): load the Session, build the
+messages with the cached Knowledge Base block first, call the provider with the tool
 definitions, run any tool calls in code, feed the results back, and stop — either because the
 model stopped asking for tools, or because the iteration cap was reached.
+
+`run` is around a hundred and seventy lines now, twice what it was when it only had to answer.
+The half that grew is the four ways a Turn can end, because each one owes something different:
+it completes and the Session is written and the Trace closed after the `done` event; the
+Session's Turn cap is reached and nothing runs at all; the provider fails mid-answer and the
+Visitor gets one safe sentence while the Trace keeps the spend and the half-written answer; or
+the Visitor closes the tab, in which case nothing is stored and the Trace is the only record
+there will ever be. Every one of those is a nested block a framework would have hidden and an
+engineer would have had to guess at.
 
 Everything that touches the outside world is a seam, so the whole loop runs offline against the
 stub provider and the in-memory store, which is what the HTTP tests and the CI evals use.
