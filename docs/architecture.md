@@ -173,7 +173,7 @@ erDiagram
   SESSIONS |o--o| LEADS : "captured from"
   SESSIONS |o--o| HANDOVER_REQUESTS : "raises"
   LEADS ||--o{ HANDOVER_REQUESTS : "qualifies for"
-  AGENTS |o--o{ HANDOVER_REQUESTS : "claims"
+  STRATEGISTS |o--o{ HANDOVER_REQUESTS : "claims"
   SESSIONS ||--o{ FEEDBACK : "rated in"
   FEEDBACK ||--o| TRIAGE_REPORTS : "triaged into"
   SESSIONS {
@@ -201,7 +201,7 @@ erDiagram
     string status "state machine below"
     string mode "video or callback"
   }
-  AGENTS {
+  STRATEGISTS {
     string uid PK "Firebase Auth uid"
     bool online
   }

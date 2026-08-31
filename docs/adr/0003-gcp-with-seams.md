@@ -18,7 +18,7 @@ The runtime is one Cloud Run container (FastAPI plus the built React SPA), Fires
 ## Decision
 
 - Hosting: one container on Cloud Run serving the API and the static SPA from one origin (no CORS, one deploy, one URL). The API is stateless: session history is loaded from Firestore each turn and no agent state lives in process memory, so any instance can serve any turn.
-- Data: Firestore Native (nam5) holds sessions, messages, leads, handover requests, agents, feedback and triage reports. It is also the event bus between the API and background agents.
+- Data: Firestore Native (nam5) holds sessions, messages, leads, handover requests, strategists, feedback and triage reports. It is also the event bus between the API and background agents.
 - Identity: Firebase Auth (ADR-0010). Async work: Firebase Functions Python gen2 on Firestore triggers (ADR-0005). Secrets: Secret Manager. Logs: structured JSON to Cloud Logging carrying session, request and trace IDs.
 - Seams, each a small interface with one production implementation:
   - `ModelProvider`: OpenRouter in production; the stub provider in tests, CI and the load smoke test.

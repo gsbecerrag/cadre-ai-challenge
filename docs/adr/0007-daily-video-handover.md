@@ -18,7 +18,7 @@ When a qualified prospect accepts a live hand-over and a Strategist is online, t
 ## Decision
 
 - Provider: Daily.co. The server creates one room per handover request via REST with a short expiry and stores the room URL on the request; the chat renders the prebuilt iframe; the console renders the same room for the Strategist. No account for either side.
-- Gating: `offer_live_handover` is available to the model only when the session's qualification score is ≥ 3 and at least one agent is `online`; it is offered once per session. The `LIVE_HANDOVER_ENABLED` flag switches the feature to callback mode for environments without Daily credentials.
+- Gating: `offer_live_handover` is available to the model only when the session's qualification score is ≥ 3 and at least one Strategist is `online`; it is offered once per session. The `LIVE_HANDOVER_ENABLED` flag switches the feature to callback mode for environments without Daily credentials.
 - State machine on the handover request: offered → accepted_by_user → pending_strategist → strategist_joined → in_call → ended, with exits to declined (user) and no_strategist_available (timeout). Every transition is a Firestore write, so the console and the chat react through realtime listeners.
 - Notification: a Strategist sees the pending request in the console immediately (Firestore listener plus browser Notification); Slack and email are out of scope.
 - Timeout: if no Strategist joins within the window, the request becomes no_strategist_available, the lead is already captured, and the bot escalates to the contact channels.
