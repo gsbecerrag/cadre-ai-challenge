@@ -6,7 +6,7 @@
 
 **Design reference:** [docs/design](../../../docs/design/README.md) — brief §2.1–2.2: the mock cadreai.com host page (sticky nav with "Talk to an AI Strategist", hero "From AI Confusion to AI Confidence.", partner strip, three-card grid, dark CTA "Track your AI results" → Portal, footer with the contact details) and the Portal (badge "Demo portal · mock data", tabs Dashboard / Tools / Agents / Results & Training, three stat cards, agents table with "● Live"). Ruling: the host page is in scope here — it is the page the chat widget floats over; it replaces ticket 01's placeholder shell and keeps the widget's mount point.
 
-**Status:** ready-for-agent
+**Status:** in-progress
 
 - [ ] Four portal pages render with mock data: dashboard (summary tiles), tools, agents (with per-agent results), results/training (progress); each shows the demo badge and shares a portal layout with navigation.
 - [ ] The pages use the Cadre design tokens (colours, type, pill buttons) and are responsive.
