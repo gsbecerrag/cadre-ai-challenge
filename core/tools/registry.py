@@ -49,9 +49,13 @@ class ToolRegistry:
     def definitions(self) -> tuple[ToolDefinition, ...]:
         return tuple(tool.definition for tool in self._tools)
 
-    async def run(self, call: ToolCall, session_id: str = "") -> ToolOutcome:
+    async def run(self, call: ToolCall, session_id: str) -> ToolOutcome:
         """Never raises: a hallucinated tool name or a malformed argument comes back to the
-        model as a result it can correct, rather than ending the Visitor's Turn (ADR-0004)."""
+        model as a result it can correct, rather than ending the Visitor's Turn (ADR-0004).
+
+        The Session id is required rather than defaulted: a tool that writes writes for one
+        Session, and a caller that forgot it would file every Lead under the same empty id.
+        """
         tool = self._by_name.get(call.name)
         if tool is None:
             return ToolOutcome(result=f"There is no tool named {call.name!r}.")

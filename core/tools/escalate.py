@@ -279,7 +279,7 @@ def _language(value: object) -> Language:
     return DEFAULT_LANGUAGE
 
 
-async def run_escalate(arguments: Mapping[str, Any], session_id: str = "") -> ToolOutcome:
+async def run_escalate(arguments: Mapping[str, Any], session_id: str) -> ToolOutcome:
     """`session_id` is unused: an Escalation is shown to the Visitor and stored as part of the
     Turn, and writes nothing of its own. Every tool takes the same two arguments."""
     reason = _reason(arguments.get("reason"))
