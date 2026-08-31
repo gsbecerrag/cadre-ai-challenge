@@ -38,14 +38,23 @@ export function useConsole(): ConsoleContext {
  * the API's own 403, never guessed at in the browser.
  */
 export function ConsoleLayout() {
-  const { session, signIn, leave, authorization } = useStrategistSession()
+  const { session, signIn, signInWithEmail, leave, authorization } = useStrategistSession()
   const [refusal, setRefusal] = useState<string>()
   const [signingIn, setSigningIn] = useState(false)
+  const [signingInWithEmail, setSigningInWithEmail] = useState(false)
 
   const startSignIn = useCallback(() => {
     setSigningIn(true)
     void signIn().finally(() => setSigningIn(false))
   }, [signIn])
+
+  const startSignInWithEmail = useCallback(
+    (email: string, password: string) => {
+      setSigningInWithEmail(true)
+      void signInWithEmail(email, password).finally(() => setSigningInWithEmail(false))
+    },
+    [signInWithEmail],
+  )
 
   const startLeave = useCallback(() => {
     setRefusal(undefined)
@@ -59,14 +68,23 @@ export function ConsoleLayout() {
     return (
       <SignInPage
         onSignIn={startSignIn}
+        onSignInWithEmail={startSignInWithEmail}
         onLeave={startLeave}
         error={session.error}
         busy={signingIn}
+        emailBusy={signingInWithEmail}
       />
     )
   }
   if (refusal) {
-    return <SignInPage onSignIn={startSignIn} onLeave={startLeave} refusal={refusal} />
+    return (
+      <SignInPage
+        onSignIn={startSignIn}
+        onSignInWithEmail={startSignInWithEmail}
+        onLeave={startLeave}
+        refusal={refusal}
+      />
+    )
   }
   return (
     <ConsoleShell

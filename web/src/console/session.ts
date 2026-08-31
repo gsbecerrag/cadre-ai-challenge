@@ -1,6 +1,7 @@
 import {
   GoogleAuthProvider,
   onAuthStateChanged,
+  signInWithEmailAndPassword,
   signInWithPopup,
   signOut,
   type User,
@@ -59,6 +60,31 @@ function signInError(error: unknown): string | undefined {
 }
 
 /**
+ * A message for the email + password form (ticket 20, for a reviewer without a Google
+ * account). Firebase collapses "wrong password" and "no such user" into `auth/invalid-credential`
+ * on current SDK versions, and the two older codes are kept here for the same reason: telling a
+ * stranger *which* half was wrong is how you let them enumerate valid emails, so all three earn
+ * the identical, honest sentence.
+ */
+function emailSignInError(error: unknown): string {
+  const code = typeof error === 'object' && error && 'code' in error ? String(error.code) : ''
+  if (
+    code === 'auth/invalid-credential' ||
+    code === 'auth/wrong-password' ||
+    code === 'auth/user-not-found'
+  ) {
+    return 'That email or password is not right. Please check them and try again.'
+  }
+  if (code === 'auth/invalid-email') {
+    return 'That does not look like a valid email address.'
+  }
+  if (code === 'auth/too-many-requests') {
+    return 'Too many attempts. Please wait a moment and try again.'
+  }
+  return 'Sign-in did not complete. Please try again.'
+}
+
+/**
  * Who is signed in, and how to change that.
  *
  * The ID token is deliberately *not* held in state: `getIdToken()` returns a cached token and
@@ -68,6 +94,7 @@ function signInError(error: unknown): string | undefined {
 export function useStrategistSession(): {
   session: Session
   signIn: () => Promise<void>
+  signInWithEmail: (email: string, password: string) => Promise<void>
   leave: () => Promise<void>
   authorization: () => Promise<string>
 } {
@@ -101,6 +128,21 @@ export function useStrategistSession(): {
     }
   }, [])
 
+  /**
+   * The reviewer path (ticket 20): a demo Strategist account provisioned server-side in
+   * Firebase Auth with `emailVerified: true`, so it reaches the Console exactly like a Google
+   * sign-in — the API's `TokenVerifier` and `firestore.rules` check the token's claims, not
+   * which provider issued it. `onAuthStateChanged` above picks up success the same way it
+   * does for Google; only the failure path needs handling here.
+   */
+  const signInWithEmail = useCallback(async (email: string, password: string) => {
+    try {
+      await signInWithEmailAndPassword(firebaseAuth(), email, password)
+    } catch (error) {
+      setSession({ status: 'signed-out', error: emailSignInError(error) })
+    }
+  }, [])
+
   const leave = useCallback(async () => {
     if (FAKE_AUTH) {
       window.sessionStorage.removeItem(FAKE_SESSION_KEY)
@@ -121,5 +163,5 @@ export function useStrategistSession(): {
     return user.getIdToken()
   }, [])
 
-  return { session, signIn, leave, authorization }
+  return { session, signIn, signInWithEmail, leave, authorization }
 }
