@@ -12,7 +12,7 @@ Thumbs.db
 # Claude Code per-machine settings (shared config lives in .claude/settings.json)
 .claude/settings.local.json
 
-# Dependencies & build output — stack-agnostic baseline; extend when the stack is scaffolded
+# Dependencies & build output
 node_modules/
 dist/
 build/
@@ -21,6 +21,15 @@ build/
 __pycache__/
 .venv/
 *.log
+
+# Tool caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+web/node_modules/
+
+# Agent worktrees (created by the subagent-driven build, never committed)
+.claude/worktrees/
 
 # Source artifacts kept locally (unpacked into .claude/skills/ when adopted)
 external_assets/
