@@ -125,8 +125,15 @@ class CaseScore:
     error: str = ""
 
     @property
+    def errored(self) -> bool:
+        """The Turn never produced an answer, so there is nothing here to grade."""
+        return bool(self.error)
+
+    @property
     def passed(self) -> bool:
-        return all(outcome.passed for outcome in self.outcomes)
+        # An errored case has no outcomes, and `all(())` is True — so this has to say no
+        # explicitly, or a run in which every Turn failed would report a clean sweep.
+        return not self.errored and all(outcome.passed for outcome in self.outcomes)
 
     def as_record(self) -> dict[str, Any]:
         return {
@@ -134,6 +141,7 @@ class CaseScore:
             "kind": self.kind,
             "language": self.language,
             "passed": self.passed,
+            "errored": self.errored,
             "metrics": {
                 outcome.name: {"passed": outcome.passed, "reason": outcome.reason}
                 for outcome in self.outcomes
@@ -183,6 +191,12 @@ class Scorecard:
             if outcome.name == metric and not outcome.passed
         )
 
+    @property
+    def errored(self) -> tuple[tuple[str, str], ...]:
+        """The cases whose Turn never answered, each with the failure that ended it. They are
+        not failures of the Assistant and no metric ruled on them."""
+        return tuple((score.case_id, score.error) for score in self.cases if score.errored)
+
     def as_record(self) -> dict[str, Any]:
         return {
             "model": self.model,
@@ -200,6 +214,7 @@ class Scorecard:
                 }
                 for metric in self.metric_names
             },
+            "errored": [case_id for case_id, _reason in self.errored],
             "cases": [score.as_record() for score in self.cases],
         }
 
@@ -430,7 +445,27 @@ async def score_case(
 
     Groundedness applies to all three kinds — it is a property of an answer, not of an
     expectation — and is skipped only when there is no judge, which is the stub run.
+
+    A Turn that ended in an `error` event is not graded at all. It has already been retried
+    from a fresh Session as many times as `--attempts` allows, so what is left is the provider
+    saying no, and grading that measures the provider: the Assistant would fail
+    `escalation_correctness` for an Escalation it never got to raise, and pass `groundedness`
+    for an answer it never got to write. The case is recorded as errored, counted by no metric,
+    and printed apart from the failures — a run with errors in it is a run to repeat, not a
+    verdict to read.
     """
+    if result.error:
+        return CaseScore(
+            case_id=case.id,
+            kind=case.kind,
+            language=case.language,
+            outcomes=(),
+            answer=result.answer,
+            citations=result.citations,
+            tools=result.tool_names,
+            cost_usd=result.cost_usd,
+            error=result.error,
+        )
     outcomes: list[MetricOutcome] = []
     if case.kind == "in_kb" and judge is not None:
         outcomes.append(await correctness(case, result, judge))
@@ -522,6 +557,12 @@ def render_scorecard(scorecard: Scorecard) -> str:
         lines.extend(f"    {case_id} [{metric}] {reason}" for metric, case_id, reason in failures)
     else:
         lines.append("  Every Eval Case passed every metric that ruled on it.")
+    if scorecard.errored:
+        # Kept apart from the failures on purpose: these are cases no metric ruled on, and
+        # reading them as failures of the Assistant is exactly the mistake to avoid.
+        lines.append("")
+        lines.append(f"  Errored Eval Cases ({len(scorecard.errored)}) — not graded:")
+        lines.extend(f"    {case_id} {reason}" for case_id, reason in scorecard.errored)
     lines.extend(
         [
             "",

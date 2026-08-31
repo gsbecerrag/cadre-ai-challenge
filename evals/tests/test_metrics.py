@@ -15,12 +15,14 @@ from core.store import Lead
 from evals.cases import EvalCase
 from evals.judge import Verdict, parse_verdict
 from evals.metrics import (
+    GROUNDEDNESS,
     TurnResult,
     correctness,
     escalation_correctness,
     groundedness,
     tool_correctness,
 )
+from evals.runner import CaseScore, Scorecard, render_scorecard, score_case
 
 # Obviously fake Contact Details, as every fixture in this repository uses.
 VISITOR_NAME = "Jane Rivera"
@@ -436,3 +438,85 @@ def test_tool_correctness_still_fails_a_contact_detail_that_is_a_different_value
 
     assert not outcome.passed
     assert "email" in outcome.reason
+
+
+# --- a Turn that never answered is not evidence about anything --------------------------
+
+PROVIDER_FAILURE = "Something went wrong on my side and I couldn't finish that answer."
+# Three attempts, three provider failures: the events a Visitor's browser actually got.
+ERRORED = TurnResult(events=(("error", {"message": PROVIDER_FAILURE}),), error=PROVIDER_FAILURE)
+
+
+def scorecard_of(*scores: CaseScore) -> Scorecard:
+    return Scorecard(
+        cases=scores,
+        model="stub",
+        judge="stub",
+        started_at="2026-08-31T00:00:00+00:00",
+        finished_at="2026-08-31T00:00:01+00:00",
+    )
+
+
+def scored(case: EvalCase, result: TurnResult, judge: StubJudge) -> CaseScore:
+    return asyncio.run(score_case(case, result, judge, {}))
+
+
+def test_an_errored_turn_is_not_graded_by_any_metric() -> None:
+    judge = StubJudge(Verdict(passed=True, reason="supported"))
+
+    score = scored(in_kb_case(["industries#industries-cadre-serves"]), ERRORED, judge)
+
+    assert score.outcomes == ()
+    assert judge.instructions == []
+
+
+def test_an_errored_turn_is_not_a_pass() -> None:
+    """An empty answer used to earn a free `groundedness` pass for making no claim. A Turn that
+    ended in a provider error made no claim because it never ran, which is not the same thing."""
+    judge = StubJudge(Verdict(passed=True, reason="supported"))
+
+    score = scored(in_kb_case([]), ERRORED, judge)
+
+    assert not score.passed
+    assert score.errored
+    assert PROVIDER_FAILURE in score.error
+
+
+def test_an_errored_case_is_counted_by_no_metric_rate() -> None:
+    judge = StubJudge(Verdict(passed=True, reason="supported"))
+    answered = scored(in_kb_case([]), TurnResult(events=(text("Nine industries."),)), judge)
+    errored = scored(in_kb_case([]), ERRORED, judge)
+
+    card = scorecard_of(answered, errored)
+
+    # One case answered and was graded; the other never answered. A rate of 1/2 would read as
+    # "the Assistant got half of them wrong", which is not what happened.
+    assert card.rate(GROUNDEDNESS) == (1, 1)
+    assert card.failing(GROUNDEDNESS) == ()
+    assert card.errored == ((errored.case_id, errored.error),)
+
+
+def test_the_scorecard_lists_an_errored_case_apart_from_a_failure() -> None:
+    judge = StubJudge(Verdict(passed=False, reason="invented a price"))
+    failed = scored(in_kb_case([]), TurnResult(events=(text("Nine industries."),)), judge)
+    errored = scored(trap_case("pricing"), ERRORED, judge)
+
+    failures, _, errors = render_scorecard(scorecard_of(failed, errored)).partition(
+        "Errored Eval Cases"
+    )
+
+    assert "invented a price" in failures
+    assert errored.case_id not in failures
+    assert errored.case_id in errors
+    assert PROVIDER_FAILURE in errors
+
+
+def test_a_turn_that_showed_the_visitor_nothing_still_grounds_vacuously() -> None:
+    """`capture_lead` shows the Visitor no card, so a Turn whose only act was to record a Lead
+    has nothing to ground and is not a groundedness failure. That branch stays."""
+    judge = StubJudge(Verdict(passed=False, reason="never asked"))
+
+    outcome = asyncio.run(groundedness(in_kb_case([]), TurnResult(events=()), judge, {}))
+
+    assert outcome.passed
+    assert judge.instructions == []
