@@ -2,8 +2,12 @@
 
 This is the contract the chat widget's reducer reduces. Every event the spec names exists here
 from the start, even where the Turn cannot emit it yet, so that the reducer, the API and the
-later tickets are all written against one shape: `card` is filled in by ticket 08, `offer` and
-`handover` by ticket 11, and `done.trace_id` stops being null in ticket 06.
+later tickets are all written against one shape: `offer` and `handover` are filled in by
+ticket 11, and `done.trace_id` stops being null in ticket 06.
+
+`card` was declared by ticket 02 with nothing to emit it; ticket 08 gives it its first real
+definition, and `destination` becomes the resolved link rather than a bare id — the browser
+cannot look an id up, and nothing else in the app should have to.
 """
 
 from collections.abc import Mapping, Sequence
@@ -45,19 +49,41 @@ def tool_event(name: str, status: ToolStatus) -> ChatEvent:
     return ChatEvent("tool", {"name": name, "status": status})
 
 
+@dataclass(frozen=True)
+class CardDestination:
+    """Where a Walkthrough Card's call to action takes the Visitor.
+
+    Resolved on the server from an id in the destination catalogue (`core/tools/walkthroughs`),
+    so the browser renders a link it was given rather than one it worked out, and the Assistant
+    can only ever name a destination that exists. `external` splits the two behaviours the
+    Visitor can see: a Portal route is a client-side navigation that leaves the chat panel
+    mounted, an external link opens in a new tab.
+    """
+
+    id: str
+    label: str
+    href: str
+    external: bool
+
+
 def card_event(
     title: str,
     steps: Sequence[str],
-    destination: str,
+    destination: CardDestination,
     citations: Sequence[str] = (),
 ) -> ChatEvent:
-    """A Walkthrough Card: the steps and the destination. Ticket 08 emits it."""
+    """A Walkthrough Card: the steps and the resolved destination."""
     return ChatEvent(
         "card",
         {
             "title": title,
             "steps": list(steps),
-            "destination": destination,
+            "destination": {
+                "id": destination.id,
+                "label": destination.label,
+                "href": destination.href,
+                "external": destination.external,
+            },
             "citations": list(citations),
         },
     )
