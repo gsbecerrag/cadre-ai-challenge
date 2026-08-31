@@ -12,6 +12,8 @@ Every transition is validated server-side against the state machine in `core.han
 request or a hand-written `curl` all reach the same door, and the second accept is a 409.
 """
 
+import re
+
 from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel, Field, model_validator
 
@@ -42,6 +44,14 @@ NO_SESSION = (
     "or write to hello@gocadre.ai."
 )
 
+# Deliberately loose: a local part, an @, a domain with a dot in it, and no whitespace. The
+# only thing worth refusing is an address nobody could ever reply to — a Callback with a broken
+# address is one a Strategist discovers a day later — and a stricter pattern would start
+# refusing real addresses, which is the worse failure of the two.
+EMAIL = re.compile(r"^[^@\s]+@[^@\s.]+(\.[^@\s.]+)+$")
+
+NOT_AN_EMAIL = "That does not look like an email address a strategist could reply to."
+
 logger = get_logger("api.handover")
 
 
@@ -60,6 +70,10 @@ class ContactDetails(BaseModel):
     def at_least_one_detail(self) -> "ContactDetails":
         if not any(value.strip() for value in (self.name, self.email, self.company)):
             raise ValueError("Give at least one of a name, a work email or a company.")
+        # An empty box is fine — the field is optional, and a Visitor may give only a name.
+        # What is refused is something typed into the email box that is not an address.
+        if self.email.strip() and not EMAIL.match(self.email.strip()):
+            raise ValueError(NOT_AN_EMAIL)
         return self
 
 

@@ -433,6 +433,24 @@ def test_the_details_card_scores_the_lead_against_the_configured_threshold(
     assert from_the_form is not None and from_the_form.qualified is False
 
 
+@pytest.mark.parametrize(
+    "email",
+    ["jane at example.com", "jane@example", "jane@", "@example.com", "jane@exam ple.com"],
+    ids=["no-at", "no-dot-in-domain", "no-domain", "no-local-part", "space-in-domain"],
+)
+def test_the_details_card_refuses_a_work_email_nobody_could_reply_to(
+    client: TestClient, provider: StubModelProvider, email: str
+) -> None:
+    """The whole point of the card is to give a Strategist a way back to the Visitor. An
+    address that is not an address is a Callback that quietly cannot be returned, so it is
+    refused at the door rather than stored and discovered a day later."""
+    qualify(client, provider)
+
+    response = client.post("/api/leads", json={"name": "Jane Doe", "email": email})
+
+    assert response.status_code == 422
+
+
 def test_the_details_card_needs_a_session_of_its_own(client: TestClient) -> None:
     """No Session cookie, no Lead: an anonymous POST would file Contact Details under a
     Session nobody is having a conversation in."""
