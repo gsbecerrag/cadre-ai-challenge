@@ -1,0 +1,20 @@
+@import 'tailwindcss';
+
+/* Cadre's published brand tokens (docs/research/cadreai-site-facts.md §4). */
+@theme {
+  --color-cadre-red: #db4545;
+  --color-cadre-blue: #08749b;
+  --color-cadre-lime: #b9fd3b;
+  --color-cadre-sand: #faf9f6;
+  --color-cadre-sand-dark: #f2efe4;
+  --color-cadre-ink: #0b0707;
+  --color-cadre-body: #333333;
+  --color-cadre-muted: #666666;
+  --color-cadre-line: #0000001a;
+
+  --font-display: 'Inter Tight', 'Inter', system-ui, sans-serif;
+  --font-sans: 'Inter', 'Helvetica Neue', Arial, sans-serif;
+
+  --radius-card: 1.875rem;
+  --radius-pill: 48px;
+}
