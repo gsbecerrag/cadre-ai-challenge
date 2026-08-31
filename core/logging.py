@@ -138,6 +138,17 @@ def get_logger(name: str) -> logging.Logger:
     return logging.getLogger(f"{_ROOT_LOGGER_NAME}.{name}")
 
 
+def current_request_id() -> str | None:
+    """The request id bound for the request being served, if there is one.
+
+    A Trace carries it as metadata (ticket 06) so that a Turn in Langfuse and the same Turn's
+    log lines in Cloud Logging join on one id. The context variable is read rather than
+    threaded through the Turn's signature because the Turn is streamed long after the
+    middleware bound it, and only the request knows.
+    """
+    return _request_id.get()
+
+
 @contextmanager
 def session_context(session_id: str) -> Iterator[None]:
     """Bind the Session id for the rest of the request, once it is known — a Turn is streamed

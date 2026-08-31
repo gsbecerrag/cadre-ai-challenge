@@ -11,6 +11,7 @@ rejects proves nothing.
 import io
 import json
 import logging
+import time
 from collections.abc import Iterator
 from typing import Any
 
@@ -43,6 +44,17 @@ COLOMBIAN_MOBILE = "3005550003"
 US_NUMBER = "2125550000"
 # Ten digits that fail it: labelled, so still an id, but not a cédula.
 NOT_A_CEDULA = "2125551234"
+
+# The longest Visitor message the chat endpoint accepts (`api.chat.MAX_MESSAGE_LENGTH`),
+# and the budget one pass of a profile over it has. The budget is more than an order of
+# magnitude above the linear cost (about 2.5ms) and far below anything a Visitor would
+# notice. The fastest of a few passes is what is measured, because the failure being guarded
+# against is a pattern that backtracks — deterministic, and three orders of magnitude over
+# the budget — while a single wall-clock sample inside a full test run also picks up whatever
+# else the machine was doing.
+MAX_VISITOR_MESSAGE = 4000
+REDACTION_BUDGET_MS = 50
+REDACTION_PASSES = 3
 
 
 @pytest.fixture(autouse=True)
@@ -260,6 +272,32 @@ def test_the_counts_are_a_manifest_of_categories_and_carry_no_values() -> None:
     redacted = redaction.refuse(f"one card {CARD}, another card {CARD}, and my SSN {SSN}")
 
     assert redacted.counts == {"card": 2, "ssn": 1}
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        pytest.param("1-" * (MAX_VISITOR_MESSAGE // 2), id="digits-and-hyphens"),
+        pytest.param("a" * MAX_VISITOR_MESSAGE, id="one-long-word"),
+        pytest.param("a." * (MAX_VISITOR_MESSAGE // 2), id="local-part-characters"),
+        pytest.param("a" * (MAX_VISITOR_MESSAGE - 1) + "@", id="a-run-that-reaches-an-at-sign"),
+        pytest.param("x dot " * (MAX_VISITOR_MESSAGE // 6), id="spoken-dots"),
+    ],
+)
+def test_a_visitor_message_at_the_length_limit_is_redacted_in_milliseconds(body: str) -> None:
+    """Both profiles run inline on the request thread — `refuse` before the provider call,
+    `full` before every log line and every Trace — on a message the API accepts up to four
+    thousand characters. So the cost has to stay linear in the length of the message: an
+    email pattern that backtracks over a long run of local-part characters, or over a page of
+    spoken-out `dot`s, turns a Visitor message into a stalled event loop, which is a denial of
+    service and not a slow test."""
+    elapsed_ms = []
+    for _ in range(REDACTION_PASSES):
+        started = time.perf_counter()
+        redaction.full(body)
+        elapsed_ms.append((time.perf_counter() - started) * 1000)
+
+    assert min(elapsed_ms) < REDACTION_BUDGET_MS, f"redacting took {min(elapsed_ms):.0f}ms"
 
 
 def _emitted(stream: io.StringIO) -> list[dict[str, Any]]:

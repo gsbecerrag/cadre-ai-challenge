@@ -7,6 +7,12 @@ REGION  := us-central1
 # Secret Manager names the deployed service binds at runtime.
 OPENROUTER_SECRET := openrouter-api-key
 COOKIE_SECRET     := session-cookie-secret
+LANGFUSE_PUBLIC   := langfuse-public-key
+LANGFUSE_SECRET   := langfuse-secret-key
+
+# Where the Langfuse project lives. Not a secret, and the wrong region is an authentication
+# error rather than a redirect, so it is pinned here next to the keys it goes with.
+LANGFUSE_HOST     := https://us.cloud.langfuse.com
 
 # The deployed build reports its git sha from /healthz.
 VERSION := $(shell git rev-parse --short HEAD 2>/dev/null || echo dev)
@@ -89,7 +95,7 @@ deploy-secrets:
 	    | gcloud secrets create $(COOKIE_SECRET) --project $(PROJECT) \
 	        --replication-policy=automatic --data-file=- >/dev/null; \
 	}; \
-	for secret in $(OPENROUTER_SECRET) $(COOKIE_SECRET); do \
+	for secret in $(OPENROUTER_SECRET) $(COOKIE_SECRET) $(LANGFUSE_PUBLIC) $(LANGFUSE_SECRET); do \
 	  echo "Granting $$sa read access to $$secret"; \
 	  gcloud secrets add-iam-policy-binding "$$secret" --project $(PROJECT) \
 	    --member="serviceAccount:$$sa" \
@@ -111,8 +117,8 @@ deploy: deploy-secrets
 	  --region $(REGION) \
 	  --port 8080 \
 	  --allow-unauthenticated \
-	  --update-env-vars "^|^ENV=production|APP_VERSION=$(VERSION)|MODEL_PROVIDER=openrouter|CONVERSATION_STORE=firestore|GOOGLE_CLOUD_PROJECT=$(PROJECT)|ADMIN_ALLOWED_EMAILS=$(ADMIN_ALLOWED_EMAILS)|OPENROUTER_APP_URL=$${url:-https://cadreai.com}" \
-	  --update-secrets OPENROUTER_API_KEY=$(OPENROUTER_SECRET):latest,SESSION_COOKIE_SECRET=$(COOKIE_SECRET):latest
+	  --update-env-vars "^|^ENV=production|APP_VERSION=$(VERSION)|MODEL_PROVIDER=openrouter|CONVERSATION_STORE=firestore|GOOGLE_CLOUD_PROJECT=$(PROJECT)|ADMIN_ALLOWED_EMAILS=$(ADMIN_ALLOWED_EMAILS)|OPENROUTER_APP_URL=$${url:-https://cadreai.com}|LANGFUSE_HOST=$(LANGFUSE_HOST)" \
+	  --update-secrets OPENROUTER_API_KEY=$(OPENROUTER_SECRET):latest,SESSION_COOKIE_SECRET=$(COOKIE_SECRET):latest,LANGFUSE_PUBLIC_KEY=$(LANGFUSE_PUBLIC):latest,LANGFUSE_SECRET_KEY=$(LANGFUSE_SECRET):latest
 	@url=$$(gcloud run services describe $(SERVICE) --project $(PROJECT) --region $(REGION) \
 	    --format='value(status.url)'); \
 	  echo "Service URL: $$url"; \
