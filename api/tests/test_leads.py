@@ -22,6 +22,7 @@ from core.adapters.memory_store import InMemoryConversationStore
 from core.adapters.stub_provider import StubModelProvider
 from core.prompt import build_system_prompt
 from core.provider import TextDelta, ToolCall, Usage
+from core.redaction import Redaction
 from core.tools import default_tools
 from core.turn import TurnRunner
 
@@ -168,12 +169,12 @@ def test_a_capture_lead_call_with_no_contact_detail_records_nothing_and_the_turn
     assert "no Lead was recorded" in fed_back.content
 
 
-def mask_contact_details(message: str) -> str:
-    """A stand-in for ticket 05's `refuse` Redaction Profile, turned up far past it: every
-    email address and every digit in the Visitor's message is masked before the model and
-    before the store. What survives it on the Lead is the point of the test below."""
+def mask_contact_details(message: str) -> Redaction:
+    """A stand-in for the `refuse` Redaction Profile, turned up far past it: every email
+    address and every digit in the Visitor's message is masked before the model and before
+    the store. What survives it on the Lead is the point of the test below."""
     without_emails = re.sub(r"[^\s]+@[^\s]+", "[EMAIL]", message)
-    return re.sub(r"\d", "#", without_emails)
+    return Redaction(text=re.sub(r"\d", "#", without_emails), counts={})
 
 
 def masked_client(provider: StubModelProvider, store: InMemoryConversationStore) -> TestClient:
