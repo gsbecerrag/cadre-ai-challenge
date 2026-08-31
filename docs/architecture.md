@@ -115,14 +115,15 @@ sequenceDiagram
   participant C as Strategist Console (browser)
   participant G as Strategist
   participant D as Daily.co
-  A-->>U: offer_live_handover, once per session, after capture_lead scores 3 or more
+  A-->>U: offer_live_handover, once per session, once the lead is qualified
+  A->>F: create handover_requests with status offered, no mode yet
   U->>A: accept
   A->>F: read strategists where online is true, read LIVE_HANDOVER_ENABLED
   alt a Strategist is online and the flag is on
     A->>D: POST rooms (private, expiring)
     D-->>A: room_url
-    A->>F: create handover_requests with status pending_strategist, mode video, room_url
-    F-->>C: onSnapshot delivers the new request, browser Notification fires
+    A->>F: status pending_strategist, mode video, room_url
+    F-->>C: onSnapshot delivers the accepted request, browser Notification fires
     C->>A: claim request (ID token verified)
     A->>F: status strategist_joined, strategist_id
     Note over U,D: strategist joins the room from the console iframe, user from the chat iframe
@@ -130,8 +131,8 @@ sequenceDiagram
     G->>A: end call
     A->>F: status ended
   else no Strategist is online or flag off
-    A->>F: create handover_requests with status no_strategist_available, mode callback
-    A-->>U: ask for preferred time and contact, confirm a strategist will call back
+    A->>F: status pending_strategist, mode callback
+    A-->>U: confirm the contact details a strategist will call back on
     F-->>C: onSnapshot shows the callback in the queue for follow-up
   end
 ```
@@ -221,21 +222,21 @@ erDiagram
   }
 ```
 
-Not drawn: every document carries `created_at`; `sessions` also `last_seen` and `turn_count`; `messages` an optional `tool_calls` array; `leads` are keyed by the session id and hold the raw typed contact fields `name`, `email`, `phone`, `company`, `role` (all optional), a `session` reference, and `updated_at` (industry is not a field of its own: industry fit is one of the five signals); `handover_requests` keep an optional `room_url` and a `timestamps` map with one entry per transition; `strategists` are keyed by the Firebase uid and carry `online`, `email`, `name` and `updated_at` — written by `PUT /api/console/availability`, and the one document a browser may write (its own, per `firestore.rules`); `feedback` an optional refuse-redacted `comment`; `triage_reports` a `summary`, an `evidence` list and the `model` used. Phase 2 adds a `kb_docs` collection behind the `KnowledgeSource` seam; nothing else changes.
+Not drawn: every document carries `created_at`; `sessions` also `last_seen` and `turn_count`; `messages` an optional `tool_calls` array; `leads` are keyed by the session id and hold the raw typed contact fields `name`, `email`, `phone`, `company`, `role` (all optional), a `session` reference, and `updated_at` (industry is not a field of its own: industry fit is one of the five signals); `handover_requests` keep an optional `room_url`, a `lead` snapshot (the contact fields, the signals and the score as they stood, so the console's queue is one read per screen rather than a join per row), a `session` reference and `created_at`/`updated_at` — the queue orders by `created_at`, which is why it does not reshuffle under the Strategist's cursor; `strategists` are keyed by the Firebase uid and carry `online`, `email`, `name` and `updated_at` — written by `PUT /api/console/availability`, and the one document a browser may write (its own, per `firestore.rules`); `feedback` an optional refuse-redacted `comment`; `triage_reports` a `summary`, an `evidence` list and the `model` used. Phase 2 adds a `kb_docs` collection behind the `KnowledgeSource` seam; nothing else changes.
 
 ### Handover state machine
 
 | From | Event | To | Notes |
 | --- | --- | --- | --- |
-| (none) | qualification score reaches 3, offer not yet made | `offered` | Offer is made once per session |
-| `offered` | user accepts | `accepted_by_user` | |
-| `offered` | user declines or ignores | `declined` | Terminal; bot continues in text |
-| `accepted_by_user` | a Strategist is `online` and `LIVE_HANDOVER_ENABLED` is on | `pending_strategist` | Daily room created, `mode: video`, request written, console notified |
-| `accepted_by_user` | no Strategist is online or flag off | `no_strategist_available` | Terminal; `mode: callback`, contact and preferred time captured on the lead |
+| (none) | the lead reaches `QUALIFICATION_THRESHOLD` and the model calls `offer_live_handover` | `offered` | The request is created here, with no mode; the tool is out of the model's reach afterwards, so the offer is made once per session |
+| `offered` | user accepts | `accepted_by_user` | Validated, never persisted on its own: the accept decides the mode and writes both hops as one update |
+| `offered` | user declines | `declined` | Terminal; bot continues in text |
+| `accepted_by_user` | a Strategist is `online` and `LIVE_HANDOVER_ENABLED` is on | `pending_strategist` | Daily room created, `mode: video`, console notified |
+| `accepted_by_user` | no Strategist is online or flag off | `pending_strategist` | `mode: callback`; the visitor sees the contact details a strategist will call back on, and the request waits in the Callbacks tab |
 | `pending_strategist` | Strategist claims the request in the console | `strategist_joined` | `strategist_id` set |
-| `pending_strategist` | nobody claims within the timeout | `no_strategist_available` | Timeout agent is Phase 2; MVP shows the request until claimed |
+| `pending_strategist` | nobody claims within the timeout | `no_strategist_available` | Terminal; timeout agent is Phase 2; MVP shows the request until claimed |
 | `strategist_joined` | both parties are in the room | `in_call` | |
-| `in_call` | either side ends the call | `ended` | Terminal; every transition stamps `timestamps` |
+| `in_call` | either side ends the call | `ended` | Terminal; every write stamps `updated_at` |
 
 ## 6. Vision diagram
 

@@ -18,10 +18,14 @@ When a qualified prospect accepts a live hand-over and a Strategist is online, t
 ## Decision
 
 - Provider: Daily.co. The server creates one room per handover request via REST with a short expiry and stores the room URL on the request; the chat renders the prebuilt iframe; the console renders the same room for the Strategist. No account for either side.
-- Gating: `offer_live_handover` is available to the model only when the session's qualification score is ≥ 3 and at least one Strategist is `online`; it is offered once per session. The `LIVE_HANDOVER_ENABLED` flag switches the feature to callback mode for environments without Daily credentials.
-- State machine on the handover request: offered → accepted_by_user → pending_strategist → strategist_joined → in_call → ended, with exits to declined (user) and no_strategist_available (timeout). Every transition is a Firestore write, so the console and the chat react through realtime listeners.
+- Gating: `offer_live_handover` is available to the model only when the session's qualification score is at or above `QUALIFICATION_THRESHOLD` and no handover request exists for the session, so the offer is made once per session. Strategist presence does *not* gate the offer — it decides the mode at acceptance. The `LIVE_HANDOVER_ENABLED` flag switches the feature to callback mode for environments without Daily credentials.
+- State machine on the handover request: offered → accepted_by_user → pending_strategist → strategist_joined → in_call → ended, with exits to declined (user) and no_strategist_available (timeout). The request document is created when the offer is made, and each answered transition is a Firestore write, so the console and the chat react through realtime listeners.
 - Notification: a Strategist sees the pending request in the console immediately (Firestore listener plus browser Notification); Slack and email are out of scope.
 - Timeout: if no Strategist joins within the window, the request becomes no_strategist_available, the lead is already captured, and the bot escalates to the contact channels.
+
+## Amendment (ticket 11, 2026-08-31)
+
+Two things landed differently from the Decision above, and this is the implemented behaviour. **The offer is gated on the Qualified Lead alone, once per Session** — `offer_live_handover` reaches the model when the Session's Lead is at or above `QUALIFICATION_THRESHOLD` and no Handover Request exists, and not on any Strategist being `online`. Gating on presence would mean no offer at all in the deployment the review runs on, where the flag is off and nobody is signed in, and the Callback that this ADR already chose as the fallback would never be reachable; presence is read at acceptance instead, which is also the moment the promise is made. **The request document is created at the offer, in state `offered`, and the mode is decided at accept** — `video` when `LIVE_HANDOVER_ENABLED` and a Strategist is online, `callback` otherwise — so an unanswered offer is visible rather than invisible, and "offered once per Session" is a fact in the database rather than a sentence in the prompt. A `callback` accepted with nobody online rests in `pending_strategist`; `no_strategist_available` stays the timeout exit, which is ticket 15.
 
 ## Considered Options
 
