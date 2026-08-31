@@ -31,6 +31,10 @@ from core.tools.registry import Tool, ToolOutcome
 
 logger = get_logger("tools.capture_lead")
 
+# The Contact Detail and the Qualification Signal that are the same fact about a Visitor.
+ROLE_DETAIL = "role"
+ROLE_SIGNAL = "company_size_or_role"
+
 # What the model reads when it called the tool with nothing to reach the Visitor by. A Lead
 # with no Contact Detail is not a Lead, so nothing is written — and this comes back as a result
 # the model can act on rather than as a failed Turn.
@@ -128,6 +132,26 @@ def merged_lead(
     signals.update(
         {name: value for name in SIGNAL_NAMES if (value := learned(arguments.get(name)))}
     )
+    # A title the Visitor gave *is* the "company size or role" signal, whether or not the model
+    # repeated it in the signal argument. The evaluation suite found the Assistant reliably
+    # files "I'm the COO" in the `role` Contact Detail and stops there, which scored a Visitor
+    # zero for something they had plainly said.
+    #
+    # What the model actually learned still wins — "roughly 300 people, reports to the CEO" is
+    # a better answer than the title alone — so the title only fills the gap. It is refreshed
+    # when the title it was taken from changes, which is what `taken_from_the_title` reads: a
+    # stored signal identical to the stored role is one this rule put there, not one the
+    # Assistant reported.
+    said_by_the_model = bool(learned(arguments.get(ROLE_SIGNAL)))
+    taken_from_the_title = existing is not None and existing.signals.get(ROLE_SIGNAL, "") == (
+        existing.role
+    )
+    if (
+        details[ROLE_DETAIL]
+        and not said_by_the_model
+        and (not signals.get(ROLE_SIGNAL) or taken_from_the_title)
+    ):
+        signals[ROLE_SIGNAL] = details[ROLE_DETAIL]
     score = qualification_score(signals)
     return Lead(
         session_id=session_id,

@@ -57,8 +57,9 @@ def test_a_pricing_trap_question_escalates_in_cadres_own_published_wording(
     assert card["body"] == (
         "I can't quote a price for Strategy, Facilitation, Engineering, or Agents "
         "engagements — Cadre doesn't publish them. The only published price is the PE AI "
-        "Value Creation Playbook at $5,000 per firm. The engagement behind that question is "
-        "the 45-day AI Transformation Intensive."
+        "Value Creation Playbook at $5,000 per firm, and that is an event ticket, not an "
+        "engagement price. The engagement behind that question is the 45-day AI "
+        "Transformation Intensive."
     )
     assert card["next_step"] == "Write to hello@gocadre.ai for a scoped quote."
 
@@ -100,7 +101,7 @@ def test_a_spanish_visitor_reads_the_escalation_in_spanish(
     assert card["body"] == (
         "No puedo cotizar Estrategia, Facilitación, Ingeniería ni Agentes — Cadre no publica "
         "esos precios. El único precio publicado es el PE AI Value Creation Playbook: $5,000 "
-        "por firma."
+        "por firma, y es una entrada a un evento, no el precio de un proyecto."
     )
 
 

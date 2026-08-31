@@ -86,7 +86,8 @@ ESCALATION_COPY: Mapping[EscalationReason, Mapping[Language, EscalationCopy]] = 
             body=(
                 "I can't quote a price for Strategy, Facilitation, Engineering, or Agents "
                 "engagements — Cadre doesn't publish them. The only published price is the "
-                "PE AI Value Creation Playbook at $5,000 per firm. [not-published#pricing]"
+                "PE AI Value Creation Playbook at $5,000 per firm, and that is an event "
+                "ticket, not an engagement price. [not-published#pricing]"
             ),
         ),
         "es": EscalationCopy(
@@ -94,7 +95,8 @@ ESCALATION_COPY: Mapping[EscalationReason, Mapping[Language, EscalationCopy]] = 
             body=(
                 "No puedo cotizar Estrategia, Facilitación, Ingeniería ni Agentes — Cadre no "
                 "publica esos precios. El único precio publicado es el PE AI Value Creation "
-                "Playbook: $5,000 por firma. [not-published#pricing]"
+                "Playbook: $5,000 por firma, y es una entrada a un evento, no el precio de un "
+                "proyecto. [not-published#pricing]"
             ),
         ),
     },

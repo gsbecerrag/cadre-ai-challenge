@@ -42,8 +42,10 @@ SPEND = Usage(input_tokens=900, output_tokens=24, cached_tokens=800, cost_usd=0.
 
 ANGEL = StrategistIdentity(uid="uid-angel", email="angel@example.com", name="Angel M.")
 
-# What the Assistant learned in one exchange: one Contact Detail and three of the five
-# Qualification Signals, which is the threshold — a Qualified Lead (ADR-0009).
+# What the Assistant learned in one exchange: a job title and three of the five Qualification
+# Signals — four, because the title is the "company size or role" signal as well (ADR-0009).
+# Comfortably a Qualified Lead, with no name and no email yet, which is what makes the widget
+# ask for them with the "Your details" card.
 QUALIFYING_CAPTURE = ToolCall(
     id="call-1100",
     name="capture_lead",
@@ -224,7 +226,7 @@ def test_the_offer_carries_the_request_and_the_line_the_assistant_phrased_it_wit
     assert stored.session_id == session_id_of(client)
     # The Lead as it stood at the offer, so the Console's queue card is one read.
     assert stored.lead.role == "VP of Operations"
-    assert stored.lead.score == 3
+    assert stored.lead.score == 4
 
 
 # --------------------------------------------------------------------- accept and decline
@@ -379,8 +381,8 @@ def test_the_details_card_records_the_contact_details_the_visitor_typed(
         "Acme Manufacturing",
     )
     # The Qualification Signals are the Assistant's to learn, never the form's to change.
-    assert lead.score == 3
-    assert response.json()["score"] == 3
+    assert lead.score == 4
+    assert response.json()["score"] == 4
     assert lead.role == "VP of Operations"
 
 
