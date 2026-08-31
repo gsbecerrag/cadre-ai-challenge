@@ -51,23 +51,29 @@ test:
 build-web:
 	cd web && pnpm build
 
-# The Session cookie is signed, so the deployed service needs a key that outlives an
-# instance. It is generated here on first deploy and never leaves Secret Manager: not in the
-# repository, not in the image, not in a log line. Idempotent, so re-running is free.
+# What the deployed service reads at runtime. The cookie-signing key is generated here if it
+# does not exist yet — never printed, never in the repository, never in the image — and the
+# runtime service account is granted read access to every bound secret on every run, because
+# a grant that only happens the day a secret is created is a grant nobody can see is missing.
+# Both steps are idempotent.
 deploy-secrets:
-	@gcloud secrets describe $(COOKIE_SECRET) --project $(PROJECT) >/dev/null 2>&1 || { \
+	@sa="$$(gcloud projects describe $(PROJECT) --format='value(projectNumber)')-compute@developer.gserviceaccount.com"; \
+	gcloud secrets describe $(COOKIE_SECRET) --project $(PROJECT) >/dev/null 2>&1 || { \
 	  echo "Creating $(COOKIE_SECRET) in Secret Manager"; \
 	  openssl rand -hex 32 \
 	    | gcloud secrets create $(COOKIE_SECRET) --project $(PROJECT) \
 	        --replication-policy=automatic --data-file=- >/dev/null; \
-	  gcloud secrets add-iam-policy-binding $(COOKIE_SECRET) --project $(PROJECT) \
-	    --member="serviceAccount:$$(gcloud projects describe $(PROJECT) \
-	        --format='value(projectNumber)')-compute@developer.gserviceaccount.com" \
+	}; \
+	for secret in $(OPENROUTER_SECRET) $(COOKIE_SECRET); do \
+	  echo "Granting $$sa read access to $$secret"; \
+	  gcloud secrets add-iam-policy-binding "$$secret" --project $(PROJECT) \
+	    --member="serviceAccount:$$sa" \
 	    --role=roles/secretmanager.secretAccessor >/dev/null; \
-	}
+	done
 
-# --update-env-vars, not --set-env-vars: a variable another ticket set on the service stays
-# set. Secrets are bound from Secret Manager and never passed as values.
+# --update-env-vars and --update-secrets, not their --set- forms: a variable or a secret
+# binding another ticket added to the service survives this deploy instead of being replaced.
+# Secret values are bound from Secret Manager and never passed on the command line.
 deploy: deploy-secrets
 	@url=$$(gcloud run services describe $(SERVICE) --project $(PROJECT) --region $(REGION) \
 	    --format='value(status.url)' 2>/dev/null); \
@@ -78,7 +84,7 @@ deploy: deploy-secrets
 	  --port 8080 \
 	  --allow-unauthenticated \
 	  --update-env-vars ENV=production,APP_VERSION=$(VERSION),MODEL_PROVIDER=openrouter,CONVERSATION_STORE=firestore,GOOGLE_CLOUD_PROJECT=$(PROJECT),OPENROUTER_APP_URL=$${url:-https://cadreai.com} \
-	  --set-secrets OPENROUTER_API_KEY=$(OPENROUTER_SECRET):latest,SESSION_COOKIE_SECRET=$(COOKIE_SECRET):latest
+	  --update-secrets OPENROUTER_API_KEY=$(OPENROUTER_SECRET):latest,SESSION_COOKIE_SECRET=$(COOKIE_SECRET):latest
 	@url=$$(gcloud run services describe $(SERVICE) --project $(PROJECT) --region $(REGION) \
 	    --format='value(status.url)'); \
 	  echo "Service URL: $$url"; \
