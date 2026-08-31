@@ -15,9 +15,11 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 import './chat.css'
 import { CallFrame } from './CallFrame'
+import { FeedbackControl } from './FeedbackControl'
 import { type HandoverActions, MessageView } from './MessageView'
 import { useAvailability } from './presence'
 import { chromeFor, type Language } from './strings'
+import type { Message } from './types'
 import { useChat } from './useChat'
 
 const DOCKED = 'right-6 bottom-24 h-[min(660px,calc(100vh-130px))] w-[392px]'
@@ -53,6 +55,7 @@ export function ChatWidget() {
     state,
     send,
     loadSections,
+    sendFeedback,
     acceptHandover,
     declineHandover,
     shareDetails,
@@ -67,9 +70,12 @@ export function ChatWidget() {
   const launcher = useRef<HTMLButtonElement>(null)
   const wasOpen = useRef(false)
 
+  // Also on `state.feedback`: a thumb turns into the done copy and a comment box under the
+  // answer, and at the bottom of a full transcript those would otherwise appear below the fold
+  // — the Visitor would press 👎 and watch nothing happen.
   useEffect(() => {
     transcript.current?.scrollTo({ top: transcript.current.scrollHeight })
-  }, [state.messages])
+  }, [state.messages, state.feedback])
 
   // Opening moves focus into the composer, closing puts it back on the launcher — otherwise
   // a keyboard Visitor is dropped at the top of the document by both.
@@ -123,6 +129,26 @@ export function ChatWidget() {
     setExpanded(false)
     window.dispatchEvent(new CustomEvent(NAVIGATE_EVENT, { detail: { href } }))
   }, [])
+
+  /**
+   * The thumbs for one answer, or nothing. An answer has a Trace only once its Turn has
+   * finished and only where the service is traced, which is exactly when there is something
+   * for a thumb to score — so this is the one place that decides a control is offered.
+   */
+  function feedbackFor(message: Message) {
+    const traceId = 'traceId' in message ? message.traceId : undefined
+    if (!traceId) {
+      return null
+    }
+    return (
+      <FeedbackControl
+        traceId={traceId}
+        entry={state.feedback[traceId]}
+        chrome={chrome}
+        onSend={sendFeedback}
+      />
+    )
+  }
 
   const handover: HandoverActions = {
     accept: (requestId) => void acceptHandover(requestId),
@@ -232,6 +258,7 @@ export function ChatWidget() {
               chrome={chrome}
               sectionTitles={state.sections}
               onNavigate={followCard}
+              feedback={feedbackFor(message)}
               handover={handover}
             />
           ))}

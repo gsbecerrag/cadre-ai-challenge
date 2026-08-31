@@ -11,6 +11,8 @@ import type {
   ChatAction,
   ChatEvent,
   ChatState,
+  FeedbackEntry,
+  FeedbackStatus,
   HandoverMode,
   HandoverState,
   LeadContact,
@@ -43,7 +45,49 @@ export function initialChatState(greeting: string): ChatState {
     seq: 1,
     sections: {},
     call: null,
+    feedback: {},
   }
+}
+
+/** The kinds of message that are an answer, and so can be rated. A typing bubble is not one,
+ * an error is the Assistant failing rather than answering, and the Visitor's own message is
+ * not the Assistant's to judge. */
+function isAnswer(message: Message): boolean {
+  return (
+    message.role === 'assistant' &&
+    (message.kind === 'text' || message.kind === 'escalation' || message.kind === 'walkthrough')
+  )
+}
+
+/**
+ * Mark the answer the Trace belongs to — the last thing the Assistant said this Turn.
+ *
+ * One Turn is one Trace and the server keeps one Feedback per Trace, so a Turn that produced a
+ * card and two paragraphs still gets one set of thumbs, under the last of them.
+ */
+function rateable(messages: Message[], traceId: string): Message[] {
+  const last = messages.map(isAnswer).lastIndexOf(true)
+  if (last < 0) {
+    return messages
+  }
+  return messages.map((message, index) => (index === last ? { ...message, traceId } : message))
+}
+
+/** The state a control is in before anything has been pressed. */
+const UNRATED: FeedbackEntry = { rating: null, status: 'none' }
+
+/**
+ * Whether this answer's rating is settled for good: the one change is spent, or the server has
+ * refused a further one. Both are terminal, so a reply that crossed them — a request from
+ * another tab, a retry that was slow to come back — cannot reopen a control the Visitor has
+ * already watched close.
+ */
+function isFinal(status: FeedbackStatus): boolean {
+  return status === 'changed' || status === 'locked'
+}
+
+function withFeedback(state: ChatState, traceId: string, entry: FeedbackEntry): ChatState {
+  return { ...state, feedback: { ...state.feedback, [traceId]: entry } }
 }
 
 function reduceEvent(state: ChatState, event: ChatEvent): ChatState {
@@ -135,14 +179,20 @@ function reduceEvent(state: ChatState, event: ChatEvent): ChatState {
     case 'handover':
       return handover(state, event.data.state, event.data.mode, EMPTY_CONTACT)
 
-    case 'done':
-      return nextState(state, withoutTyping(state.messages), {
-        pending: false,
-        streamingId: null,
-        activeTool: null,
-        usage: event.data.usage,
-        traceId: event.data.trace_id,
-      })
+    case 'done': {
+      const answered = withoutTyping(state.messages)
+      return nextState(
+        state,
+        event.data.trace_id ? rateable(answered, event.data.trace_id) : answered,
+        {
+          pending: false,
+          streamingId: null,
+          activeTool: null,
+          usage: event.data.usage,
+          traceId: event.data.trace_id,
+        },
+      )
+    }
 
     case 'error':
       return failed(state, event.data.message)
@@ -359,5 +409,25 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
           action.sections.map((section) => [section.id, section.title]),
         ),
       }
+
+    case 'feedback_sent': {
+      const entry = state.feedback[action.traceId] ?? UNRATED
+      if (isFinal(entry.status)) {
+        return state
+      }
+      // The same rating arriving twice is one opinion sent twice — the thumb on the press and
+      // the sentence a moment later — so it leaves the control in `sent` with the change still
+      // to spend, exactly as the server leaves the document.
+      const status: FeedbackStatus = action.changed ? 'changed' : 'sent'
+      return withFeedback(state, action.traceId, { rating: action.rating, status })
+    }
+
+    case 'feedback_locked': {
+      const entry = state.feedback[action.traceId] ?? UNRATED
+      if (isFinal(entry.status)) {
+        return state
+      }
+      return withFeedback(state, action.traceId, { rating: entry.rating, status: 'locked' })
+    }
   }
 }

@@ -93,11 +93,23 @@ class RecordedTrace:
         self.finished = True
 
 
+@dataclass(frozen=True)
+class RecordedScore:
+    """One score attached to a Trace after the Turn that made it had ended."""
+
+    trace_id: str
+    name: str
+    value: float
+    comment: str = ""
+
+
 @dataclass
 class RecordingTracer:
     """Every Trace this process opened, in order."""
 
     traces: list[RecordedTrace] = field(default_factory=list)
+    # The scores attached to those Traces — a Visitor's Feedback, in the order it arrived.
+    scores: list[RecordedScore] = field(default_factory=list)
     # How many times the process said it was going away. One, at the end, is right.
     shutdowns: int = 0
 
@@ -112,6 +124,11 @@ class RecordingTracer:
         )
         self.traces.append(trace)
         return trace
+
+    def score(self, trace_id: str, name: str, value: float, comment: str = "") -> None:
+        self.scores.append(
+            RecordedScore(trace_id=trace_id, name=name, value=value, comment=comment)
+        )
 
     def shutdown(self) -> None:
         self.shutdowns += 1

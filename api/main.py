@@ -18,6 +18,7 @@ from fastapi import FastAPI
 
 from api.chat import create_chat_router
 from api.console import create_console_router
+from api.feedback import create_feedback_router
 from api.handover import create_handover_router
 from api.health import create_health_router
 from api.knowledge import create_knowledge_router
@@ -294,6 +295,10 @@ def create_app(
             cookie_secret=cookie_secret,
             secure_cookie=resolved.env == "production",
         ),
+        prefix="/api",
+    )
+    app.include_router(
+        create_feedback_router(conversation_store, tracer=traced, cookie_secret=cookie_secret),
         prefix="/api",
     )
     app.include_router(create_knowledge_router(sections), prefix="/api")

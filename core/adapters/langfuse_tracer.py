@@ -21,6 +21,7 @@ known when the Turn ends: whether it escalated, captured a Lead, or failed at th
 the same public attribute keys are written straight onto the span, once, at the end.
 """
 
+import hashlib
 import logging
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
@@ -66,6 +67,18 @@ MODEL_CALL_NAME = "model call"
 # sends SIGTERM and waits, which is when the queue is drained for good.
 EXPORT_INTERVAL_SECONDS = 1.0
 EXPORT_BATCH_SIZE = 32
+
+
+def _score_id(trace_id: str, name: str) -> str:
+    """The id one Trace's score of one name is always written under.
+
+    A score is the opinion that stands, not a history of opinions: a Visitor who presses 👍 and
+    then 👎 has one view of that answer, and Langfuse ingests scores by id — so deriving the id
+    from the Trace and the name makes the second thumb overwrite the first. Left to the SDK,
+    each call would mint a new id and the Trace would end up carrying both scores, which reads
+    as two Visitors and averages to neither of them.
+    """
+    return hashlib.sha256(f"{trace_id}:{name}".encode()).hexdigest()[:32]
 
 
 def _usage_details(usage: Usage) -> dict[str, int]:
@@ -239,6 +252,31 @@ class LangfuseTracer:
             # anyway: a Trace missing its session id beats a span left open forever.
             logger.exception("Could not set the Trace's attributes")
         return LangfuseTurnTrace(root=root, input_text=input_text)
+
+    def score(self, trace_id: str, name: str, value: float, comment: str = "") -> None:
+        """Attach a Visitor's Feedback to a Trace that is already closed and exported.
+
+        `NUMERIC` rather than `BOOLEAN`, with 1 for a thumbs-up and 0 for a thumbs-down: the
+        average of a numeric score is the share of Turns Visitors liked, which is the number a
+        dashboard wants, and Langfuse still filters on it either way. The id is derived rather
+        than minted, so a Visitor who changes their mind moves the one score instead of leaving
+        two behind (see `_score_id`).
+
+        Not flushed. `create_score` queues the event and the exporter sends it on its own
+        thread; flushing here would block the event loop of a process that is streaming other
+        Visitors' answers, and the shutdown hook drains whatever is left (ADR-0007).
+        """
+        self._client.create_score(
+            name=name,
+            value=value,
+            trace_id=trace_id,
+            score_id=_score_id(trace_id, name),
+            data_type="NUMERIC",
+            # Empty rather than absent would put a blank note on every score that came
+            # without one, which reads as a Visitor who typed nothing rather than one who
+            # was never asked.
+            comment=comment or None,
+        )
 
     def shutdown(self) -> None:
         """Drain the queue. Called once, from the application's shutdown hook."""
