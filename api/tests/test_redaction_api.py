@@ -9,8 +9,11 @@ debug log body has the email tokenised as well (ADR-0006).
 import asyncio
 import io
 import json
+import logging
+from collections.abc import Iterator
 
 import httpx2
+import pytest
 from fastapi.testclient import TestClient
 
 from api.session import SESSION_COOKIE, session_id_from_cookie
@@ -33,6 +36,31 @@ TOKENISED = f"here is my card {MASKED_CARD}, write me at [EMAIL_1]"
 # the Turn hard-codes a refusal.
 REPLY = "I don't need a card number — it isn't kept. What can I help you with?"
 SPEND = Usage(input_tokens=13_100, output_tokens=24, cost_usd=0.0009)
+
+# Every logger `configure_logging` reaches into.
+MANAGED_LOGGERS = ("", "cadre", "uvicorn", "uvicorn.error", "uvicorn.access")
+
+
+@pytest.fixture(autouse=True)
+def restored_logging() -> Iterator[None]:
+    """The debug test below reconfigures the process's logging; it puts the state back, so no
+    later assertion about logging depends on the order the tests happened to run in."""
+    saved = [
+        (
+            logging.getLogger(name),
+            list(logging.getLogger(name).handlers),
+            logging.getLogger(name).level,
+            logging.getLogger(name).propagate,
+            logging.getLogger(name).disabled,
+        )
+        for name in MANAGED_LOGGERS
+    ]
+    yield
+    for logger, handlers, level, propagate, disabled in saved:
+        logger.handlers = handlers
+        logger.setLevel(level)
+        logger.propagate = propagate
+        logger.disabled = disabled
 
 
 def post_the_card(client: TestClient, provider: StubModelProvider) -> httpx2.Response:
