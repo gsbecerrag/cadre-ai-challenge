@@ -229,6 +229,58 @@ def test_the_request_names_the_model_the_tools_and_the_session_it_belongs_to() -
     assert body["session_id"] == "s-01"
 
 
+def test_a_structured_output_request_carries_its_schema_and_refuses_a_deaf_endpoint() -> None:
+    """What the Triage Agent asks for (ADR-0005). `require_parameters` is the load-bearing
+    half: Sonnet 5's `google-vertex/*` endpoints list `response_format` without
+    `structured_outputs` (docs/research/openrouter-facts.md), and an endpoint that ignores the
+    schema answers with prose that has to be salvaged instead of a report."""
+    seen: list[httpx2.Request] = []
+
+    def capture(request: httpx2.Request) -> httpx2.Response:
+        seen.append(request)
+        return replaying("answer-with-usage.sse")(request)
+
+    schema = {
+        "type": "json_schema",
+        "json_schema": {
+            "name": "triage_report",
+            "strict": True,
+            "schema": {
+                "type": "object",
+                "properties": {"category": {"type": "string"}},
+                "required": ["category"],
+                "additionalProperties": False,
+            },
+        },
+    }
+    stream(
+        provider_over(capture),
+        ProviderRequest(
+            prompt=PROMPT, messages=(ModelMessage("visitor", "a"),), response_format=schema
+        ),
+    )
+
+    body = json.loads(seen[0].content)
+    assert body["response_format"] == schema
+    assert body["provider"] == {"require_parameters": True}
+
+
+def test_an_ordinary_turn_asks_for_no_response_format_and_no_provider_routing() -> None:
+    seen: list[httpx2.Request] = []
+
+    def capture(request: httpx2.Request) -> httpx2.Response:
+        seen.append(request)
+        return replaying("answer-with-usage.sse")(request)
+
+    stream(provider_over(capture), a_request())
+
+    # A Visitor reads sentences: asking for JSON on every Turn would narrow the routing of
+    # every conversation for the sake of one background agent.
+    body = json.loads(seen[0].content)
+    assert "response_format" not in body
+    assert "provider" not in body
+
+
 def test_the_request_identifies_the_app_to_openrouter() -> None:
     seen: list[httpx2.Request] = []
 
