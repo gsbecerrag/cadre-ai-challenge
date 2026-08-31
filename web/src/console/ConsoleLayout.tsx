@@ -1,15 +1,30 @@
 import { useCallback, useEffect, useState } from 'react'
 import { NavLink, Outlet, useOutletContext } from 'react-router-dom'
 
-import { type Availability, fetchAvailability, type Lead, NotAllowlisted, setAvailability } from './api'
+import {
+  type Availability,
+  fetchAvailability,
+  type Handover,
+  type Lead,
+  NotAllowlisted,
+  setAvailability,
+} from './api'
 import { CADRE_LOGO_URL, CONSOLE_TABS, ONLINE_GREEN } from './chrome'
+import { askToNotify, isPending, useHandovers } from './handoverFeed'
 import { type FeedStatus, useLeads } from './leadsFeed'
 import { SignInPage } from './SignInPage'
 import { type Strategist, useStrategistSession } from './session'
 
-type ConsoleContext = { leads: Lead[]; status: FeedStatus; error?: string }
+type ConsoleContext = {
+  leads: Lead[]
+  handovers: Handover[]
+  status: FeedStatus
+  error?: string
+  /** The tab bodies read one request at a time (the detail pane), so they need the token. */
+  authorize: () => Promise<string>
+}
 
-/** What the tab bodies read, so the nav badge and the Leads list count the same list. */
+/** What the tab bodies read, so the nav badge and the lists count the same lists. */
 export function useConsole(): ConsoleContext {
   return useOutletContext<ConsoleContext>()
 }
@@ -71,6 +86,22 @@ function availabilityLabel(availability: Availability | undefined, problem?: str
   return problem ? 'Unavailable' : '…'
 }
 
+/**
+ * The count beside a tab. Leads counts what has been captured; the Handover queue counts what
+ * is waiting for a person, which is the only number on this page that means "do something".
+ */
+function NavBadge({ tab, leads, pending }: { tab: string; leads: number; pending: number }) {
+  const count = tab === 'Leads' ? leads : tab === 'Handover queue' ? pending : 0
+  if (count === 0) {
+    return null
+  }
+  return (
+    <span className="rounded-pill bg-cadre-red px-2 py-px text-[11px] font-bold text-white">
+      {count}
+    </span>
+  )
+}
+
 function Splash({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-screen items-center justify-center bg-cadre-sand font-sans text-sm text-cadre-muted">
@@ -105,6 +136,11 @@ function ConsoleShell({
   // forever and they have no idea whether the Assistant thinks they are online.
   const [problem, setProblem] = useState<string>()
   const { leads, status, error } = useLeads(authorization)
+  const {
+    handovers,
+    status: handoverStatus,
+    error: handoverError,
+  } = useHandovers(authorization)
 
   const handleFailure = useCallback(
     (failure: unknown, whenItFailed: string) => {
@@ -138,8 +174,22 @@ function ConsoleShell({
 
   const online = availability?.online ?? false
   const unknown = availability === undefined
+  // What the nav badge counts: Hand-overs nobody has picked up yet.
+  const pending = handovers.filter(isPending).length
+  // One freshness line for the page. Both feeds run on the same listener-or-poll fallback, so
+  // if either had to fall back the Console as a whole is polling.
+  const tabStatus: FeedStatus =
+    status === 'polling' || handoverStatus === 'polling'
+      ? 'polling'
+      : status === 'loading' || handoverStatus === 'loading'
+        ? 'loading'
+        : 'live'
 
   function toggle() {
+    // The one gesture that says "interrupt me": a Strategist going Online. Asking here rather
+    // than on page load is why the prompt is not the first thing a reviewer has to dismiss —
+    // and a browser only lets a page play a sound after an interaction like this one.
+    askToNotify()
     setSaving(true)
     setAvailability(authorization, !online)
       .then((state) => {
@@ -242,17 +292,23 @@ function ConsoleShell({
               }
             >
               {tab.label}
-              {tab.label === 'Leads' && leads.length > 0 ? (
-                <span className="rounded-pill bg-cadre-red px-2 py-px text-[11px] font-bold text-white">
-                  {leads.length}
-                </span>
-              ) : null}
+              <NavBadge tab={tab.label} leads={leads.length} pending={pending} />
             </NavLink>
           ))}
         </nav>
 
         <main className="min-w-0 flex-1 px-6 py-6 md:px-8">
-          <Outlet context={{ leads, status, error } satisfies ConsoleContext} />
+          <Outlet
+            context={
+              {
+                leads,
+                handovers,
+                status: tabStatus,
+                error: error ?? handoverError,
+                authorize: authorization,
+              } satisfies ConsoleContext
+            }
+          />
         </main>
       </div>
     </div>
