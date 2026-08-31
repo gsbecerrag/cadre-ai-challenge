@@ -74,6 +74,8 @@ export interface Chat {
   declineHandover: (requestId: string) => Promise<void>
   /** The Visitor filled in the "Your details" card. */
   shareDetails: (details: LeadContact) => Promise<void>
+  /** The Visitor closed the call frame. Local only — the Handover Request is untouched. */
+  leaveCall: () => void
   /** One of the three above is in flight, and whether the last one failed. */
   handoverBusy: boolean
   handoverFailed: boolean
@@ -243,6 +245,14 @@ export function useChat(greeting: string, connectionError: string): Chat {
     }
   }, [watching])
 
+  const leaveCall = useCallback(() => {
+    // Stop polling as well as closing the frame. The reducer would ignore the answers anyway
+    // once there is no call, and a request every five seconds for an answer nobody will act
+    // on is a request not worth making.
+    setWatching(null)
+    dispatch({ type: 'left_call' })
+  }, [])
+
   const loadSections = useCallback(async () => {
     if (sectionsRequested.current) {
       return
@@ -269,6 +279,7 @@ export function useChat(greeting: string, connectionError: string): Chat {
     acceptHandover,
     declineHandover,
     shareDetails,
+    leaveCall,
     handoverBusy,
     handoverFailed,
   }

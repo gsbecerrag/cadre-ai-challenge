@@ -56,6 +56,7 @@ export function ChatWidget() {
     acceptHandover,
     declineHandover,
     shareDetails,
+    leaveCall,
     handoverBusy,
     handoverFailed,
   } = useChat(chromeFor('en').greeting, chrome.connectionError)
@@ -216,7 +217,7 @@ export function ChatWidget() {
           the Visitor is in a call, not reading a transcript, and the transcript is still
           there — with the line that says how the call ended — the moment it is over. */}
       {state.call ? (
-        <CallFrame call={state.call} chrome={chrome} />
+        <CallFrame call={state.call} chrome={chrome} onLeave={leaveCall} />
       ) : (
         <div
           ref={transcript}

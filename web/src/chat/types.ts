@@ -175,7 +175,7 @@ export interface CallbackMessage {
  * A key rather than a string, for the same reason as `OfferMessage.status`: the reducer is
  * pure and language-agnostic, and the copy lives in `strings.ts` with the rest of the chrome.
  */
-export type NoteKey = 'handoverDeclined' | 'handoverConnecting' | 'callEnded'
+export type NoteKey = 'handoverDeclined' | 'handoverConnecting' | 'callEnded' | 'callLeft'
 
 export interface NoteMessage {
   id: string
@@ -257,5 +257,11 @@ export type ChatAction =
       strategistName?: string
     }
   | { type: 'details_shared'; lead: LeadContact }
+  /**
+   * The Visitor closed the call frame themselves — "Back to the chat", or Daily telling us
+   * they left the meeting. Local only: the Handover Request is untouched, because leaving a
+   * room is not declining a Hand-over and a Strategist may still be in it.
+   */
+  | { type: 'left_call' }
   | { type: 'stream_failed'; message: string }
   | { type: 'sections_loaded'; sections: KBSectionTitle[] }

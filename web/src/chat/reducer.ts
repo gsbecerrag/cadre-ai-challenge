@@ -286,6 +286,25 @@ function detailsShared(state: ChatState, lead: LeadContact): ChatState {
   )
 }
 
+/**
+ * The Visitor closed the call frame themselves.
+ *
+ * Local only, and deliberately: leaving a room is not declining a Hand-over. The Handover
+ * Request keeps whatever state the server has for it, the Strategist may still be in the room,
+ * and the Lead is still a Lead — all that changes is that the Visitor is looking at the
+ * transcript again, which without this they cannot do, because the call takes the message area
+ * and the composer with it.
+ */
+function leftCall(state: ChatState): ChatState {
+  if (state.call === null) {
+    return state
+  }
+  return nextState(state, [...state.messages, note(state, 'callLeft')], {
+    seq: state.seq + 1,
+    call: null,
+  })
+}
+
 function failed(state: ChatState, message: string): ChatState {
   const id = `m${state.seq + 1}`
   return nextState(
@@ -326,6 +345,9 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
 
     case 'details_shared':
       return detailsShared(state, action.lead)
+
+    case 'left_call':
+      return leftCall(state)
 
     case 'stream_failed':
       return failed(state, action.message)

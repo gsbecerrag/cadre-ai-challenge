@@ -39,10 +39,14 @@ export interface Chrome {
   handoverDeclined: string
   handoverConnecting: string
   callEnded: string
+  callLeft: string
   /** The live call view (docs/design/DESIGN-BRIEF.md §2.6). */
   callTitle: string
   callAssistedBy: string
   callLive: string
+  callBack: string
+  /** What the panel calls a Strategist who has joined without a name to show. */
+  callStrategist: string
   /** The "Your details" card. */
   detailsTitle: string
   detailsName: string
@@ -90,9 +94,12 @@ const EN: Chrome = {
     "No problem — I'm right here if you change your mind. What else can I help with?",
   handoverConnecting: 'Connecting you with a strategist…',
   callEnded: 'The call has ended. I am right here if anything else comes up.',
+  callLeft: 'You left the call — a strategist can still reach you at your details.',
   callTitle: 'Call with a Cadre strategist',
   callAssistedBy: "You're being assisted by",
   callLive: 'Live',
+  callBack: 'Back to the chat',
+  callStrategist: 'a Cadre strategist',
   detailsTitle: 'Your details',
   detailsName: 'Full name',
   detailsEmail: 'Work email',
@@ -140,9 +147,12 @@ const ES: Chrome = {
     'Sin problema — aquí sigo si cambias de opinión. ¿En qué más te puedo ayudar?',
   handoverConnecting: 'Te estoy conectando con un estratega…',
   callEnded: 'La llamada terminó. Aquí sigo si necesitas algo más.',
+  callLeft: 'Saliste de la llamada — un estratega aún puede contactarte con tus datos.',
   callTitle: 'Llamada con un estratega de Cadre',
   callAssistedBy: 'Te está atendiendo',
   callLive: 'En vivo',
+  callBack: 'Volver al chat',
+  callStrategist: 'un estratega de Cadre',
   detailsTitle: 'Tus datos',
   detailsName: 'Nombre completo',
   detailsEmail: 'Correo de trabajo',

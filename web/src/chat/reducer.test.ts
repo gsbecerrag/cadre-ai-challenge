@@ -581,6 +581,31 @@ describe('the chat reducer', () => {
     expect(again).toBe(over)
   })
 
+  it('lets the Visitor leave the call and go back to the conversation', () => {
+    // Nothing server-side: the Strategist may still be in the room, and the Lead is still a
+    // Lead. What changes is that the Visitor is looking at the transcript again — which
+    // without this they cannot do, because the call takes the message area and the composer.
+    const joined = chatReducer(connecting(), {
+      type: 'handover',
+      state: 'in_call',
+      mode: 'video',
+      lead: JANE,
+      roomUrl: ROOM_URL,
+      strategistName: 'Angel M.',
+    })
+
+    const left = chatReducer(joined, { type: 'left_call' })
+
+    expect(left.call).toBeNull()
+    expect(left.messages.at(-1)).toMatchObject({ kind: 'note', note: 'callLeft' })
+  })
+
+  it('says nothing when there is no call to leave', () => {
+    const state = offered()
+
+    expect(chatReducer(state, { type: 'left_call' })).toBe(state)
+  })
+
   it('reduces a Hand-over that arrives on the wire the same way as one the browser asked for', () => {
     const state = [
       ...HANDOVER_OFFER.map((event): ChatAction => ({ type: 'event', event })),
