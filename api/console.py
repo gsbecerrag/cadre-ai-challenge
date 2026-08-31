@@ -49,6 +49,13 @@ NOT_A_LIVE_HAND_OVER = (
     "the Contact Details on this request."
 )
 
+# A request with no mode is one the Visitor has not answered. Calling that a Callback would
+# tell a Strategist to go and phone somebody who has not agreed to be phoned.
+NOT_ANSWERED_YET = (
+    "This Hand-over has not been accepted yet: the Visitor has not answered the offer, so "
+    "there is nothing to join and nobody expecting to hear from you."
+)
+
 # The two roles a Strategist reads in "Conversation so far". The tool traffic between them is
 # not conversation: a `capture_lead` result rendered as a bubble would show a Strategist an
 # exchange that never happened.
@@ -276,6 +283,8 @@ def create_console_router(
         the right authority on who is in the call.
         """
         stored = await stored_handover(request_id)
+        if stored.mode is None:
+            raise HTTPException(status.HTTP_409_CONFLICT, NOT_ANSWERED_YET)
         if stored.mode != "video":
             raise HTTPException(status.HTTP_409_CONFLICT, NOT_A_LIVE_HAND_OVER)
         joined = validated(stored, "strategist_joined")
@@ -284,7 +293,12 @@ def create_console_router(
             in_call.id,
             in_call.state,
             in_call.mode,
-            strategist_name=strategist.name or strategist.email,
+            # The display name only, never the email. This travels to the Visitor's panel
+            # ("You're being assisted by ..."), and a Strategist's work address is not
+            # something a stranger on the internet gets because their Google profile has no
+            # name on it. Empty is fine: the widget says "a Cadre strategist" in the Visitor's
+            # own language, which a string chosen here could not do.
+            strategist_name=strategist.name.strip(),
         )
         logger.info(
             "Strategist joined a Live Hand-over",

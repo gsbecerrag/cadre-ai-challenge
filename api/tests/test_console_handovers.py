@@ -29,6 +29,7 @@ from api.tests.test_console import ALLOWED_EMAILS, ANGEL, ANGEL_TOKEN, as_strate
 from core.adapters.fake_verifier import ScriptedTokenVerifier
 from core.adapters.memory_store import InMemoryConversationStore
 from core.adapters.stub_provider import StubModelProvider
+from core.auth import StrategistIdentity
 from core.config import Settings
 from core.handover import HandoverRequest, LeadSnapshot
 from core.provider import ModelMessage, ToolCall
@@ -80,6 +81,18 @@ LIVE = HandoverRequest(
     lead=SAM,
 )
 
+# A Strategist whose Google profile carries no display name — allowlisted, verified, nameless.
+NAMELESS = StrategistIdentity(uid="uid-dana", email="dana@example.com", name="")
+NAMELESS_TOKEN = "id-token-dana"
+
+# An offer the Visitor has not answered: no mode, and therefore nothing to join.
+UNANSWERED = HandoverRequest(
+    id="hr-unanswered",
+    session_id="session-0004",
+    state="offered",
+    lead=SAM,
+)
+
 DECLINED = HandoverRequest(
     id="hr-declined",
     session_id="session-0003",
@@ -101,7 +114,7 @@ CONVERSATION = [
 
 @pytest.fixture
 def verifier() -> ScriptedTokenVerifier:
-    return ScriptedTokenVerifier({ANGEL_TOKEN: ANGEL})
+    return ScriptedTokenVerifier({ANGEL_TOKEN: ANGEL, NAMELESS_TOKEN: NAMELESS})
 
 
 @pytest.fixture
@@ -371,3 +384,39 @@ def test_the_queue_carries_the_room_and_the_strategist_the_console_draws(
 
     assert request["room_url"] == ROOM_URL
     assert request["strategist_name"] == "Angel M."
+
+
+def test_joining_an_offer_the_visitor_has_not_answered_says_so_rather_than_calling_it_a_callback(
+    console_client: TestClient, store: InMemoryConversationStore
+) -> None:
+    """A request with no mode is one nobody has agreed to anything on. Telling a Strategist it
+    is a Callback would send them to phone a Visitor who has not asked to be phoned."""
+    seed(store, UNANSWERED)
+
+    response = console_client.post(
+        "/api/console/handovers/hr-unanswered/join", headers=as_strategist(ANGEL_TOKEN)
+    )
+
+    assert response.status_code == 409
+    assert "not been accepted yet" in response.json()["detail"]
+    assert "Callback" not in response.json()["detail"]
+
+
+def test_a_strategist_with_no_display_name_never_puts_their_email_in_front_of_the_visitor(
+    console_client: TestClient, store: InMemoryConversationStore
+) -> None:
+    """`strategist_name` travels to the Visitor's panel. A Strategist's work address is not
+    something a stranger on the internet gets because their Google profile has no name on it —
+    the widget says "a Cadre strategist" instead, in the Visitor's own language."""
+    seed(store, LIVE)
+
+    response = console_client.post(
+        "/api/console/handovers/hr-video/join", headers=as_strategist(NAMELESS_TOKEN)
+    )
+
+    assert response.status_code == 200
+    assert response.json()["strategist_name"] == ""
+    stored = asyncio.run(store.get_handover("hr-video"))
+    assert stored is not None
+    assert stored.strategist_name == ""
+    assert "dana@example.com" not in response.text

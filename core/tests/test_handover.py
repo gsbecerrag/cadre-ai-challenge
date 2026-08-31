@@ -237,6 +237,19 @@ def test_a_video_hand_over_still_inside_the_window_is_left_alone() -> None:
     assert timed_out is False
 
 
+def test_a_hand_over_exactly_at_the_window_has_not_waited_too_long_yet() -> None:
+    """The boundary, pinned: the comparison is strictly greater, so a request whose wait is
+    exactly the configured window is still waiting. One second either way changes nothing for
+    a Visitor, and an inequality nobody wrote a test for is the one that gets flipped."""
+    accepted = datetime(2026, 8, 31, 9, 41, tzinfo=UTC)
+
+    timed_out = join_timed_out(
+        pending_video_since(accepted), accepted + timedelta(seconds=120), timeout_seconds=120
+    )
+
+    assert timed_out is False
+
+
 def test_a_callback_hand_over_never_times_out() -> None:
     """A Callback is already the fallback. Timing it out would move a request a Strategist
     still owes a call to into a terminal state, hours after the Visitor closed the tab."""

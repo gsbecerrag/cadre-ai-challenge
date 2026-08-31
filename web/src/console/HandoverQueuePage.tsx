@@ -164,14 +164,18 @@ function CallBanner({
       <div className="flex flex-wrap items-center gap-3 rounded-2xl bg-cadre-ink px-4 py-3 text-white">
         <span className="cadre-livepulse inline-block size-[7px] shrink-0 rounded-full bg-[#db4545]" />
         <span className="text-[13px] font-semibold">In call — Daily room open in the chat panel</span>
-        <a
-          href={handover.room_url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="truncate font-mono text-[12px] text-[#b3b3b3] underline hover:text-white"
-        >
-          {handover.room_url.replace(/^https?:\/\//, '')}
-        </a>
+        {handover.room_url ? (
+          <a
+            href={handover.room_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="truncate font-mono text-[12px] text-[#b3b3b3] underline hover:text-white"
+          >
+            {handover.room_url.replace(/^https?:\/\//, '')}
+          </a>
+        ) : (
+          <span className="font-mono text-[12px] text-[#b3b3b3]">no room on this request</span>
+        )}
         <button type="button" disabled={busy} onClick={onEnd} className={`${RED_PILL} ml-auto`}>
           End call
         </button>
