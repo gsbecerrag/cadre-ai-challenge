@@ -135,6 +135,7 @@ def test_the_refusal_tests_cover_every_console_endpoint() -> None:
         ("GET", "/api/console/handovers/{request_id}"),
         ("POST", "/api/console/handovers/{request_id}/join"),
         ("POST", "/api/console/handovers/{request_id}/end"),
+        ("GET", "/api/console/triage"),
     }
 
 

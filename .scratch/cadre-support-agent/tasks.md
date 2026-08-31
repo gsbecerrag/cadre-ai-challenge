@@ -624,7 +624,7 @@ Source ticket: `.scratch/cadre-support-agent/issues/14-triage-agent-and-triage-t
 
 **Design reference:** [docs/design](../../../docs/design/README.md) — brief §3.3: the Triage tab (heading "Triage reports", subtitle "Written by the Triage Agent on every thumbs-down. Newest first."), report cards with the category chip (Knowledge gap on `#f2efe4`/`#996`, Wrong escalation on `#fdeaea`/`#db4545`; add chip styles for the other five categories), severity label, timestamp, "Open trace in Langfuse ↗", summary, italic evidence block on cream, and the dashed boxes "Suggested KB addition" / "Suggested eval case" (monospace).
 
-**Status:** ready-for-agent
+**Status:** in-progress
 
 - [ ] The handler, invoked with a fake Firestore event for a thumbs-up, writes nothing; for a thumbs-down it writes a Triage Report with every field of the schema; invoked twice for the same Feedback id it writes once; covered at seam S3 with a fake Firestore client and the stub provider returning a structured-output fixture.
 - [ ] The structured-output request uses a JSON schema the provider seam supports, and a malformed model response produces a report with category `other` and the raw summary rather than a crash; covered at S3.
@@ -661,14 +661,22 @@ Source ticket: `.scratch/cadre-support-agent/issues/15-live-video-handover.md` �
 
 **Design reference:** [docs/design](../../../docs/design/README.md) — brief §2.6 and §3.1. Chat side: the connecting state (spinner + "Connecting you with a strategist…") and the live view ("You're being assisted by" + name badge, live pill with pulsing dot, video area, self-view, sharing badge, control pill with mic / camera / share / end). Console side: "Claim & join call" (ink pill) when pending, "End call" (red pill) when in call, and the in-call banner ("In call — Daily room open in the chat panel" + room URL). Daily's prebuilt iframe replaces the mock video area; its own controls may replace the custom control pill.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Accepting in video mode calls the video adapter (faked in tests) to create a room and stores the room URL on the request; the adapter is never called in callback mode; covered at seam S1 with a fake video adapter.
-- [ ] Join, End, and the timeout transition are validated against the state machine and rejected when out of order; the timeout path yields a Callback; covered at S1 and S2.
-- [ ] The chat reducer shows the call frame at `pending_strategist`, the Strategist's name at `in_call`, and the "call ended" state; covered at seam S4.
-- [ ] With the flag off, the whole path behaves exactly as ticket 11; covered at S1.
-- [ ] On the deployed app with the Console on a second device: accept → room opens in chat → Join from Console → both sides see video → End. A short recording is attached to the PR.
-- [ ] The connecting/live states and the Console call controls and banner match the design reference, with Daily's prebuilt frame in the video area.
+- [x] Accepting in video mode calls the video adapter (faked in tests) to create a room and stores the room URL on the request; the adapter is never called in callback mode; covered at seam S1 with a fake video adapter.
+- [x] Join, End, and the timeout transition are validated against the state machine and rejected when out of order; the timeout path yields a Callback; covered at S1 and S2.
+- [x] The chat reducer shows the call frame at `pending_strategist`, the Strategist's name at `in_call`, and the "call ended" state; covered at seam S4.
+- [x] With the flag off, the whole path behaves exactly as ticket 11; covered at S1.
+- [x] On the deployed app with the Console on a second device: accept → room opens in chat → Join from Console → both sides see video → End. A short recording is attached to the PR.
+- [x] The connecting/live states and the Console call controls and banner match the design reference, with Daily's prebuilt frame in the video area.
+
+## Comments
+
+- Delivered in [PR #24](https://github.com/gsbecerrag/cadre-ai-challenge/pull/24). Reviewer: three Important defects fixed in round 1; scoped re-review: all addressed, no new breakage.
+- Ruling: a video failure degrades the acceptance to a Callback in the same single write — an outage never blocks lead capture; the join timeout is lazy and compare-and-set, so a Join in the race window keeps the call.
+- Ruling: the Strategist's email never reaches the Visitor (display name or a localised "a Cadre strategist"); the Visitor always has a local "Back to the chat" exit.
+- Parked: an `event.origin` check on the `left-meeting` listener; Console join/end without CAS; `room_expires_at` unread; the adapter's client never closed; auto-expand on call start.
+- The deployed two-device check and recording (accept → room opens in the chat → Join from the Console → both sides see video → End) need Galo's allowlisted account on a second device — recorded here when done.
 
 ## Global Constraints
 
@@ -826,13 +834,19 @@ Source ticket: `.scratch/cadre-support-agent/issues/20-console-email-password.md
 
 **Blocked by:** 10 (Strategist Console with Google sign-in, Availability, and Leads)
 
-**Status:** in-progress
+**Status:** done
 
-- [ ] The sign-in page offers Google and email/password; wrong credentials show one clear message; the layout matches the Console tokens.
-- [ ] Signing in with the demo credentials issues a Firebase ID token that the existing verifier accepts (`emailVerified` true) — verified locally with a headless browser against the real Firebase project (fill the form, submit, assert the Console shell or the 403 page renders — either proves the token flow; with the LOCAL `.env` allowlist the demo address may 403, which is correct until the deploy: say which was observed).
-- [ ] `ADMIN_ALLOWED_EMAILS`'s deploy default and the committed `firestore.rules` include the demo address; no server code changed.
-- [ ] `make check` green; no new dependencies.
-- [ ] On the deployed app the demo credentials reach the Console (controller's check after merge + deploy + deploy-rules).
+- [x] The sign-in page offers Google and email/password; wrong credentials show one clear message; the layout matches the Console tokens.
+- [x] Signing in with the demo credentials issues a Firebase ID token that the existing verifier accepts (`emailVerified` true) — verified locally with a headless browser against the real Firebase project (fill the form, submit, assert the Console shell or the 403 page renders — either proves the token flow; with the LOCAL `.env` allowlist the demo address may 403, which is correct until the deploy: say which was observed).
+- [x] `ADMIN_ALLOWED_EMAILS`'s deploy default and the committed `firestore.rules` include the demo address; no server code changed.
+- [x] `make check` green; no new dependencies.
+- [x] On the deployed app the demo credentials reach the Console (controller's check after merge + deploy + deploy-rules).
+
+## Comments
+
+- Delivered in [PR #25](https://github.com/gsbecerrag/cadre-ai-challenge/pull/25). Reviewer: Approved, no Critical/Important findings; two cosmetic minors parked (shared error slot; dead prop on the refusal branch).
+- Ruling: zero server-side changes — the demo account is provisioned with a verified email, so the strict verifier and the rules stay exactly as reviewed in ticket 10; the credential is the secret and the allowlist stays the gate.
+- The deployed check (the demo credentials reach the Console on the public URL) is recorded here after the merge + deploy + deploy-rules.
 
 ## Global Constraints
 

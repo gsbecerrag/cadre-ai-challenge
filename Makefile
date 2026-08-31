@@ -11,6 +11,18 @@ LANGFUSE_PUBLIC   := langfuse-public-key
 LANGFUSE_SECRET   := langfuse-secret-key
 DAILY_SECRET      := daily-api-key
 
+# The same three secrets again, under a second set of ids — because the Triage Agent function
+# cannot name the ones above. `firebase-functions` takes `secrets=[...]` as Secret Manager
+# secret *ids* and binds each one to an environment variable of the same name, so the id has
+# to be spelled the way an environment variable is: `OPENROUTER_API_KEY`, not
+# `openrouter-api-key`. Rather than rename what Cloud Run already binds, `deploy-secrets`
+# keeps a copy under each function-shaped id. Source id first, function id second.
+FUNCTION_SECRET_PAIRS := \
+  $(OPENROUTER_SECRET):OPENROUTER_API_KEY \
+  $(LANGFUSE_PUBLIC):LANGFUSE_PUBLIC_KEY \
+  $(LANGFUSE_SECRET):LANGFUSE_SECRET_KEY
+FUNCTION_SECRETS := OPENROUTER_API_KEY LANGFUSE_PUBLIC_KEY LANGFUSE_SECRET_KEY
+
 # Where the Langfuse project lives. Not a secret, and the wrong region is an authentication
 # error rather than a redirect, so it is pinned here next to the keys it goes with.
 LANGFUSE_HOST     := https://us.cloud.langfuse.com
@@ -38,7 +50,7 @@ ADMIN_ALLOWED_EMAILS ?= galo.s.becerra@gmail.com,strategist@cadre-demo.example
 # exists in CI or in the container, so tests and Cloud Run cannot pick up a stray .env.
 ENV_FILE := $(if $(wildcard .env),--env-file .env,)
 
-.PHONY: help install dev check test build-web deploy deploy-secrets eval eval-stub rules deploy-rules
+.PHONY: help install dev check test build-web deploy deploy-secrets eval eval-stub rules deploy-rules deploy-functions
 
 help:
 	@echo "install    install Python (uv) and web (pnpm) dependencies"
@@ -51,6 +63,7 @@ help:
 	@echo "deploy     build the container and deploy it to Cloud Run"
 	@echo "rules      render ADMIN_ALLOWED_EMAILS into firestore.rules"
 	@echo "deploy-rules  deploy firestore.rules and the indexes to Firebase"
+	@echo "deploy-functions  copy core/ and knowledge/ into functions/ and deploy the Triage Agent"
 
 install:
 	uv sync
@@ -92,11 +105,17 @@ eval-stub:
 build-web:
 	cd web && pnpm build
 
-# What the deployed service reads at runtime. The cookie-signing key is generated here if it
-# does not exist yet — never printed, never in the repository, never in the image — and the
-# runtime service account is granted read access to every bound secret on every run, because
-# a grant that only happens the day a secret is created is a grant nobody can see is missing.
-# Both steps are idempotent.
+# What the deployed service and the Triage Agent function read at runtime. The cookie-signing
+# key is generated here if it does not exist yet — never printed, never in the repository,
+# never in the image — the three function-shaped copies are made from their sources when they
+# are missing, and the runtime service account is granted read access to every one of them on
+# every run, because a grant that only happens the day a secret is created is a grant nobody
+# can see is missing. Every step is idempotent.
+#
+# The copy is a copy, not a link: rotating `openrouter-api-key` does NOT update
+# `OPENROUTER_API_KEY`. Add a version to both, or delete the function-shaped one and run this
+# again. No secret value is ever echoed — it goes from `versions access` straight into
+# `create --data-file=-` down a pipe.
 deploy-secrets:
 	@sa="$$(gcloud projects describe $(PROJECT) --format='value(projectNumber)')-compute@developer.gserviceaccount.com"; \
 	gcloud secrets describe $(COOKIE_SECRET) --project $(PROJECT) >/dev/null 2>&1 || { \
@@ -105,7 +124,24 @@ deploy-secrets:
 	    | gcloud secrets create $(COOKIE_SECRET) --project $(PROJECT) \
 	        --replication-policy=automatic --data-file=- >/dev/null; \
 	}; \
-	for secret in $(OPENROUTER_SECRET) $(COOKIE_SECRET) $(LANGFUSE_PUBLIC) $(LANGFUSE_SECRET) $(DAILY_SECRET); do \
+	for pair in $(FUNCTION_SECRET_PAIRS); do \
+	  src="$${pair%%:*}"; dst="$${pair##*:}"; \
+	  gcloud secrets describe "$$dst" --project $(PROJECT) >/dev/null 2>&1 && continue; \
+	  gcloud secrets describe "$$src" --project $(PROJECT) >/dev/null 2>&1 || { \
+	    echo "Cannot create $$dst: its source $$src does not exist yet"; \
+	    continue; \
+	  }; \
+	  echo "Copying $$src to $$dst, the id the Triage Agent function can name"; \
+	  gcloud secrets versions access latest --secret="$$src" --project $(PROJECT) \
+	    | gcloud secrets create "$$dst" --project $(PROJECT) \
+	        --replication-policy=automatic --data-file=- >/dev/null; \
+	done; \
+	for secret in $(OPENROUTER_SECRET) $(COOKIE_SECRET) $(LANGFUSE_PUBLIC) $(LANGFUSE_SECRET) \
+	              $(DAILY_SECRET) $(FUNCTION_SECRETS); do \
+	  gcloud secrets describe "$$secret" --project $(PROJECT) >/dev/null 2>&1 || { \
+	    echo "Skipping the grant on $$secret: it does not exist"; \
+	    continue; \
+	  }; \
 	  echo "Granting $$sa read access to $$secret"; \
 	  gcloud secrets add-iam-policy-binding "$$secret" --project $(PROJECT) \
 	    --member="serviceAccount:$$sa" \
@@ -145,3 +181,23 @@ rules:
 # project, not to the Cloud Run revision. Run `make rules` first if the allowlist changed.
 deploy-rules:
 	firebase deploy --only firestore:rules,firestore:indexes --project $(PROJECT)
+
+# The Triage Agent (ADR-0005): a second deployable, a Firebase Function on writes to the
+# `feedback` collection. It shares this repository's `core` package by copying it into the
+# functions directory at deploy time — the one drift risk the ADR accepted, and the reason it
+# is one make target and not a paragraph in a README. The copy is deliberately dumb: rsync,
+# no rendering, no generated file, so what runs in the function is the same source `make
+# check` just tested, and the triage prompt's cached prefix is byte-identical to the chat's.
+# `--delete` so a module deleted here is deleted there rather than lingering in the bundle.
+#
+#   make deploy-functions COPY_ONLY=1   # copy the packages in, deploy nothing (emulator)
+deploy-functions:
+	rsync -a --delete \
+	  --exclude '__pycache__' --exclude 'tests' --exclude '*.pyc' \
+	  core/ functions/core/
+	rsync -a --delete --exclude 'README.md' knowledge/ functions/knowledge/
+	@if [ -n "$(COPY_ONLY)" ]; then \
+	  echo "COPY_ONLY set: core/ and knowledge/ are in functions/, nothing deployed."; \
+	else \
+	  firebase deploy --only functions --project $(PROJECT); \
+	fi

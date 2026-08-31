@@ -13,7 +13,14 @@ from datetime import UTC, datetime
 from core.auth import StrategistIdentity
 from core.handover import HandoverMode, HandoverRequest, HandoverState, LeadSnapshot
 from core.provider import ModelMessage
-from core.store import DEFAULT_HANDOVER_PAGE, DEFAULT_LEAD_PAGE, Feedback, Lead
+from core.store import (
+    DEFAULT_HANDOVER_PAGE,
+    DEFAULT_LEAD_PAGE,
+    DEFAULT_TRIAGE_PAGE,
+    Feedback,
+    Lead,
+    TriageReport,
+)
 from core.video import Room
 
 
@@ -27,6 +34,9 @@ class InMemoryConversationStore:
         # and the second a collection; in one process a set and a dict say the same thing.
         self._traces: dict[str, set[str]] = {}
         self._feedback: dict[str, Feedback] = {}
+        # Keyed by the Feedback id, so a redelivered trigger replaces the report it wrote
+        # last time — the same thing `set()` on one Firestore document id does.
+        self._triage: dict[str, TriageReport] = {}
         # Insertion order is "oldest first", which `list_handovers` reverses — the same trick
         # `list_leads` uses, and what Firestore's `created_at` ordering gives it.
         self._handovers: dict[str, HandoverRequest] = {}
@@ -51,6 +61,19 @@ class InMemoryConversationStore:
     async def save_feedback(self, feedback: Feedback) -> Feedback:
         self._feedback[feedback.id] = feedback
         return feedback
+
+    async def save_triage_report(self, report: TriageReport) -> TriageReport:
+        stored = replace(report, created_at=report.created_at or datetime.now(tz=UTC))
+        # Popped and re-inserted, so insertion order is "least recently written first" and
+        # `list_triage_reports` can reverse it — the same trick `upsert_lead` uses.
+        self._triage.pop(stored.id, None)
+        self._triage[stored.id] = stored
+        return stored
+
+    async def list_triage_reports(
+        self, limit: int = DEFAULT_TRIAGE_PAGE
+    ) -> tuple[TriageReport, ...]:
+        return tuple(reversed(list(self._triage.values())))[:limit]
 
     async def get_lead(self, session_id: str) -> Lead | None:
         return self._leads.get(session_id)

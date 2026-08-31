@@ -1,0 +1,8 @@
+# `make deploy-functions` copies the shared packages in here before `firebase deploy` and
+# leaves them (a second deploy is then a no-op rsync). They are the repository's own source —
+# committing a second copy would be committing a fork of it (ADR-0005).
+core/
+knowledge/
+
+# The Firebase CLI's Python runtime, created by `firebase emulators:start` / `firebase deploy`.
+venv/

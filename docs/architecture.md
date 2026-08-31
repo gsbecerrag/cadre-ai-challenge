@@ -46,7 +46,7 @@ flowchart TB
     end
     fs[("Firestore Native, nam5: sessions, messages, leads, handover_requests, strategists, feedback, triage_reports")]
     auth["Firebase Auth (Google sign-in, ADMIN_ALLOWED_EMAILS)"]
-    fn["Firebase Functions gen2 (Python triage agent, on_document_created on feedback)"]
+    fn["Firebase Functions gen2 (Python triage agent, on_document_written on feedback)"]
     sm["Secret Manager (OpenRouter, Langfuse, Daily keys)"]
     logs["Cloud Logging (structlog JSON with session_id, request_id, trace_id)"]
   end
@@ -167,16 +167,15 @@ sequenceDiagram
   A->>F: write feedback/{trace_id} with session_id, rating down, redacted comment
   A->>L: score feedback=0 on trace_id
   A-->>U: feedback_id, rating, changed
-  F-->>T: on_document_created for the feedback document
-  T->>F: does triage_reports with the same feedbackId exist
-  alt already triaged (redelivery)
-    T-->>F: no-op, idempotent
-  else first delivery
-    T->>F: read session messages and the KB section ids cited in the turn
-    T->>O: structured output call, json_schema strict (category, summary, evidence, suggested_kb_addition, suggested_eval_case, severity)
-    O-->>T: triage JSON
-    T->>F: create triage_reports keyed by feedbackId (create, not set)
-    T->>L: comment and score on trace_id
+  F-->>T: on_document_written for the feedback document (create or update)
+  alt rating is not down
+    T-->>T: return before the model is reached
+  else thumbs-down
+    T->>F: read the session's messages (already refuse-redacted) and the stored feedback
+    T->>O: one structured output call, json_schema strict (category, summary, evidence, suggested_kb_addition, suggested_eval_case, severity), on the chat prompt's cached prefix
+    O-->>T: triage JSON, or prose that becomes category other
+    T->>F: set triage_reports/{feedbackId} — a redelivery overwrites the same document
+    T->>L: numeric triage score on trace_id with the summary as its comment
   end
   F-->>C: onSnapshot renders the new triage report
 ```
@@ -241,7 +240,7 @@ erDiagram
   }
 ```
 
-Not drawn: every document carries `created_at`; `sessions` also `last_seen` and `turn_count`; `messages` an optional `tool_calls` array; `leads` are keyed by the session id and hold the raw typed contact fields `name`, `email`, `phone`, `company`, `role` (all optional), a `session` reference, and `updated_at` (industry is not a field of its own: industry fit is one of the five signals); `handover_requests` keep an optional `room_url` with the `room_expires_at` it was created with and the `strategist_name` of whoever claimed it (ticket 15 — all three are written by the same single update that moves the state, so the console's realtime listener never sees a request half-way through a move), a `lead` snapshot (the contact fields, the signals and the score as they stood, so the console's queue is one read per screen rather than a join per row), a `session` reference and `created_at`/`updated_at` — the queue orders by `created_at`, which is why it does not reshuffle under the Strategist's cursor; `strategists` are keyed by the Firebase uid and carry `online`, `email`, `name` and `updated_at` — written by `PUT /api/console/availability`, and the one document a browser may write (its own, per `firestore.rules`); `feedback` is keyed by the `trace_id` it judges (one feedback per turn, so a second thumb updates it and `changes` caps that at one) and carries `session_id`, `rating`, an optional `comment` through the `full` redaction profile, `created_at` and `updated_at` — written by `POST /api/feedback`, which accepts a rating only for a trace the caller's own session produced, and mirrors it to Langfuse as a numeric `feedback` score (1 up, 0 down) on that trace; the ownership check is what the `trace_id` on the assistant `messages` exists for; `triage_reports` a `summary`, an `evidence` list and the `model` used. Phase 2 adds a `kb_docs` collection behind the `KnowledgeSource` seam; nothing else changes.
+Not drawn: every document carries `created_at`; `sessions` also `last_seen` and `turn_count`; `messages` an optional `tool_calls` array; `leads` are keyed by the session id and hold the raw typed contact fields `name`, `email`, `phone`, `company`, `role` (all optional), a `session` reference, and `updated_at` (industry is not a field of its own: industry fit is one of the five signals); `handover_requests` keep an optional `room_url` with the `room_expires_at` it was created with and the `strategist_name` of whoever claimed it (ticket 15 — all three are written by the same single update that moves the state, so the console's realtime listener never sees a request half-way through a move), a `lead` snapshot (the contact fields, the signals and the score as they stood, so the console's queue is one read per screen rather than a join per row), a `session` reference and `created_at`/`updated_at` — the queue orders by `created_at`, which is why it does not reshuffle under the Strategist's cursor; `strategists` are keyed by the Firebase uid and carry `online`, `email`, `name` and `updated_at` — written by `PUT /api/console/availability`, and the one document a browser may write (its own, per `firestore.rules`); `feedback` is keyed by the `trace_id` it judges (one feedback per turn, so a second thumb updates it and `changes` caps that at one) and carries `session_id`, `rating`, an optional `comment` through the `full` redaction profile, `created_at` and `updated_at` — written by `POST /api/feedback`, which accepts a rating only for a trace the caller's own session produced, and mirrors it to Langfuse as a numeric `feedback` score (1 up, 0 down) on that trace; the ownership check is what the `trace_id` on the assistant `messages` exists for; `triage_reports` are keyed by the feedback id (which is the trace id, so a redelivered trigger overwrites rather than duplicates) and carry `session_id`, `trace_id`, `category` (one of `kb_gap`, `wrong_escalation`, `hallucination`, `tone`, `pii`, `bug`, `other`), `summary`, an `evidence` list of quoted turns, `suggested_kb_addition` and `suggested_eval_case` (empty strings when the agent had nothing honest to suggest), `severity` (`low`/`medium`/`high`), the `model` used, and `created_at`/`updated_at` — `created_at` on the first delivery only, so a redelivery does not move an old report to the top of the console's list, which orders by it. Phase 2 adds a `kb_docs` collection behind the `KnowledgeSource` seam; nothing else changes.
 
 ### Handover state machine
 
@@ -318,7 +317,7 @@ Solid boxes are MVP; grey dashed boxes are Phase 2 (triggered upgrades) and Phas
 | Runtime API | FastAPI, Python 3.12, uv | Same ecosystem as evals and the PII redactor, native SSE | Next.js API routes | [0003](adr/0003-gcp-with-seams.md) |
 | Web | React, Vite, TypeScript, Tailwind, shadcn/ui, Cadre brand tokens | Fast to build, embeddable widget later | Flutter web | [0003](adr/0003-gcp-with-seams.md) |
 | Agent runtime | Raw tool loop, single agent, five tools | Full feature access, every line understood | PydanticAI, LangGraph, Google ADK, Bedrock AgentCore | [0004](adr/0004-raw-tool-loop.md) |
-| Async agents | Firebase Functions gen2 (Python), Firestore `on_document_created` | Events decoded for you, request path unaware of consumers | FastAPI BackgroundTasks, Eventarc to Cloud Run, Pub/Sub | [0005](adr/0005-event-driven-triage-agent.md) |
+| Async agents | Firebase Functions gen2 (Python), Firestore `on_document_written` | Events decoded for you, request path unaware of consumers | FastAPI BackgroundTasks, Eventarc to Cloud Run, Pub/Sub | [0005](adr/0005-event-driven-triage-agent.md) |
 | PII handling | Deterministic redactor with `refuse` and `full` profiles | Cards, IDs and credentials never reach the model or storage; contacts still usable for leads | Model-based redaction only | [0006](adr/0006-two-profile-pii.md) |
 | Video hand-over | Daily.co prebuilt iframe, room per handover via REST | No login for either side | Jitsi (self-hosted vision target), JaaS | [0007](adr/0007-daily-video-handover.md) |
 | Evals | pytest plus JSONL cases, Haiku judge, results to Langfuse datasets | No retrieval, so retrieval metrics do not apply | RAGAS | [0008](adr/0008-pytest-evals-over-ragas.md) |

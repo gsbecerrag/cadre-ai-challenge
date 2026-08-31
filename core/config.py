@@ -61,6 +61,11 @@ class Settings(BaseSettings):
     # Attribution, so OpenRouter's dashboard shows the spend under this app.
     openrouter_app_url: str = ""
     openrouter_app_name: str = "Cadre AI Support Agent"
+    # What the Triage Agent asks (ADR-0005). Blank means "the conversation model", which is
+    # the point: the triage call reuses the chat prompt's cached prefix, and a different model
+    # would read the same 25K tokens off a cache it cannot share. It is configuration anyway,
+    # so a cheaper model can be tried on the Triage Agent alone without touching a Turn.
+    triage_model: str = ""
 
     # --- Sessions ---
     # Signs the Session cookie. Blank is tolerated in development (a per-process key is
@@ -123,6 +128,11 @@ class Settings(BaseSettings):
     # not have to live in one project, and a token verified against the wrong audience is a
     # token from another app's users.
     firebase_project_id: str = ""
+
+    @property
+    def triage_model_id(self) -> str:
+        """The model the Triage Agent calls: its own, or the conversation model."""
+        return self.triage_model.strip() or self.chat_model
 
     @property
     def firebase_audience(self) -> str:

@@ -60,6 +60,36 @@ export type HandoverDetail = {
   conversation: ConversationLine[]
 }
 
+/**
+ * The seven categories the Triage Agent may pick, mirroring `core/store.py`. A category the
+ * browser does not know is rendered as `other` rather than as an unstyled chip.
+ */
+export type TriageCategory =
+  | 'kb_gap'
+  | 'wrong_escalation'
+  | 'hallucination'
+  | 'tone'
+  | 'pii'
+  | 'bug'
+  | 'other'
+
+export type TriageSeverity = 'low' | 'medium' | 'high'
+
+/** One Triage Report as the Triage tab's card renders it (docs/design §3.3). */
+export type TriageReport = {
+  id: string
+  session_id: string
+  trace_id: string
+  category: string
+  summary: string
+  evidence: string[]
+  suggested_kb_addition: string
+  suggested_eval_case: string
+  severity: string
+  model: string
+  created_at: string | null
+}
+
 export type Availability = {
   online: boolean
   any_online: boolean
@@ -105,6 +135,10 @@ export function fetchHandovers(
 
 export function fetchHandover(authorize: Authorize, requestId: string): Promise<HandoverDetail> {
   return consoleFetch(`/api/console/handovers/${encodeURIComponent(requestId)}`, authorize)
+}
+
+export function fetchTriageReports(authorize: Authorize): Promise<{ reports: TriageReport[] }> {
+  return consoleFetch('/api/console/triage', authorize)
 }
 
 /**

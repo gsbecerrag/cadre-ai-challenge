@@ -2,5 +2,28 @@
   "firestore": {
     "rules": "firestore.rules",
     "indexes": "firestore.indexes.json"
+  },
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "triage",
+      "runtime": "python312",
+      "ignore": [
+        "venv",
+        ".git",
+        "__pycache__",
+        "**/__pycache__",
+        "**/*.pyc",
+        "firebase-debug.log",
+        "firebase-debug.*.log",
+        "core/tests",
+        "knowledge/README.md"
+      ]
+    }
+  ],
+  "emulators": {
+    "functions": { "port": 5001 },
+    "firestore": { "port": 8080 },
+    "ui": { "enabled": true, "port": 4000 }
   }
 }

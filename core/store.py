@@ -18,7 +18,8 @@ Strategist's uid rather than a Session is the only difference.
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Literal, Protocol
+from datetime import datetime
+from typing import Literal, Protocol, get_args
 
 from core.auth import StrategistIdentity
 from core.handover import HandoverMode, HandoverRequest, HandoverState, LeadSnapshot
@@ -41,6 +42,30 @@ MAX_FEEDBACK_CHANGES = 1
 # How many Handover Requests the Console asks for at a time. Same reasoning and same number as
 # the Leads page: a work list, not the whole history.
 DEFAULT_HANDOVER_PAGE = 50
+
+# How many Triage Reports the Console's Triage tab asks for at a time. A reading list rather
+# than a work list, and the same page size as the others so one number describes the Console.
+DEFAULT_TRIAGE_PAGE = 50
+
+# What the Triage Agent may say went wrong (ADR-0005). Seven values, enumerated in the JSON
+# schema of the model call, so a category the Console has no chip for cannot be invented: a
+# `kb_gap` is a Knowledge Base that is missing something, `wrong_escalation` an Escalation
+# where a Grounded Answer existed, `hallucination` a claim no KB Section carries, `tone` an
+# answer that was right and read badly, `pii` personal data mishandled, `bug` the product
+# failing, `other` everything the model could not place — including its own malformed answer.
+TriageCategory = Literal[
+    "kb_gap", "wrong_escalation", "hallucination", "tone", "pii", "bug", "other"
+]
+
+# How much the Triage Agent thinks this one costs Cadre. Three values, because a Strategist
+# reading a list needs to know what to open first and nothing finer than that is arguable.
+TriageSeverity = Literal["low", "medium", "high"]
+
+# The same two vocabularies as values, derived from the types rather than typed out again: the
+# model call enumerates them in its JSON schema and the store reads them back defensively, and
+# a category added to the type must not be a category the schema forgets to offer.
+TRIAGE_CATEGORIES: tuple[TriageCategory, ...] = get_args(TriageCategory)
+TRIAGE_SEVERITIES: tuple[TriageSeverity, ...] = get_args(TriageSeverity)
 
 # How many Leads the Console asks for at a time. Comfortably more than a demo produces and
 # small enough that the page is one screen of work rather than the whole history.
@@ -114,6 +139,37 @@ class Feedback:
         return self.changes > 0
 
 
+@dataclass(frozen=True)
+class TriageReport:
+    """The Triage Agent's structured analysis of one thumbs-down (ADR-0005).
+
+    It lives here beside the `Feedback` it was written from rather than in `core.triage`,
+    because it is a record this seam stores and reads back, and a type the store imported from
+    the handler would put a cycle between the two.
+
+    `id` is the Feedback id, which is the Trace id: a redelivered Firestore event writes the
+    same document again instead of a second opinion on the same Turn, which is the whole of
+    the handler's idempotency. `evidence` are the Visitor's and the Assistant's own words,
+    quoted; the two suggestions are empty when the model had none to make.
+    """
+
+    id: str
+    session_id: str
+    trace_id: str
+    category: TriageCategory
+    summary: str
+    evidence: tuple[str, ...] = ()
+    suggested_kb_addition: str = ""
+    suggested_eval_case: str = ""
+    severity: TriageSeverity = "medium"
+    # The model that wrote this report, recorded because the analysis is only as good as the
+    # model that made it and the suggestions outlive the model that suggested them.
+    model: str = ""
+    # Written by the store, so the Console's "newest first" is one clock and not the clock of
+    # whichever instance happened to run the Triage Agent.
+    created_at: datetime | None = None
+
+
 def lead_snapshot(lead: Lead) -> LeadSnapshot:
     """The Lead as it stands, copied onto a Handover Request.
 
@@ -166,6 +222,26 @@ class ConversationStore(Protocol):
         The caller decides whether this is a first thumb or a change, because that decision is
         a rule about Visitors and not about databases — and it is the same rule whichever
         implementation of this seam is behind it.
+        """
+        ...
+
+    async def save_triage_report(self, report: TriageReport) -> TriageReport:
+        """Write the Triage Report, replacing what was there, and return what was stored.
+
+        Keyed by the report's own id — the Feedback id — so a Firestore trigger delivered
+        twice writes one document twice rather than two documents once (ADR-0005). The
+        returned value carries the timestamp the store minted, because the Console orders the
+        Triage tab by it.
+        """
+        ...
+
+    async def list_triage_reports(
+        self, limit: int = DEFAULT_TRIAGE_PAGE
+    ) -> tuple[TriageReport, ...]:
+        """The Console's page of Triage Reports, newest first.
+
+        Not scoped to a Session, for the same reason `list_leads` is not: reading across
+        conversations is the point of the Triage tab.
         """
         ...
 

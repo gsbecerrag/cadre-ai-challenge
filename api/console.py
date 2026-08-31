@@ -31,8 +31,12 @@ from core.store import (
     CONTACT_DETAIL_NAMES,
     DEFAULT_HANDOVER_PAGE,
     DEFAULT_LEAD_PAGE,
+    DEFAULT_TRIAGE_PAGE,
     ConversationStore,
     Lead,
+    TriageCategory,
+    TriageReport,
+    TriageSeverity,
 )
 
 BEARER = "bearer"
@@ -133,6 +137,31 @@ class ConsoleHandover(BaseModel):
 
 class ConsoleHandovers(BaseModel):
     handovers: list[ConsoleHandover]
+
+
+class ConsoleTriageReport(BaseModel):
+    """One Triage Report as the Triage tab's card renders it (docs/design §3.3).
+
+    Every field the Triage Agent wrote, including the two suggestions — the card draws a
+    dashed box for each, or leaves it out when the model had nothing honest to suggest — and
+    the Trace id, which is what "Open trace in Langfuse ↗" is built from.
+    """
+
+    id: str
+    session_id: str
+    trace_id: str
+    category: TriageCategory
+    summary: str
+    evidence: list[str]
+    suggested_kb_addition: str
+    suggested_eval_case: str
+    severity: TriageSeverity
+    model: str
+    created_at: str | None
+
+
+class ConsoleTriageReports(BaseModel):
+    reports: list[ConsoleTriageReport]
 
 
 class ConsoleMessage(BaseModel):
@@ -260,6 +289,17 @@ def create_console_router(
         requests = await store.list_handovers(mode, DEFAULT_HANDOVER_PAGE)
         return ConsoleHandovers(handovers=[console_handover(request) for request in requests])
 
+    @router.get("/triage")
+    async def list_triage_reports() -> ConsoleTriageReports:
+        """The Triage tab, and its fallback.
+
+        The browser normally holds a realtime listener on `triage_reports` and polls this when
+        the listener cannot start — the same two paths the Leads page and the Handover queue
+        use, for the same reason (ADR-0010).
+        """
+        reports = await store.list_triage_reports(DEFAULT_TRIAGE_PAGE)
+        return ConsoleTriageReports(reports=[console_triage_report(report) for report in reports])
+
     async def stored_handover(request_id: str) -> HandoverRequest:
         stored = await store.get_handover(request_id)
         if stored is None:
@@ -363,6 +403,23 @@ def console_lead_from_snapshot(session_id: str, snapshot: LeadSnapshot) -> Conso
         score=snapshot.score,
         qualified=snapshot.qualified,
         **{name: str(getattr(snapshot, name, "") or "") for name in CONTACT_DETAIL_NAMES},
+    )
+
+
+def console_triage_report(report: TriageReport) -> ConsoleTriageReport:
+    return ConsoleTriageReport(
+        id=report.id,
+        session_id=report.session_id,
+        trace_id=report.trace_id,
+        category=report.category,
+        summary=report.summary,
+        evidence=list(report.evidence),
+        suggested_kb_addition=report.suggested_kb_addition,
+        suggested_eval_case=report.suggested_eval_case,
+        severity=report.severity,
+        model=report.model,
+        # ISO 8601 rather than a timestamp, for the reason `console_handover` gives.
+        created_at=report.created_at.isoformat() if report.created_at else None,
     )
 
 
