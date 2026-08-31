@@ -95,6 +95,17 @@ def get_logger(name: str) -> logging.Logger:
 
 
 @contextmanager
+def session_context(session_id: str) -> Iterator[None]:
+    """Bind the Session id for the rest of the request, once it is known — a Turn is streamed
+    long after the middleware has bound the request id."""
+    token = _session_id.set(session_id)
+    try:
+        yield
+    finally:
+        _session_id.reset(token)
+
+
+@contextmanager
 def request_context(request_id: str, session_id: str | None = None) -> Iterator[None]:
     """Bind correlation ids for the duration of one request, then restore what was there."""
     request_token = _request_id.set(request_id)

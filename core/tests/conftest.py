@@ -6,7 +6,14 @@ import pytest
 
 # Every environment variable the Settings model reads. Cleared so a unit test sees the
 # documented defaults rather than whatever the developer's shell happens to export.
-SETTINGS_VARIABLES = ("ENV", "PORT", "LOGLEVEL", "APP_VERSION", "SERVICE_NAME")
+SETTINGS_VARIABLES = (
+    "ENV",
+    "PORT",
+    "LOGLEVEL",
+    "APP_VERSION",
+    "SERVICE_NAME",
+    "MODEL_PROVIDER",
+)
 
 
 @pytest.fixture
