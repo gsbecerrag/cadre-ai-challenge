@@ -21,6 +21,7 @@ from dataclasses import dataclass, field
 from typing import Protocol
 
 from core.auth import StrategistIdentity
+from core.handover import LeadSnapshot
 from core.provider import ModelMessage
 
 # The Contact Details a Lead carries, kept raw: a tokenised email is a Lead no Strategist can
@@ -61,6 +62,20 @@ class Lead:
             for name in CONTACT_DETAIL_NAMES
             if (value := str(getattr(self, name, "") or "").strip())
         }
+
+
+def lead_snapshot(lead: Lead) -> LeadSnapshot:
+    """The Lead as it stands, copied onto a Handover Request.
+
+    The one place the two shapes are mapped, so a Contact Detail added to the Lead is a field
+    a Strategist sees on the request rather than one that silently stops travelling.
+    """
+    return LeadSnapshot(
+        signals=dict(lead.signals),
+        score=lead.score,
+        qualified=lead.qualified,
+        **{name: str(getattr(lead, name, "") or "") for name in CONTACT_DETAIL_NAMES},
+    )
 
 
 class ConversationStore(Protocol):
