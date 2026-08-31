@@ -9,8 +9,15 @@ from starlette.staticfiles import StaticFiles
 from starlette.types import Scope
 
 INDEX_FILE = "index.html"
-ASSETS_PREFIX = "assets/"
-API_PREFIX = "api/"
+
+# Path segments the single-page fallback never answers for: a missing bundle and an
+# unregistered API route are 404s, not client-side routes.
+SERVER_OWNED_ROOTS = ("assets", "api")
+
+
+def _is_server_owned(path: str) -> bool:
+    root, _, _ = path.partition("/")
+    return root in SERVER_OWNED_ROOTS
 
 
 class SinglePageApp(StaticFiles):
@@ -23,7 +30,7 @@ class SinglePageApp(StaticFiles):
             # A missing bundle or an unregistered API route stays a 404: answering with HTML
             # and a 200 would make a broken build, or a typo'd endpoint, look healthy to a
             # client and to an uptime probe, and surface far from its cause.
-            if missing.status_code == 404 and not path.startswith((ASSETS_PREFIX, API_PREFIX)):
+            if missing.status_code == 404 and not _is_server_owned(path):
                 return await super().get_response(INDEX_FILE, scope)
             raise
 

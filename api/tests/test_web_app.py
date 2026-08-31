@@ -48,3 +48,10 @@ def test_an_unknown_api_path_is_not_answered_with_the_page(client: TestClient) -
     response = client.get("/api/not-a-route")
 
     assert response.status_code == 404
+
+
+def test_the_bare_api_path_is_not_answered_with_the_page(client: TestClient) -> None:
+    """`/api` is an API path with no route, not a client-side route of the single-page app."""
+    response = client.get("/api")
+
+    assert response.status_code == 404

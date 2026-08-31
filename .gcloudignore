@@ -24,3 +24,6 @@ __pycache__/
 .env.*
 
 *.md
+# ...except the Knowledge Base, which *is* markdown and ships in the image (ADR-0001).
+!knowledge/*.md
+knowledge/README.md

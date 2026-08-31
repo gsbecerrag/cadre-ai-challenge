@@ -76,11 +76,19 @@ make build-web  # build web/dist so the API can serve it
 make deploy     # gcloud run deploy --source . to cadre-support-agent in us-central1, then curl the health endpoint
 ```
 
-One test: `uv run pytest api/tests/test_healthz.py::test_healthz_names_the_service_and_version`, or `cd web && pnpm vitest run src/App.test.tsx`.
+One test: `uv run pytest api/tests/test_chat.py::test_a_turn_streams_the_answer_as_text_deltas_and_ends_with_usage`, or `cd web && pnpm vitest run src/chat/reducer.test.ts`.
 
-Layout: `api/` (FastAPI), `web/` (React + Vite + Tailwind), `core/` (shared config, logging, and later the seams and redaction), `knowledge/`, `evals/`, `functions/` (Triage Agent). One root `pyproject.toml` covers `api` and `core` — one lockfile, one venv, one install step in the container.
+Layout: `api/` (FastAPI), `web/` (React + Vite + Tailwind; the chat widget is `web/src/chat/`), `core/` (config, logging, the seams and their pure logic), `core/adapters/` (one implementation per seam — third-party SDKs are imported only here), `knowledge/` (the Knowledge Base topics), `evals/`, `functions/` (Triage Agent). One root `pyproject.toml` covers `api` and `core` — one lockfile, one venv, one install step in the container.
 
 Architecture: **one Cloud Run container** serves the API and the built SPA from the same origin (ADR-0003), so there is no CORS and one deploy. `api/main.py` is the composition root: it loads settings, configures logging, adds the request-id middleware, registers routes, then mounts `web/dist` at `/` with a single-page fallback — routes are registered before the mount, so the API always wins. Configuration is typed in `core/config.py`, read from environment variables with `.env.example` as the schema; nothing reads a dotenv (the container gets real variables, `make dev` passes `--env-file` to uv). Logging is `core/logging.py`: one JSON object per line with `severity`, `message`, `timestamp`, `request_id` and `session_id` when known — `print` is a lint error.
+
+**One chat Turn** (ADR-0004): `POST /api/chat` takes `{"message": ...}` and answers `text/event-stream`. `core/turn.py` is the whole loop — load the Session from the `ConversationStore`, apply the single pre-model/pre-store hook to the Visitor message, assemble the prompt with the cached Knowledge Base block first, call the `ModelProvider` with the tool definitions, run tool calls in code, feed the results back, at most four iterations, then a graceful stop. Events on the wire: `text`, `tool`, `card`, `escalation`, `offer`, `handover`, `done` (trace id and usage), `error` (a user-safe message, never the provider's words). Framing is `core/sse.py`; the payload shapes are `core/events.py`; the browser reads them with `fetch` + `ReadableStream` in `web/src/chat/useChat.ts`, because `EventSource` cannot POST.
+
+**Seams** (ADR-0003): interfaces in `core/` (`ModelProvider`, `ConversationStore`, `KnowledgeSource`), implementations in `core/adapters/`. Today: the scriptable `StubModelProvider` (canned text, a tool call, usage or a mid-stream error keyed by the last Visitor message), the `InMemoryConversationStore`, and `FileKnowledgeSource` over `knowledge/*.md`. `MODEL_PROVIDER=stub` is the default, so `make dev` runs the whole Assistant with no API key; OpenRouter and Firestore arrive in ticket 03.
+
+**Knowledge Base and prompt** (ADR-0001): every heading in `knowledge/*.md` compiles to a KB Section addressed `topic#heading-slug`; the block is byte-stable and goes into the cached prefix, assembled by `core/prompt.py` in the spec's fixed order with volatile content (today's date) after the cache breakpoint. The Assistant cites `[topic#heading]` inline and the widget lifts those markers into citation chips.
+
+**Session:** an opaque server-issued id in the HTTP-only `cadre_session` cookie (`api/session.py`); the store is keyed by it, so one Visitor's history can never reach another's.
 
 Note on health checks: `/healthz` exists and is tested, but Google's frontend answers that exact path on `*.run.app` before the request reaches the container, so the deployed service is probed at `/api/healthz` (the same handler).
 

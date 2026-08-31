@@ -14,6 +14,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 Environment = Literal["development", "production"]
 LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
+ModelProviderName = Literal["stub", "openrouter"]
 
 # Variables that must be present before the app may start. Only the variables the selected
 # providers actually need belong here; the scaffold selects none, so it is empty. Later
@@ -35,6 +36,9 @@ class Settings(BaseSettings):
     loglevel: LogLevel = "INFO"
     service_name: str = "cadre-support-agent"
     app_version: str = "0.1.0"
+    # Which implementation sits behind the `ModelProvider` seam. `stub` costs nothing and
+    # needs no key, which is what CI, the load smoke test and a local demo run on.
+    model_provider: ModelProviderName = "stub"
 
 
 def load_settings(
