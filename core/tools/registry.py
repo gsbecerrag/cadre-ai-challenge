@@ -11,7 +11,10 @@ from dataclasses import dataclass
 from typing import Any
 
 from core.events import ChatEvent
+from core.logging import get_logger
 from core.provider import ToolCall, ToolDefinition
+
+logger = get_logger("tools")
 
 
 @dataclass(frozen=True)
@@ -45,5 +48,8 @@ class ToolRegistry:
             return ToolOutcome(result=f"There is no tool named {call.name!r}.")
         try:
             return tool.run(call.arguments)
-        except (KeyError, TypeError, ValueError) as rejected:
+        except Exception as rejected:
+            # Broad on purpose: whatever a tool manages to raise, the Visitor's Turn carries
+            # on. The traceback goes to the log, and the model gets something it can act on.
+            logger.exception("Tool call failed", extra={"tool": call.name})
             return ToolOutcome(result=f"The call to {call.name!r} was rejected: {rejected}")

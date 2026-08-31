@@ -1,7 +1,10 @@
 """The Knowledge Base compiler — seam S2."""
 
 from core.adapters.knowledge_files import FileKnowledgeSource
+from core.adapters.stub_demo_script import demo_fallback, demo_scripts
+from core.citations import CITATION_PATTERN
 from core.knowledge import compile_knowledge_base, compile_topic, render_knowledge_block
+from core.provider import TextDelta, ToolCall
 
 SERVICES = """\
 # Services
@@ -77,3 +80,22 @@ def test_the_authored_topics_compile_to_the_ids_the_assistant_cites() -> None:
     ids = {section.id for section in sections}
     assert {"services#what-cadre-does", "industries#industries-cadre-serves"} <= ids
     assert all(section.body for section in sections if section.level > 1)
+
+
+def test_every_id_the_demo_script_cites_resolves_to_a_kb_section() -> None:
+    """`make dev` renders a citation chip for every marker the demo script writes. A renamed
+    heading has to fail here rather than ship a chip that points at nothing."""
+    ids = {section.id for section in compile_knowledge_base(FileKnowledgeSource().documents())}
+
+    cited: set[str] = set()
+    for script in [*demo_scripts().values(), demo_fallback()]:
+        for response in script:
+            for event in response:
+                if isinstance(event, TextDelta):
+                    cited |= set(CITATION_PATTERN.findall(event.text))
+                elif isinstance(event, ToolCall):
+                    for argument in event.arguments.values():
+                        cited |= set(CITATION_PATTERN.findall(str(argument)))
+
+    assert cited, "the demo script cites nothing, so this guard proves nothing"
+    assert cited <= ids

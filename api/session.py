@@ -2,8 +2,14 @@
 
 A Session is anonymous — no account, no personal data in the cookie, nothing a browser script
 can read. The id is the key of the `ConversationStore` and, from ticket 03, a Firestore
-document id, so an id that arrives from a client is only honoured if it still looks like one we
-issued; anything else earns a fresh Session rather than a lookup of someone else's.
+document id, so an incoming cookie is checked for *shape* before it is used as one: a
+well-formed opaque id is accepted, anything else earns a fresh Session.
+
+That is a check on form, not on issuance — the cookie is unsigned, so a client can mint a
+well-formed id and read the Session it names. Nothing in a Session is private today (the
+Assistant answers the same public Knowledge Base to everyone) but this stops being enough as
+soon as a Lead is attached to one. Signing arrives with ticket 03, which is where the
+`SESSION_COOKIE_SECRET` in `.env.example` is for.
 """
 
 import re

@@ -5,6 +5,10 @@
  * POST with the Visitor's message in the body. So the stream is read by hand — chunks are
  * decoded, split on the blank line that ends a frame, and parsed into the same `ChatEvent`
  * union the server writes.
+ *
+ * This reader assumes exactly the framing `core/sse.py` produces: frames separated by a blank
+ * line, one single-line `data: ` field carrying JSON, LF endings, no `id:` or `retry:` fields
+ * and no multi-line payloads. Change the framing there and change it here in the same commit.
  */
 
 import type { ChatEvent } from './types'

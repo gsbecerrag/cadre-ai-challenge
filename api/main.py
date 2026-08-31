@@ -87,7 +87,6 @@ def create_app(
 
     app = FastAPI(title="Cadre AI Support Agent", version=resolved.app_version)
     app.state.settings = resolved
-    app.state.turn_runner = runner
     app.add_middleware(RequestContextMiddleware)
     app.include_router(create_health_router(resolved))
     # Google's frontend answers `/healthz` on *.run.app itself and the request never reaches
