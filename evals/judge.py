@@ -17,6 +17,7 @@ fails the case and says what came back, because a judge that cannot be read is n
 that an answer was good.
 """
 
+import asyncio
 import json
 import re
 from collections.abc import AsyncIterator, Sequence
@@ -54,11 +55,16 @@ CORRECTNESS_INSTRUCTION = """\
 Grade CORRECTNESS.
 
 The golden answer is what the Knowledge Base says about the Visitor's question. Pass when the
-Assistant's answer states the same facts as the golden answer, in any wording, any order and
-any language, and adds no fact the golden answer does not carry. Paraphrase, a shorter answer,
-citation markers in square brackets, and a follow-up question to the Visitor are all fine and
-none of them is a failure. Fail when a fact is wrong, when a fact the golden answer carries is
-missing, or when the answer states something the golden answer does not.
+Assistant's answer carries the facts of the golden answer, in any wording, any order and any
+language. Paraphrase, a different structure, a shorter answer, citation markers in square
+brackets and a follow-up question to the Visitor are all fine, and none of them is a failure.
+
+Extra facts are NOT a failure. The golden answer is a floor, not a ceiling: the Assistant reads
+the whole Knowledge Base and may add related detail the golden answer left out. Whether an extra
+fact is actually published is a different question, asked by a different grader.
+
+Fail only when a fact the golden answer carries is missing from the answer, or when the answer
+contradicts the golden answer - a different number, a different name, the opposite claim.
 
 Visitor question:
 {question}
@@ -86,6 +92,10 @@ The Assistant's answer:
 {answer}"""
 
 NO_SECTIONS = "(the answer cited no KB Section)"
+
+# Same shape as the runner's retry on a rate-limited Turn, for the same reason.
+DEFAULT_ATTEMPTS = 3
+RETRY_PAUSE_SECONDS = 20.0
 
 _JSON_OBJECT = re.compile(r"\{.*\}", re.DOTALL)
 _TRUE_WORDS = frozenset({"true", "yes", "pass", "passed", "1"})
@@ -142,13 +152,29 @@ def groundedness_instruction(sections: Sequence[KBSection], answer: str) -> str:
 class ModelJudge:
     """A `Judge` backed by a `ModelProvider`. One provider call per verdict, no history."""
 
-    def __init__(self, provider: ModelProvider, *, model: str = "") -> None:
+    def __init__(
+        self, provider: ModelProvider, *, model: str = "", attempts: int = DEFAULT_ATTEMPTS
+    ) -> None:
         self._provider = provider
+        self._attempts = max(1, attempts)
         self.model = model
         self.usage = Usage()
         self.calls = 0
 
     async def rule(self, instruction: str) -> Verdict:
+        """One verdict, retried while the provider says the failure is worth retrying.
+
+        A judge that was rate-limited is not evidence about the answer it never read, and on a
+        new OpenRouter account seventy judge calls will meet the twenty-a-minute limit.
+        """
+        for attempt in range(1, self._attempts + 1):
+            verdict, retryable = await self._attempt(instruction)
+            if not retryable or attempt == self._attempts:
+                return verdict
+            await asyncio.sleep(RETRY_PAUSE_SECONDS * attempt)
+        return verdict
+
+    async def _attempt(self, instruction: str) -> tuple[Verdict, bool]:
         request = ProviderRequest(
             prompt=SystemPrompt(
                 cached_sections=(("judge", JUDGE_SYSTEM),), volatile=JUDGE_VOLATILE
@@ -164,15 +190,19 @@ class ModelJudge:
                     self.usage = self.usage + event
         except ProviderError as unreachable:
             # A judge that could not be reached is not a verdict against the Assistant, but it
-            # is not a pass either: the case fails and says the judge is why.
-            logger.error(
+            # is not a pass either: once the retries are spent the case fails and says the
+            # judge is why, rather than passing on an answer nobody graded.
+            logger.warning(
                 "The judge could not be reached", extra={"provider_error": unreachable.detail}
             )
-            return Verdict(
-                passed=False, reason=f"the judge could not be reached: {unreachable.detail}"
+            return (
+                Verdict(
+                    passed=False, reason=f"the judge could not be reached: {unreachable.detail}"
+                ),
+                unreachable.retryable,
             )
         self.calls += 1
-        return parse_verdict("".join(deltas))
+        return parse_verdict("".join(deltas)), False
 
     def _stream(self, request: ProviderRequest) -> AsyncIterator[Any]:
         return self._provider.stream(request)

@@ -74,8 +74,20 @@ NO_WEB_DIST = Path(__file__).resolve().parent / "no-web-app"
 EVAL_COOKIE_SECRET = "eval-session-cookie-secret-not-a-real-one"
 EVAL_BASE_URL = "http://evals.invalid"
 
-DEFAULT_CONCURRENCY = 4
+# Two at a time, not four: a Trap Question is two provider calls (the tool round-trip) and
+# a judged case adds one or two more on the judge's own model, so four in flight is well
+# past the twenty requests a minute a new OpenRouter account gets. `--concurrency` raises it
+# on an account with a real tier.
+DEFAULT_CONCURRENCY = 2
 DEFAULT_JUDGE_MODEL = "anthropic/claude-haiku-4.5"
+# How many times a case is run before its failure is believed, and how long the first wait
+# is (it grows by that much each attempt). OpenRouter limits a new account to twenty
+# requests a minute per model, and a run of fifty cases will reach it.
+DEFAULT_ATTEMPTS = 3
+RETRY_PAUSE_SECONDS = 20.0
+# The floor on how often a case may start, which is what actually holds the run under a
+# per-minute limit: concurrency alone does not, because a fast case frees its slot at once.
+DEFAULT_PACE_SECONDS = 3.0
 
 # What the stub provider puts in an Escalation's `next_step`. It is a published route
 # (`contact#how-to-reach-cadre`) because `escalate` refuses a call with no next step at all,
@@ -357,6 +369,51 @@ async def run_case(case: EvalCase, harness: Harness) -> TurnResult:
     )
 
 
+class Pacer:
+    """A floor on how often a case may start. Not a token bucket: the run is fifty cases long
+    and the only thing that has to hold is the average, so one lock and a clock is enough."""
+
+    def __init__(self, seconds: float) -> None:
+        self._seconds = max(0.0, seconds)
+        self._lock = asyncio.Lock()
+        self._last = 0.0
+
+    async def wait(self) -> None:
+        if not self._seconds:
+            return
+        async with self._lock:
+            now = asyncio.get_running_loop().time()
+            due = self._last + self._seconds
+            if now < due:
+                await asyncio.sleep(due - now)
+            self._last = asyncio.get_running_loop().time()
+
+
+async def run_case_until_answered(
+    case: EvalCase, harness: Harness, attempts: int = DEFAULT_ATTEMPTS
+) -> TurnResult:
+    """The case, retried from a fresh Session while the Turn ends in a provider failure.
+
+    A Turn that ends in an `error` event produced no answer at all, so grading it measures the
+    provider's rate limiter rather than the Assistant — and on a new OpenRouter account that
+    limiter is twenty requests a minute per model, which fifty cases will reach. The Turn loop
+    deliberately does not retry (a Visitor gets one honest failure, ADR-0004), so the retry
+    belongs here, in the harness that can afford to wait, and nowhere near the request path.
+    """
+    result = await run_case(case, harness)
+    for attempt in range(1, attempts):
+        if not result.error:
+            return result
+        pause = RETRY_PAUSE_SECONDS * attempt
+        logger.warning(
+            "Retrying an Eval Case after a provider failure",
+            extra={"eval_case": case.id, "attempt": attempt, "pause_seconds": pause},
+        )
+        await asyncio.sleep(pause)
+        result = await run_case(case, harness)
+    return result
+
+
 def run_case_against_stub(case: EvalCase) -> TurnResult:
     """One deterministic Eval Case, driven through a freshly wired Assistant with the stub
     provider scripted from the case. Synchronous, because pytest is."""
@@ -405,15 +462,19 @@ async def run_suite(
     model: str,
     judge_model: str,
     concurrency: int = DEFAULT_CONCURRENCY,
+    attempts: int = DEFAULT_ATTEMPTS,
+    pace_seconds: float = DEFAULT_PACE_SECONDS,
 ) -> Scorecard:
     """Every case, at most `concurrency` in flight. One Session each, one score each."""
     started = _now()
     gate = asyncio.Semaphore(concurrency)
+    pacer = Pacer(pace_seconds)
 
     async def one(case: EvalCase) -> CaseScore:
         async with gate:
+            await pacer.wait()
             try:
-                result = await run_case(case, harness)
+                result = await run_case_until_answered(case, harness, attempts)
             # Broad on purpose: one Eval Case that crashes is one failing row in the
             # scorecard, not a run of forty-nine other cases thrown away.
             except Exception as failed:
@@ -509,6 +570,18 @@ def parse_arguments(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--kind", choices=("in_kb", "trap", "qualification"), help="one kind only")
     parser.add_argument("--limit", type=int, default=0, help="run only the first N cases")
     parser.add_argument("--concurrency", type=int, default=DEFAULT_CONCURRENCY)
+    parser.add_argument(
+        "--attempts",
+        type=int,
+        default=DEFAULT_ATTEMPTS,
+        help="how many times a case is run before a provider failure is believed",
+    )
+    parser.add_argument(
+        "--pace",
+        type=float,
+        default=DEFAULT_PACE_SECONDS,
+        help="minimum seconds between the start of one case and the next",
+    )
     parser.add_argument("--reports", type=Path, default=REPORTS_DIRECTORY)
     parser.add_argument("--no-report", action="store_true", help="print, do not write JSON")
     return parser.parse_args(argv)
@@ -550,6 +623,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 model=settings.chat_model,
                 judge_model=judge_model,
                 concurrency=arguments.concurrency,
+                attempts=arguments.attempts,
+                pace_seconds=arguments.pace,
             )
         )
 
