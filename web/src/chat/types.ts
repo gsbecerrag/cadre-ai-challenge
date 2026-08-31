@@ -6,6 +6,8 @@
  * the reducer derives from it uses the app's own camelCase.
  */
 
+import type { Language } from './strings'
+
 export interface Usage {
   input_tokens: number
   output_tokens: number
@@ -20,10 +22,24 @@ export interface KBSectionTitle {
   topic: string
 }
 
+/**
+ * Where a Walkthrough Card's call to action goes, resolved by the server from a destination
+ * id (`core/tools/walkthroughs.py`). The browser links where it was told to rather than
+ * working an id out — and `external` is the difference the Visitor feels: a Portal route is a
+ * client-side navigation that leaves the chat panel and its transcript mounted, an external
+ * link opens in a new tab.
+ */
+export interface CardDestination {
+  id: string
+  label: string
+  href: string
+  external: boolean
+}
+
 export interface WalkthroughCard {
   title: string
   steps: string[]
-  destination: string
+  destination: CardDestination
   citations: string[]
 }
 
@@ -33,7 +49,15 @@ export type ChatEvent =
   | { event: 'card'; data: WalkthroughCard }
   | {
       event: 'escalation'
-      data: { title: string; body: string; next_step: string; citations: string[] }
+      data: {
+        title: string
+        body: string
+        next_step: string
+        citations: string[]
+        /** The language the Escalation copy was looked up in; absent on an Escalation that
+         * did not name one, which then follows the widget's own EN/ES toggle. */
+        language?: Language
+      }
     }
   | { event: 'offer'; data: { request_id: string; prompt: string } }
   | { event: 'handover'; data: { request_id: string; state: string; mode: 'video' | 'callback' } }
@@ -70,6 +94,17 @@ export interface EscalationMessage {
   body: string
   nextStep: string
   citations: string[]
+  language?: Language
+}
+
+export interface WalkthroughMessage {
+  id: string
+  kind: 'walkthrough'
+  role: 'assistant'
+  title: string
+  steps: string[]
+  destination: CardDestination
+  citations: string[]
 }
 
 export interface ErrorMessage {
@@ -79,7 +114,12 @@ export interface ErrorMessage {
   text: string
 }
 
-export type Message = TextMessage | TypingMessage | EscalationMessage | ErrorMessage
+export type Message =
+  | TextMessage
+  | TypingMessage
+  | EscalationMessage
+  | WalkthroughMessage
+  | ErrorMessage
 
 export interface ChatState {
   messages: Message[]

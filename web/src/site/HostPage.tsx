@@ -1,5 +1,7 @@
 import { Link } from 'react-router-dom'
 
+import { OPEN_CHAT_EVENT } from '../chat/ChatWidget'
+
 const CADRE_LOGO_URL =
   'https://cdn.prod.website-files.com/6910dd217f94a50bd2e308d3/6910e3a5178f856fe5289ae1_Cadre_AI_Logo_Web.svg'
 
@@ -23,12 +25,12 @@ const VALUE_CARDS = [
 const PARTNERS = ['OpenAI', 'Anthropic', 'Microsoft', 'Snowflake', 'Salesforce', 'AWS', 'Meta']
 
 /**
- * Dispatched by every "Talk to an AI Strategist" control on this page. Ticket 02's chat
- * widget listens for this event to open the launcher — the widget itself is out of scope
- * here (see the mount point left in App.tsx).
+ * Dispatched by every "Talk to an AI Strategist" control on this page; the chat widget
+ * listens for it and opens. The name is the widget's own constant rather than a literal, so
+ * the two cannot drift apart.
  */
 function openChat() {
-  window.dispatchEvent(new CustomEvent('cadre:open-chat'))
+  window.dispatchEvent(new CustomEvent(OPEN_CHAT_EVENT))
 }
 
 /**

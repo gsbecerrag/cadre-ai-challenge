@@ -71,9 +71,29 @@ function reduceEvent(state: ChatState, event: ChatEvent): ChatState {
         body: event.data.body,
         nextStep: event.data.next_step,
         citations: event.data.citations,
+        language: event.data.language,
       }
       // A card closes the bubble that was streaming, so text after it starts a new one.
       return nextState(state, [...withoutTyping(state.messages), escalation], {
+        seq: state.seq + 1,
+        streamingId: null,
+      })
+    }
+
+    case 'card': {
+      const id = `m${state.seq + 1}`
+      const walkthrough: Message = {
+        id,
+        kind: 'walkthrough',
+        role: 'assistant',
+        title: event.data.title,
+        steps: event.data.steps,
+        destination: event.data.destination,
+        citations: event.data.citations,
+      }
+      // Same as an Escalation: the card closes the bubble that was streaming, so the text
+      // that follows it starts a new one rather than growing around the card.
+      return nextState(state, [...withoutTyping(state.messages), walkthrough], {
         seq: state.seq + 1,
         streamingId: null,
       })
@@ -91,8 +111,8 @@ function reduceEvent(state: ChatState, event: ChatEvent): ChatState {
     case 'error':
       return failed(state, event.data.message)
 
-    // `card`, `offer` and `handover` are part of the contract but nothing emits them yet:
-    // ticket 08 fills in the Walkthrough Card, ticket 11 the Hand-over offer and its states.
+    // `offer` and `handover` are part of the contract but nothing emits them yet: ticket 11
+    // fills in the Hand-over offer and its states.
     default:
       return state
   }

@@ -305,6 +305,7 @@ def run_escalate(arguments: Mapping[str, Any]) -> ToolOutcome:
                 body=body,
                 next_step=next_step,
                 citations=tuple(dict.fromkeys(body_citations + next_step_citations)),
+                language=language,
             ),
         ),
     )

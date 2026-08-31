@@ -2,8 +2,12 @@
 
 This is the contract the chat widget's reducer reduces. Every event the spec names exists here
 from the start, even where the Turn cannot emit it yet, so that the reducer, the API and the
-later tickets are all written against one shape: `card` is filled in by ticket 08, `offer` and
-`handover` by ticket 11, and `done.trace_id` stops being null in ticket 06.
+later tickets are all written against one shape: `offer` and `handover` are filled in by
+ticket 11, and `done.trace_id` stops being null in ticket 06.
+
+`card` was declared by ticket 02 with nothing to emit it; ticket 08 gives it its first real
+definition, and `destination` becomes the resolved link rather than a bare id — the browser
+cannot look an id up, and nothing else in the app should have to.
 """
 
 from collections.abc import Mapping, Sequence
@@ -45,19 +49,41 @@ def tool_event(name: str, status: ToolStatus) -> ChatEvent:
     return ChatEvent("tool", {"name": name, "status": status})
 
 
+@dataclass(frozen=True)
+class CardDestination:
+    """Where a Walkthrough Card's call to action takes the Visitor.
+
+    Resolved on the server from an id in the destination catalogue (`core/tools/walkthroughs`),
+    so the browser renders a link it was given rather than one it worked out, and the Assistant
+    can only ever name a destination that exists. `external` splits the two behaviours the
+    Visitor can see: a Portal route is a client-side navigation that leaves the chat panel
+    mounted, an external link opens in a new tab.
+    """
+
+    id: str
+    label: str
+    href: str
+    external: bool
+
+
 def card_event(
     title: str,
     steps: Sequence[str],
-    destination: str,
+    destination: CardDestination,
     citations: Sequence[str] = (),
 ) -> ChatEvent:
-    """A Walkthrough Card: the steps and the destination. Ticket 08 emits it."""
+    """A Walkthrough Card: the steps and the resolved destination."""
     return ChatEvent(
         "card",
         {
             "title": title,
             "steps": list(steps),
-            "destination": destination,
+            "destination": {
+                "id": destination.id,
+                "label": destination.label,
+                "href": destination.href,
+                "external": destination.external,
+            },
             "citations": list(citations),
         },
     )
@@ -68,17 +94,24 @@ def escalation_event(
     body: str,
     next_step: str,
     citations: Sequence[str] = (),
+    language: str | None = None,
 ) -> ChatEvent:
-    """An Escalation: what is known, what cannot be confirmed, one concrete next step."""
-    return ChatEvent(
-        "escalation",
-        {
-            "title": title,
-            "body": body,
-            "next_step": next_step,
-            "citations": list(citations),
-        },
-    )
+    """An Escalation: what is known, what cannot be confirmed, one concrete next step.
+
+    `language` is the language the copy was looked up in. It is on the wire because the card's
+    own chrome — the "Next step:" label — belongs to the card, not to the widget: a Spanish
+    refusal under an English label reads as a bug the Assistant made. It is optional, so an
+    Escalation raised without a language still renders under the widget's own toggle.
+    """
+    payload: dict[str, Any] = {
+        "title": title,
+        "body": body,
+        "next_step": next_step,
+        "citations": list(citations),
+    }
+    if language is not None:
+        payload["language"] = language
+    return ChatEvent("escalation", payload)
 
 
 def offer_event(request_id: str, prompt: str) -> ChatEvent:

@@ -175,6 +175,50 @@ GUARANTEE_ESCALATION = _escalation(
     ),
 )
 
+PORTAL_WALKTHROUGH_INTRO = (
+    "Here's where that lives — the Portal tracks tools, agents, training, and results "
+    "[portal#what-the-portal-tracks]:"
+)
+
+PORTAL_WALKTHROUGH = ToolCall(
+    id="demo-walkthrough-portal",
+    name="show_walkthrough",
+    arguments={
+        "title": "See your agents' results in the Portal",
+        "steps": [
+            "Open the Cadre Portal from the link your Cadre contact gave you "
+            "[portal#how-to-access-the-portal]",
+            "Go to Agents in the left menu",
+            "Pick an agent to see its runs, hours saved and status",
+        ],
+        "destination": "portal.agents",
+    },
+)
+
+MATURITY_WALKTHROUGH_INTRO = (
+    "There's no self-serve quiz — the only published route to a score is to talk to Cadre "
+    "[maturity-index#how-to-get-scored]:"
+)
+
+# The counterpart to the Portal card, and the one the demo exists to show: a process that
+# starts with a Strategist has no page, so the card goes to the published contact form rather
+# than to a scoring screen that does not exist.
+MATURITY_WALKTHROUGH = ToolCall(
+    id="demo-walkthrough-maturity",
+    name="show_walkthrough",
+    arguments={
+        "title": "Get scored on the AI Maturity Index",
+        "steps": [
+            "Tell Cadre about your company through the contact form "
+            "[maturity-index#how-to-get-scored]",
+            "A strategist scores you across the eight-pillar framework, with a grade in each "
+            "area [maturity-index#what-the-ai-maturity-index-is]",
+            "You get the grades back with actionable insights on how to improve",
+        ],
+        "destination": "maturity.get-scored",
+    },
+)
+
 UNKNOWN_ESCALATION = _escalation(
     "demo-escalate-unknown",
     "not_in_knowledge_base",
@@ -182,20 +226,29 @@ UNKNOWN_ESCALATION = _escalation(
 )
 
 
-def _streamed(answer: str) -> list[StubEvent]:
+def _deltas(answer: str) -> list[StubEvent]:
     """Chunk an answer the way a model streams one, so the demo shows text arriving."""
     words = answer.split(" ")
-    deltas: list[StubEvent] = [
+    return [
         TextDelta(" ".join(words[start : start + WORDS_PER_DELTA]) + " ")
         for start in range(0, len(words), WORDS_PER_DELTA)
     ]
-    return [*deltas, DEMO_USAGE]
+
+
+def _streamed(answer: str) -> list[StubEvent]:
+    return [*_deltas(answer), DEMO_USAGE]
 
 
 def _after(escalation: ToolCall, closing: str) -> list[StubResponse]:
     """A Turn that escalates and then carries on talking, which is what the prompt asks for:
     an Escalation is not the end of the conversation."""
     return [[escalation], _streamed(closing)]
+
+
+def _walkthrough(intro: str, card: ToolCall, closing: str) -> list[StubResponse]:
+    """The reference flow from the design artboard: a short cited sentence, then the card.
+    Nothing repeats the steps afterwards — once the card is shown, they have been said."""
+    return [[*_deltas(intro), card], _streamed(closing)]
 
 
 def demo_scripts() -> dict[str, Sequence[StubResponse]]:
@@ -215,6 +268,11 @@ def demo_scripts() -> dict[str, Sequence[StubResponse]]:
         "maturity": [_streamed(MATURITY_ANSWER)],
         "security": [_streamed(SECURITY_ANSWER)],
         "results": [_streamed(PORTAL_ANSWER)],
+        # Walkthrough Cards. Both triggers are narrower than the grounded answers above, and
+        # the stub matches the longest one, so "what is the Maturity Index" still reads as
+        # prose while "how do I get scored" gets the card.
+        "my agents": _walkthrough(PORTAL_WALKTHROUGH_INTRO, PORTAL_WALKTHROUGH, anything_else),
+        "get scored": _walkthrough(MATURITY_WALKTHROUGH_INTRO, MATURITY_WALKTHROUGH, anything_else),
         # Trap Questions.
         "cost": _after(PRICING_ESCALATION, anything_else),
         "price": _after(PRICING_ESCALATION, anything_else),

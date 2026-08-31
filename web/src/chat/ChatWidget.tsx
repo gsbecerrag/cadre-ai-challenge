@@ -27,6 +27,14 @@ const EXPANDED = 'inset-5'
  */
 export const OPEN_CHAT_EVENT = 'cadre:open-chat'
 
+/**
+ * A Walkthrough Card's call to action, announced the same way and for the opposite reason: the
+ * widget is mounted outside the router (see `App.tsx`), so it cannot navigate itself. The
+ * listener in `web/src/routes.tsx` does the navigation and the panel stays exactly as it is —
+ * open, with the whole transcript still in it. The detail is `{ href }`.
+ */
+export const NAVIGATE_EVENT = 'cadre:navigate'
+
 const LANGUAGES: Language[] = ['en', 'es']
 
 export function ChatWidget() {
@@ -93,6 +101,13 @@ export function ChatWidget() {
     setDraft('')
     void send(text)
   }, [send])
+
+  const followCard = useCallback((href: string) => {
+    // Expanded, the panel covers the page the card is opening, so it docks itself first —
+    // as the artboard's `openPortalFromChat` does.
+    setExpanded(false)
+    window.dispatchEvent(new CustomEvent(NAVIGATE_EVENT, { detail: { href } }))
+  }, [])
 
   function submitQuickReply(id: string, label: string) {
     setUsedQuickReplies([...usedQuickReplies, id])
@@ -185,6 +200,7 @@ export function ChatWidget() {
             typingLabel={chrome.typing}
             nextStepLabel={chrome.nextStep}
             sectionTitles={state.sections}
+            onNavigate={followCard}
           />
         ))}
       </div>
