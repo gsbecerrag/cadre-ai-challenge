@@ -368,6 +368,23 @@ describe('the chat reducer', () => {
     expect(shared.messages[5]).toMatchObject({ kind: 'callback', lead: JANE })
   })
 
+  it('confirms the Callback once, however many times the details card is submitted', () => {
+    // A double-pressed "Share details", or a retried request, must not leave the Visitor
+    // looking at two Callback confirmations for one Callback.
+    const asked = chatReducer(offered(), {
+      type: 'handover',
+      state: 'pending_strategist',
+      mode: 'callback',
+      lead: NOBODY_YET,
+    })
+    const shared = chatReducer(asked, { type: 'details_shared', lead: JANE })
+
+    const again = chatReducer(shared, { type: 'details_shared', lead: JANE })
+
+    expect(again).toBe(shared)
+    expect(again.messages.filter((message) => message.kind === 'callback')).toHaveLength(1)
+  })
+
   it('confirms the Callback straight away when the Lead is already reachable', () => {
     const accepted = chatReducer(offered(), {
       type: 'handover',

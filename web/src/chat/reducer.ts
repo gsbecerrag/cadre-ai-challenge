@@ -200,8 +200,18 @@ function handover(
   })
 }
 
-/** The details card is answered, and the Callback is confirmed with what was typed into it. */
+/**
+ * The details card is answered, and the Callback is confirmed with what was typed into it.
+ *
+ * Once. A card that is already done is a Callback already confirmed, so a double-pressed
+ * "Share details" or a retried request returns the state untouched rather than stacking a
+ * second confirmation under the first — the same rule the offer card's answer follows.
+ */
 function detailsShared(state: ChatState, lead: LeadContact): ChatState {
+  const open = state.messages.some((message) => message.kind === 'details' && !message.done)
+  if (!open) {
+    return state
+  }
   const messages = state.messages.map((message) =>
     message.kind === 'details' && !message.done ? { ...message, done: true, lead } : message,
   )
