@@ -51,7 +51,7 @@ Tickets are the unit of work (one branch, one PR, one TDD-driven subagent run ea
 | **P5 Live video** | 15 Daily.co Live Hand-over, Strategist join/end, Availability gate, `LIVE_HANDOVER_ENABLED` | 2 | Visitor accepts → video call opens inside the chat; Strategist joins from the Console | ⚪ |
 | **P6 If green** | 16 model benchmark · 17 capacity table + 200-VU stub smoke test · 18 in-app navigation · tldraw board | 3.5 | `docs/model-selection.md` with a real table | ⚪ optional |
 | **P7 Honesty pass** | 19 cut log, README, demo script, final deploy | 1 | This file tells the truth | ⚪ |
-| **P8 Scope add (31 Aug)** | 20 Console email/password sign-in for reviewers without a Google account | 0.5 | The demo credentials sign in to the Console | 🟡 |
+| **P8 Scope add (31 Aug)** | 20 Console email/password sign-in for reviewers without a Google account | 0.5 | The demo credentials sign in to the Console | ✅ done — [PR #25](https://github.com/gsbecerrag/cadre-ai-challenge/pull/25) |
 
 **If forced to choose on Monday afternoon:** Triage Agent (P4) beats Live video (P5) — it's the better argument for the observability thesis, and Callback Hand-over still demos.
 
