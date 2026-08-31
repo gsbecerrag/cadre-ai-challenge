@@ -19,7 +19,9 @@ from core.config import LogLevel
 _ROOT_LOGGER_NAME = "cadre"
 
 # Uvicorn's startup and error lines go through its own loggers; they must be JSON too.
-_MANAGED_LOGGER_NAMES = (_ROOT_LOGGER_NAME, "uvicorn", "uvicorn.error")
+# The process root is managed as well, so a third-party library that logs (httpx, asyncio,
+# a Google client) cannot emit a plain-text line that a log store is unable to query.
+_MANAGED_LOGGER_NAMES = ("", _ROOT_LOGGER_NAME, "uvicorn", "uvicorn.error")
 
 # The request middleware is the access log, with the request id and duration on it.
 # Uvicorn's access log is plain text and would break the one-JSON-object-per-line contract.
@@ -47,6 +49,7 @@ class JsonFormatter(logging.Formatter):
             "severity": record.levelname,
             "message": record.getMessage(),
             "timestamp": datetime.fromtimestamp(record.created, tz=UTC).isoformat(),
+            "logger": record.name,
         }
         request_id = getattr(record, "request_id", None) or _request_id.get()
         if request_id:
@@ -77,6 +80,7 @@ def configure_logging(level: LogLevel = "INFO", stream: TextIO | None = None) ->
         _detach_handlers(logger)
         logger.addHandler(handler)
         logger.setLevel(level)
+        # Each managed logger owns the one handler, so a line is written exactly once.
         logger.propagate = False
 
     access_logger = logging.getLogger(_SILENCED_LOGGER_NAME)

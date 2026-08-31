@@ -15,6 +15,7 @@ from core.logging import configure_logging
 
 INDEX_HTML = "<!doctype html><title>Cadre AI</title><div id='root'></div>"
 BUNDLE_JS = "console.log('cadre');"
+APP_LOGGER_PREFIX = "cadre."
 
 LogReader = Callable[[], list[dict[str, Any]]]
 
@@ -42,7 +43,16 @@ def client(settings: Settings, web_dist: Path) -> Iterator[TestClient]:
 
 @pytest.fixture
 def captured_logs(client: TestClient) -> LogReader:
-    """Redirects the app's JSON log lines into a buffer the test can read back."""
+    """The application's own JSON log lines, read back from a buffer.
+
+    Third-party libraries log through the managed root logger too — the test client's own
+    HTTP client narrates every request — so lines are filtered to our loggers by name.
+    """
     stream = io.StringIO()
     configure_logging(level="INFO", stream=stream)
-    return lambda: [json.loads(line) for line in stream.getvalue().splitlines() if line.strip()]
+
+    def read() -> list[dict[str, Any]]:
+        records = [json.loads(line) for line in stream.getvalue().splitlines() if line.strip()]
+        return [record for record in records if record["logger"].startswith(APP_LOGGER_PREFIX)]
+
+    return read

@@ -128,3 +128,27 @@ def test_the_servers_ansi_coloured_duplicate_is_dropped() -> None:
     (record,) = _emitted(stream)
     assert record["message"] == "Started server process [4242]"
     assert "color_message" not in record
+
+
+def test_a_third_party_librarys_line_is_json_too() -> None:
+    """A library that logs through the root logger must not break the one-object-per-line
+    contract: an unformatted line in Cloud Logging is a line nothing can query."""
+    stream = io.StringIO()
+    configure_logging(level="INFO", stream=stream)
+
+    logging.getLogger("httpx").info("HTTP Request: POST /api/chat")
+
+    (record,) = _emitted(stream)
+    assert record["severity"] == "INFO"
+    assert record["message"] == "HTTP Request: POST /api/chat"
+    assert record["logger"] == "httpx"
+
+
+def test_every_line_names_the_logger_that_emitted_it() -> None:
+    stream = io.StringIO()
+    configure_logging(level="INFO", stream=stream)
+
+    get_logger("turn").info("Turn started")
+
+    (record,) = _emitted(stream)
+    assert record["logger"] == "cadre.turn"
