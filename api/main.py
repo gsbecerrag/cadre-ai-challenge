@@ -32,6 +32,7 @@ from core.knowledge import KnowledgeSource, compile_knowledge_base, render_knowl
 from core.logging import configure_logging, get_logger
 from core.prompt import SystemPrompt, build_system_prompt
 from core.provider import ModelProvider
+from core.redaction import refuse
 from core.store import ConversationStore
 from core.tools import default_tools
 from core.turn import TurnRunner
@@ -183,6 +184,9 @@ def create_app(
             conversation_store, qualification_threshold=resolved.qualification_threshold
         ),
         build_prompt=build_prompt,
+        # The one pre-model, pre-store hook: the Refuse Set stops here, at the only place
+        # both the provider call and the Session write can be reached from (ADR-0006).
+        prepare_message=refuse,
         max_turns=resolved.max_turns_per_session,
     )
 

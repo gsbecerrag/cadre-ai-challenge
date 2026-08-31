@@ -124,20 +124,29 @@ def handover_event(request_id: str, state: str, mode: HandoverMode) -> ChatEvent
     return ChatEvent("handover", {"request_id": request_id, "state": state, "mode": mode})
 
 
-def done_event(usage: Usage, trace_id: str | None = None) -> ChatEvent:
-    """The Turn is complete. `trace_id` stays null until Langfuse arrives in ticket 06."""
-    return ChatEvent(
-        "done",
-        {
-            "trace_id": trace_id,
-            "usage": {
-                "input_tokens": usage.input_tokens,
-                "output_tokens": usage.output_tokens,
-                "cached_tokens": usage.cached_tokens,
-                "cost_usd": usage.cost_usd,
-            },
+def done_event(
+    usage: Usage,
+    trace_id: str | None = None,
+    redactions: Mapping[str, int] | None = None,
+) -> ChatEvent:
+    """The Turn is complete. `trace_id` stays null until Langfuse arrives in ticket 06.
+
+    `redactions` is the Turn's redaction manifest — `{category: count}`, never a value — and
+    the key is present only when something was redacted, so a client written against the
+    earlier payload sees exactly the payload it was written against.
+    """
+    data: dict[str, Any] = {
+        "trace_id": trace_id,
+        "usage": {
+            "input_tokens": usage.input_tokens,
+            "output_tokens": usage.output_tokens,
+            "cached_tokens": usage.cached_tokens,
+            "cost_usd": usage.cost_usd,
         },
-    )
+    }
+    if redactions:
+        data["redactions"] = dict(redactions)
+    return ChatEvent("done", data)
 
 
 def error_event(message: str) -> ChatEvent:

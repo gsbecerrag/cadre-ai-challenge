@@ -71,6 +71,15 @@ PORTAL_ANSWER = (
     "accountable, and scale what works” [portal#what-the-portal-is-for]."
 )
 
+# What the demo shows when a Visitor pastes a card: the number never reached the model — the
+# `refuse` Redaction Profile masked it before the Turn called the provider — so the trigger
+# below is the masked form, and the Assistant has nothing to echo even if it wanted to.
+REFUSE_SET_ANSWER = (
+    "That looks like a card number. You don't need to send one — Cadre never asks for a card, "
+    "a government id or a password in chat, it was masked before it reached me, and it has not "
+    "been kept. Now, what can I help you with?"
+)
+
 CONTACT_NEXT_STEP = (
     "Use the contact form at https://www.cadreai.com/contact, write to hello@gocadre.ai, or "
     "call (619) 324-3223 [contact#how-to-reach-cadre]."
@@ -303,6 +312,8 @@ def demo_scripts() -> dict[str, Sequence[StubResponse]]:
         "get scored": _walkthrough(MATURITY_WALKTHROUGH_INTRO, MATURITY_WALKTHROUGH, anything_else),
         # Lead capture: a Contact Detail and an initiative in one message.
         "email is": [[LEAD_CAPTURE], _streamed(LEAD_ACKNOWLEDGEMENT)],
+        # The masked card the redactor leaves behind, so the demo can show the refusal.
+        "**** **** ****": [_streamed(REFUSE_SET_ANSWER)],
         # Trap Questions.
         "cost": _after(PRICING_ESCALATION, anything_else),
         "price": _after(PRICING_ESCALATION, anything_else),
