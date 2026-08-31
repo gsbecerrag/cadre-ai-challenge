@@ -38,3 +38,6 @@ external_assets/
 # answers. The directory and its README stay so a run never has to create them.
 evals/reports/*
 !evals/reports/README.md
+
+# TypeScript build mode leaves this next to tsconfig.json; it is a local cache.
+*.tsbuildinfo
