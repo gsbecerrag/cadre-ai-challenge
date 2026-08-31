@@ -7,10 +7,13 @@ seam.
 
 from collections import defaultdict
 from collections.abc import Sequence
+from dataclasses import replace
+from datetime import UTC, datetime
 
 from core.auth import StrategistIdentity
+from core.handover import HandoverMode, HandoverRequest, HandoverState, LeadSnapshot
 from core.provider import ModelMessage
-from core.store import DEFAULT_LEAD_PAGE, Lead
+from core.store import DEFAULT_HANDOVER_PAGE, DEFAULT_LEAD_PAGE, Lead
 
 
 class InMemoryConversationStore:
@@ -18,6 +21,9 @@ class InMemoryConversationStore:
         self._sessions: defaultdict[str, list[ModelMessage]] = defaultdict(list)
         self._leads: dict[str, Lead] = {}
         self._online: set[str] = set()
+        # Insertion order is "oldest first", which `list_handovers` reverses — the same trick
+        # `list_leads` uses, and what Firestore's `created_at` ordering gives it.
+        self._handovers: dict[str, HandoverRequest] = {}
 
     async def load(self, session_id: str) -> tuple[ModelMessage, ...]:
         return tuple(self._sessions[session_id])
@@ -53,3 +59,44 @@ class InMemoryConversationStore:
 
     async def any_strategist_online(self) -> bool:
         return bool(self._online)
+
+    async def create_handover(self, request: HandoverRequest) -> HandoverRequest:
+        now = datetime.now(tz=UTC)
+        stored = replace(request, created_at=now, updated_at=now)
+        self._handovers[stored.id] = stored
+        return stored
+
+    async def get_handover(self, request_id: str) -> HandoverRequest | None:
+        return self._handovers.get(request_id)
+
+    async def handover_for_session(self, session_id: str) -> HandoverRequest | None:
+        for request in reversed(list(self._handovers.values())):
+            if request.session_id == session_id:
+                return request
+        return None
+
+    async def update_handover(
+        self,
+        request_id: str,
+        state: HandoverState,
+        mode: HandoverMode | None = None,
+        lead: LeadSnapshot | None = None,
+    ) -> HandoverRequest:
+        request = self._handovers[request_id]
+        updated = replace(
+            request,
+            state=state,
+            mode=mode if mode is not None else request.mode,
+            lead=lead if lead is not None else request.lead,
+            updated_at=datetime.now(tz=UTC),
+        )
+        self._handovers[request_id] = updated
+        return updated
+
+    async def list_handovers(
+        self, mode: HandoverMode | None = None, limit: int = DEFAULT_HANDOVER_PAGE
+    ) -> tuple[HandoverRequest, ...]:
+        newest_first = reversed(list(self._handovers.values()))
+        return tuple(request for request in newest_first if mode is None or request.mode == mode)[
+            :limit
+        ]

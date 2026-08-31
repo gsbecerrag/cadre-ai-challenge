@@ -21,13 +21,17 @@ from dataclasses import dataclass, field
 from typing import Protocol
 
 from core.auth import StrategistIdentity
-from core.handover import LeadSnapshot
+from core.handover import HandoverMode, HandoverRequest, HandoverState, LeadSnapshot
 from core.provider import ModelMessage
 
 # The Contact Details a Lead carries, kept raw: a tokenised email is a Lead no Strategist can
 # call back (ADR-0006). These are `capture_lead`'s Contact Detail arguments, in the order the
 # Console shows them.
 CONTACT_DETAIL_NAMES: tuple[str, ...] = ("name", "email", "company", "phone", "role")
+
+# How many Handover Requests the Console asks for at a time. Same reasoning and same number as
+# the Leads page: a work list, not the whole history.
+DEFAULT_HANDOVER_PAGE = 50
 
 # How many Leads the Console asks for at a time. Comfortably more than a demo produces and
 # small enough that the page is one screen of work rather than the whole history.
@@ -129,5 +133,56 @@ class ConversationStore(Protocol):
 
         This is what gates the offer of a Live Hand-over (ticket 11), so it is a question
         about the team and not about whoever has the Console open.
+        """
+        ...
+
+    async def create_handover(self, request: HandoverRequest) -> HandoverRequest:
+        """Write a newly offered Handover Request and return it as stored.
+
+        The returned value carries the timestamps the store minted, because the Console orders
+        its queue by them and the caller has no clock the Console agrees with.
+        """
+        ...
+
+    async def get_handover(self, request_id: str) -> HandoverRequest | None:
+        """One Handover Request by id, or `None`.
+
+        The caller checks that the Session owns it. The id is in a URL the Visitor's browser
+        posts to, so "found" and "yours" are two questions and only the second is authorisation.
+        """
+        ...
+
+    async def handover_for_session(self, session_id: str) -> HandoverRequest | None:
+        """The Session's Handover Request, if it has one.
+
+        At most one per Session by construction: this is what makes the offer of a Hand-over
+        unrepeatable without asking the Assistant to remember anything.
+        """
+        ...
+
+    async def update_handover(
+        self,
+        request_id: str,
+        state: HandoverState,
+        mode: HandoverMode | None = None,
+        lead: LeadSnapshot | None = None,
+    ) -> HandoverRequest:
+        """Move a Handover Request to a state the caller has already validated, and return it.
+
+        The state machine lives in `core.handover`, not here: a store that also decided which
+        moves were legal would be a second copy of the rules, in the one place that cannot be
+        unit-tested without a database. `mode` and `lead` are written only when given — a
+        Callback that later runs out of Strategists is still a Callback, and a Contact Detail
+        the Visitor typed after accepting refreshes the snapshot a Strategist reads.
+        """
+        ...
+
+    async def list_handovers(
+        self, mode: HandoverMode | None = None, limit: int = DEFAULT_HANDOVER_PAGE
+    ) -> tuple[HandoverRequest, ...]:
+        """The Console's page of Handover Requests, newest first.
+
+        `mode` is the filter behind the Callbacks tab: one collection, one type, two views
+        (docs/design/README.md ruling).
         """
         ...

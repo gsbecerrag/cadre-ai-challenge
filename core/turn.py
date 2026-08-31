@@ -111,7 +111,7 @@ class TurnRunner:
                 deltas: list[str] = []
                 tool_calls: list[ToolCall] = []
                 request = ProviderRequest(
-                    prompt, tuple(history), self.tools.definitions, session_id
+                    prompt, tuple(history), await self.tools.definitions_for(session_id), session_id
                 )
 
                 async for event in self.provider.stream(request):

@@ -11,6 +11,8 @@ Layout, per docs/architecture.md:
     sessions/{session_id}/messages/{seq}  sequence, role, content, tool fields, created_at
     leads/{session_id}                    created_at, updated_at, session ref, Contact Details,
                                           signals, score, qualified
+    handover_requests/{request_id}        created_at, updated_at, session ref, session_id,
+                                          state, mode, prompt, trace_id, lead snapshot
     strategists/{uid}                     online, email, name, updated_at
 
 The document id of a message is its zero-padded sequence, and `sequence` is written as a field
@@ -32,15 +34,26 @@ from google.cloud.firestore_v1.async_transaction import AsyncTransaction
 from google.cloud.firestore_v1.base_query import FieldFilter
 
 from core.auth import StrategistIdentity
+from core.handover import HandoverMode, HandoverRequest, HandoverState, LeadSnapshot
 from core.logging import get_logger
 from core.provider import MessageRole, ModelMessage, ToolCall
-from core.store import CONTACT_DETAIL_NAMES, DEFAULT_LEAD_PAGE, Lead
+from core.store import (
+    CONTACT_DETAIL_NAMES,
+    DEFAULT_HANDOVER_PAGE,
+    DEFAULT_LEAD_PAGE,
+    Lead,
+)
 
 SESSIONS = "sessions"
 MESSAGES = "messages"
 # A top-level collection, keyed by the Session id: one Lead per Session, and a Console that
 # lists Leads without walking every Session first (docs/architecture.md §5).
 LEADS = "leads"
+# Handover Requests, keyed by the request id. A top-level collection because it is the
+# Console's work list: a Strategist opens one screen and reads every waiting request, and the
+# realtime listener that raises their notification is a listener on this one collection.
+HANDOVERS = "handover_requests"
+
 # Presence, keyed by the Strategist's Firebase uid: one document per Strategist, which is what
 # lets a Console listener render who is online and lets `firestore.rules` say "you may write
 # your own and nobody else's" in one line.
@@ -63,11 +76,13 @@ class FirestoreConversationStore:
         client: firestore.AsyncClient | None = None,
         collection: str = SESSIONS,
         leads_collection: str = LEADS,
+        handovers_collection: str = HANDOVERS,
         strategists_collection: str = STRATEGISTS,
     ) -> None:
         self._project = project
         self._collection = collection
         self._leads_collection = leads_collection
+        self._handovers_collection = handovers_collection
         self._strategists_collection = strategists_collection
         self._client = client
 
@@ -191,6 +206,109 @@ class FirestoreConversationStore:
         )
         return any([True async for _ in query.stream()])
 
+    async def create_handover(self, request: HandoverRequest) -> HandoverRequest:
+        """Write a newly offered Handover Request.
+
+        This write *is* the notification (see core/adapters/firestore_notifier.py): every open
+        Console holds a listener on this collection, so the document arriving is what raises
+        the browser notification and plays the sound. Nothing else has to be sent.
+        """
+        client = self._connect()
+        reference = client.collection(self._handovers_collection).document(request.id)
+        document = _handover_document(request)
+        document["session"] = client.collection(self._collection).document(request.session_id)
+        document["created_at"] = firestore.SERVER_TIMESTAMP
+        await reference.set(document)
+        # Ids and counts only: the request carries the Visitor's Contact Details.
+        logger.info(
+            "Handover Request written",
+            extra={"request_id": request.id, "qualification_score": request.lead.score},
+        )
+        return await self._read_handover(request.id) or request
+
+    async def get_handover(self, request_id: str) -> HandoverRequest | None:
+        return await self._read_handover(request_id)
+
+    async def handover_for_session(self, session_id: str) -> HandoverRequest | None:
+        """The Session's request, if it has one.
+
+        Filtered on `session_id` and limited to one: this is asked on the provider call that
+        decides whether the Assistant may be given the offer tool, so it has to be one cheap
+        read rather than a scan of the collection.
+        """
+        query = (
+            self._connect()
+            .collection(self._handovers_collection)
+            .where(filter=FieldFilter("session_id", "==", session_id))
+            .limit(1)
+        )
+        async for document in query.stream():
+            return _handover(document.id, document.to_dict() or {})
+        return None
+
+    async def update_handover(
+        self,
+        request_id: str,
+        state: HandoverState,
+        mode: HandoverMode | None = None,
+        lead: LeadSnapshot | None = None,
+    ) -> HandoverRequest:
+        """Write a transition the caller has already validated against the state machine.
+
+        `merge=True` and a field-by-field update, so a field this build does not know about —
+        the Daily room URL ticket 15 adds — is kept rather than dropped, and a `mode` the
+        caller did not decide is left exactly as it was.
+        """
+        document: dict[str, Any] = {"state": state, "updated_at": firestore.SERVER_TIMESTAMP}
+        if mode is not None:
+            document["mode"] = mode
+        if lead is not None:
+            document["lead"] = _lead_snapshot_document(lead)
+        await (
+            self._connect()
+            .collection(self._handovers_collection)
+            .document(request_id)
+            .set(document, merge=True)
+        )
+        logger.info(
+            "Handover Request updated", extra={"request_id": request_id, "handover_state": state}
+        )
+        updated = await self._read_handover(request_id)
+        if updated is None:
+            raise KeyError(f"There is no Handover Request {request_id!r} to update.")
+        return updated
+
+    async def list_handovers(
+        self, mode: HandoverMode | None = None, limit: int = DEFAULT_HANDOVER_PAGE
+    ) -> tuple[HandoverRequest, ...]:
+        """The Console's page, newest first.
+
+        Ordered on `created_at` — when the Visitor asked — rather than `updated_at`: a queue
+        that reshuffled itself every time a Strategist changed a state would move the card
+        under their cursor. The `mode` filter is an equality on one field plus an order on
+        another, which Firestore serves from its single-field indexes.
+        """
+        collection = self._connect().collection(self._handovers_collection)
+        query = collection.order_by("created_at", direction=firestore.Query.DESCENDING)
+        if mode is not None:
+            query = collection.where(filter=FieldFilter("mode", "==", mode)).order_by(
+                "created_at", direction=firestore.Query.DESCENDING
+            )
+        return tuple(
+            [
+                _handover(document.id, document.to_dict() or {})
+                async for document in query.limit(limit).stream()
+            ]
+        )
+
+    async def _read_handover(self, request_id: str) -> HandoverRequest | None:
+        document = (
+            await self._connect().collection(self._handovers_collection).document(request_id).get()
+        )
+        if not document.exists:
+            return None
+        return _handover(document.id, document.to_dict() or {})
+
 
 @firestore.async_transactional
 async def _append_in_sequence(
@@ -291,6 +409,61 @@ def _lead(session_id: str, document: Mapping[str, Any]) -> Lead:
     signals = document.get("signals") or {}
     return Lead(
         session_id=str(document.get("session_id") or session_id),
+        signals={str(name): str(value) for name, value in signals.items()},
+        score=int(document.get("score", 0)),
+        qualified=bool(document.get("qualified", False)),
+        **{name: str(document.get(name) or "") for name in CONTACT_DETAIL_NAMES},
+    )
+
+
+def _handover_document(request: HandoverRequest) -> dict[str, Any]:
+    """One Handover Request as a Firestore document.
+
+    The Lead is a nested snapshot rather than a reference, so the Console's queue is one read
+    per screen; `session` is a reference as well, so a Strategist can open the conversation
+    without either document duplicating the other.
+    """
+    return {
+        "session_id": request.session_id,
+        "state": request.state,
+        "mode": request.mode,
+        "prompt": request.prompt,
+        "trace_id": request.trace_id,
+        "lead": _lead_snapshot_document(request.lead),
+        "updated_at": firestore.SERVER_TIMESTAMP,
+    }
+
+
+def _lead_snapshot_document(lead: LeadSnapshot) -> dict[str, Any]:
+    document: dict[str, Any] = {
+        "signals": dict(lead.signals),
+        "score": lead.score,
+        "qualified": lead.qualified,
+    }
+    for name in CONTACT_DETAIL_NAMES:
+        document[name] = str(getattr(lead, name, "") or "")
+    return document
+
+
+def _handover(request_id: str, document: Mapping[str, Any]) -> HandoverRequest:
+    state: HandoverState = document.get("state", "offered")
+    mode: HandoverMode | None = document.get("mode") or None
+    return HandoverRequest(
+        id=request_id,
+        session_id=str(document.get("session_id") or ""),
+        state=state,
+        mode=mode,
+        prompt=str(document.get("prompt") or ""),
+        lead=_lead_snapshot(document.get("lead") or {}),
+        created_at=document.get("created_at"),
+        updated_at=document.get("updated_at"),
+        trace_id=document.get("trace_id"),
+    )
+
+
+def _lead_snapshot(document: Mapping[str, Any]) -> LeadSnapshot:
+    signals = document.get("signals") or {}
+    return LeadSnapshot(
         signals={str(name): str(value) for name, value in signals.items()},
         score=int(document.get("score", 0)),
         qualified=bool(document.get("qualified", False)),

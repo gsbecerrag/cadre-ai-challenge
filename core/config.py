@@ -75,6 +75,14 @@ class Settings(BaseSettings):
     # decision a Strategist may want to move without a deploy of new wording.
     qualification_threshold: int = DEFAULT_QUALIFICATION_THRESHOLD
 
+    # --- Hand-over (ADR-0007) ---
+    # Whether an accepted Hand-over may become a video call at all. Off by default and off on
+    # the deployed service until the Daily.co room exists (ticket 15): with it off the
+    # Assistant still offers the Hand-over and still captures the Lead — every acceptance is
+    # simply a Callback. That is the point of the flag, and why it is not a secret: a video
+    # outage must never block lead capture.
+    live_handover_enabled: bool = False
+
     # --- GCP ---
     # Firestore reads this when it is set; on Cloud Run the metadata server supplies it.
     google_cloud_project: str = ""

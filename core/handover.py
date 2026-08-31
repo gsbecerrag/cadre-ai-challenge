@@ -28,7 +28,9 @@ from dataclasses import dataclass, field, replace
 from datetime import datetime
 from typing import Literal, get_args
 
-from core.events import HandoverMode
+# One Handover Request type carries both modes rather than two entities (the design ruling):
+# `video` is a call in the chat panel now, `callback` is a Strategist reaching out later.
+HandoverMode = Literal["video", "callback"]
 
 HandoverState = Literal[
     "offered",

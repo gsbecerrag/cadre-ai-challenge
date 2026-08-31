@@ -12,9 +12,9 @@ Every personal value here is obviously fake.
 
 import pytest
 
-from core.events import HandoverMode
 from core.handover import (
     HANDOVER_STATES,
+    HandoverMode,
     HandoverRequest,
     InvalidTransitionError,
     LeadSnapshot,
