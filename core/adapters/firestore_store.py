@@ -24,6 +24,8 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from google.cloud import firestore
+from google.cloud.firestore_v1.async_document import AsyncDocumentReference
+from google.cloud.firestore_v1.async_transaction import AsyncTransaction
 
 from core.logging import get_logger
 from core.provider import MessageRole, ModelMessage, ToolCall
@@ -78,33 +80,44 @@ class FirestoreConversationStore:
             return
         client = self._connect()
         session = client.collection(self._collection).document(session_id)
-        # One read to learn where this Turn's messages start. The alternative — ordering by a
-        # server timestamp — cannot separate two messages written in the same batch.
-        snapshot = await session.get()
-        state = snapshot.to_dict() or {} if snapshot.exists else {}
-        first = int(state.get("message_count", 0))
-        turns = sum(1 for message in messages if message.role == "visitor")
+        # In a transaction, because the sequence a message is written under is derived from
+        # the count this read returns. Two Turns racing on one Session — two tabs, a
+        # double-submit, two Cloud Run instances — would otherwise read the same count, write
+        # the same document ids, and the later commit would erase the earlier Turn.
+        await _append_in_sequence(client.transaction(), session, messages)
+        logger.info("Session written", extra={"messages": len(messages)})
 
-        batch = client.batch()
-        for offset, message in enumerate(messages):
-            sequence = first + offset
-            batch.set(
-                session.collection(MESSAGES).document(f"{sequence:0{SEQUENCE_WIDTH}d}"),
-                _document(message, sequence),
-            )
-        session_state: dict[str, Any] = {
-            "updated_at": firestore.SERVER_TIMESTAMP,
-            "message_count": first + len(messages),
-            "turn_count": int(state.get("turn_count", 0)) + turns,
-        }
-        if not snapshot.exists:
-            session_state["created_at"] = firestore.SERVER_TIMESTAMP
-        batch.set(session, session_state, merge=True)
-        await batch.commit()
-        logger.info(
-            "Session written",
-            extra={"messages": len(messages), "message_count": first + len(messages)},
+
+@firestore.async_transactional
+async def _append_in_sequence(
+    transaction: AsyncTransaction,
+    session: AsyncDocumentReference,
+    messages: Sequence[ModelMessage],
+) -> None:
+    """Allocate this Turn's sequence numbers and write its messages, atomically.
+
+    Every read comes before every write, which is what Firestore requires of a transaction —
+    and the read is what the writes are derived from, which is why this is one.
+    """
+    snapshot = await session.get(transaction=transaction)
+    state = snapshot.to_dict() or {} if snapshot.exists else {}
+    first = int(state.get("message_count", 0))
+    turns = sum(1 for message in messages if message.role == "visitor")
+
+    for offset, message in enumerate(messages):
+        sequence = first + offset
+        transaction.set(
+            session.collection(MESSAGES).document(f"{sequence:0{SEQUENCE_WIDTH}d}"),
+            _document(message, sequence),
         )
+    session_state: dict[str, Any] = {
+        "updated_at": firestore.SERVER_TIMESTAMP,
+        "message_count": first + len(messages),
+        "turn_count": int(state.get("turn_count", 0)) + turns,
+    }
+    if not snapshot.exists:
+        session_state["created_at"] = firestore.SERVER_TIMESTAMP
+    transaction.set(session, session_state, merge=True)
 
 
 def _document(message: ModelMessage, sequence: int) -> dict[str, Any]:
