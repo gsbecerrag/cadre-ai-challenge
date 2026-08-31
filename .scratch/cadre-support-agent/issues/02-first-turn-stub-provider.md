@@ -6,7 +6,7 @@
 
 **Design reference:** [docs/design](../../../docs/design/README.md) — artboard `cadre-support-chat.dc.html`, brief §2.3–2.5 and §2.7: the launcher (fixed bottom-right, 58 px circle, ink `#0c0407`), the panel shell (docked 392 px / expanded, radius 24 px, header gradient with the avatar "C", title "Cadre AI Assistant", presence line, EN/ES toggle for chrome strings, expand and close), the `text` and `typing` message kinds, citation chips (monospace pill on `#f2efe4`), the input bar (placeholder "Ask about services, industries, pricing…", send `↑`), quick-reply chips, and the `msgin` entrance. The presence line shows the offline copy until ticket 11 wires Availability; the host page under the widget is ticket 07 (keep a stable mount point).
 
-**Status:** ready-for-agent
+**Status:** in-progress
 
 - [ ] Posting a message to the chat endpoint streams the event sequence text deltas → done, and the done event carries usage; covered at seam S1 with the stub provider and in-memory store.
 - [ ] A stub script that returns a tool call causes the loop to execute the tool and continue, and the stream shows a tool-call marker before the final text; covered at S1.
