@@ -4,7 +4,7 @@
 
 **Blocked by:** 03 (Real Grounded Answers on the public URL), 05 (The Refuse Set never reaches the model or storage)
 
-**Status:** ready-for-agent
+**Status:** in-progress
 
 - [ ] With tracing configured against a fake sink, a Turn produces one Trace with the expected name, session id, tags, cost, and a span per provider call and per tool; covered at seam S1 with the stub provider and an injected fake tracer.
 - [ ] Trace input and output pass through the `full` Redaction Profile; a message with an email shows the token, not the address; covered at S1 with the fake sink.
