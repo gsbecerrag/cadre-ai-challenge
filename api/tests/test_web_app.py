@@ -41,3 +41,10 @@ def test_a_missing_asset_is_not_answered_with_the_page(client: TestClient) -> No
 def test_nothing_is_served_when_the_web_app_has_not_been_built(tmp_path: Path) -> None:
     with TestClient(create_app(settings=Settings(), web_dist=tmp_path / "never-built")) as client:
         assert client.get("/").status_code == 404
+
+
+def test_an_unknown_api_path_is_not_answered_with_the_page(client: TestClient) -> None:
+    """An unregistered API route must 404, or a typo looks healthy to a client and a probe."""
+    response = client.get("/api/not-a-route")
+
+    assert response.status_code == 404
