@@ -1,0 +1,24 @@
+.git
+.github
+.claude
+.scratch
+.superpowers
+docs
+scripts
+external_assets
+
+**/node_modules
+**/dist
+**/.venv
+**/__pycache__
+**/.pytest_cache
+**/.ruff_cache
+**/.mypy_cache
+
+# Never bake configuration or secrets into the image.
+.env
+.env.*
+
+*.md
+Makefile
+Dockerfile
