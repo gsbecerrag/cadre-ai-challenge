@@ -16,7 +16,7 @@ Cadre publishes no booking calendar and no scheduling link. Every "Talk to an AI
 call to action on the site goes to the contact form, so booking a call means submitting that
 form, sending an email, or calling.
 
-Cadre does not publish a response time for enquiries, so do not promise one.
+Cadre does not publish a response time for enquiries.
 
 ## Office location
 
@@ -43,7 +43,9 @@ hello@gocadre.ai.
 
 ## Where else Cadre publishes
 
-Cadre publishes 27 articles, two podcasts — the AI 2030 Podcast and the 2030 Podcast, hosted
-by Keith Jensen — and an events page. Its social accounts are LinkedIn
+Cadre publishes 27 articles, two podcasts and an events page. The AI 2030 Podcast is
+"conversations about the future of AI, with the builders building it", and its episodes
+reference Keith and Chad as hosts; the 2030 Podcast is hosted by Keith Jensen and covers
+"strategies top executives are using to future-proof their business". Its social accounts are LinkedIn
 (linkedin.com/company/cadre-ai-services), Instagram (@cadre.ai), YouTube (@CadreAI) and X
 (@cadreai).

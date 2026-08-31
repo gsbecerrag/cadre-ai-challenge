@@ -194,17 +194,18 @@ ESCALATION_COPY: Mapping[EscalationReason, Mapping[Language, EscalationCopy]] = 
         "en": EscalationCopy(
             title="I can't promise an outcome",
             body=(
-                "Cadre publishes results from past engagements but guarantees no outcome, "
-                "saving, timeline or refund, and its terms say the services are provided "
-                "as-is. [not-published#outcome-guarantees]"
+                "Cadre publishes results from past engagements but publishes no guarantee "
+                "of outcomes, savings, timelines or refunds, and its terms say the "
+                "services are provided as-is. [not-published#outcome-guarantees]"
             ),
         ),
         "es": EscalationCopy(
             title="No puedo prometer un resultado",
             body=(
-                "Cadre publica resultados de proyectos anteriores pero no garantiza ningún "
-                "resultado, ahorro, plazo ni reembolso, y sus términos indican que los "
-                "servicios se prestan tal cual. [not-published#outcome-guarantees]"
+                "Cadre publica resultados de proyectos anteriores pero no publica ninguna "
+                "garantía de resultados, ahorros, plazos ni reembolsos, y sus términos "
+                "indican que los servicios se prestan tal cual. "
+                "[not-published#outcome-guarantees]"
             ),
         ),
     },

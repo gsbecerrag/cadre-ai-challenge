@@ -45,8 +45,10 @@ automation to agents that connect several tools for automated execution.
 
 ## An industry that is not on the list
 
-The nine industries above are the ones Cadre publishes pages for; they are not a statement
-that Cadre works only with those nine. Cadre says it works with companies of all sizes whose
-manual workflows get less efficient as they grow, so a company in another industry is worth a
-conversation rather than a refusal — but no page confirms experience in an industry that is
-not listed, so do not claim any.
+The nine industries above are the ones Cadre publishes pages for. They are not a statement of
+where Cadre will work: separately, Cadre publishes that it works with companies of all sizes,
+and that the best fit is a business with manual workflows that get less efficient as it grows,
+neither of which is limited to the nine.
+
+What the site does not carry is any confirmation of experience in an industry that has no page
+of its own.

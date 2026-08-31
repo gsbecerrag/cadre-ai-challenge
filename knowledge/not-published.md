@@ -1,8 +1,8 @@
 # What Cadre does not publish
 
-Everything in this topic is a fact about an absence. Cite a section here when a Visitor asks
-for something Cadre has not published: it is what turns "I don't know" into a grounded,
-citable answer. Never fill one of these gaps with a plausible guess.
+Every section in this topic is a fact about an absence: something a Visitor may reasonably ask
+for that Cadre has not published anywhere on cadreai.com. Each one records what is missing
+and, where there is one, the nearest thing that is published.
 
 ## Pricing
 
@@ -58,20 +58,22 @@ approach.
 ## Outcome guarantees
 
 Cadre publishes results from past engagements and cites research on success rates, but it
-guarantees no outcome, no saving, no timeline and no refund. Its terms of service state that
-services are provided "AS-IS and AS-AVAILABLE". Past results are not a promise about a future
-engagement.
+publishes no guarantee of outcomes, savings, timelines or refunds. The only related statement
+it does publish is in its terms of service: the services are provided "AS-IS and
+AS-AVAILABLE".
 
 ## Event dates and registration
 
 The two San Diego-area events on the site have no date in their pages; the dates live on the
-external registration pages. The PE AI Value Creation Playbook lists sessions on 18 February,
-4 March and 18 March without naming a year. Point a Visitor at the events page or the contact
-form rather than stating a date.
+external registration pages those pages link to. The PE AI Value Creation Playbook lists
+sessions on 18 February, 4 March and 18 March without naming a year.
 
 ## Anything not listed here
 
-If a question is not answered by any KB Section, that is itself the answer: say the
-information is not in what Cadre publishes, say what is known that is close to it, and hand
-the question to a human. Escalating is always better than guessing — an invented URL, price,
-certification, name, date or number costs Cadre more than a moment's uncertainty does.
+cadreai.com is a marketing site. It publishes what Cadre does, who it serves, the partners and
+models it works with, and what past engagements achieved. It does not publish operational
+detail — prices, credentials, staffing, internal policy, client data handling — and the
+sections above are the specific gaps that come up most often.
+
+A question no KB Section answers is, by the same token, a question about something Cadre has
+not published.
