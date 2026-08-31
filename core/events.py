@@ -94,17 +94,24 @@ def escalation_event(
     body: str,
     next_step: str,
     citations: Sequence[str] = (),
+    language: str | None = None,
 ) -> ChatEvent:
-    """An Escalation: what is known, what cannot be confirmed, one concrete next step."""
-    return ChatEvent(
-        "escalation",
-        {
-            "title": title,
-            "body": body,
-            "next_step": next_step,
-            "citations": list(citations),
-        },
-    )
+    """An Escalation: what is known, what cannot be confirmed, one concrete next step.
+
+    `language` is the language the copy was looked up in. It is on the wire because the card's
+    own chrome — the "Next step:" label — belongs to the card, not to the widget: a Spanish
+    refusal under an English label reads as a bug the Assistant made. It is optional, so an
+    Escalation raised without a language still renders under the widget's own toggle.
+    """
+    payload: dict[str, Any] = {
+        "title": title,
+        "body": body,
+        "next_step": next_step,
+        "citations": list(citations),
+    }
+    if language is not None:
+        payload["language"] = language
+    return ChatEvent("escalation", payload)
 
 
 def offer_event(request_id: str, prompt: str) -> ChatEvent:

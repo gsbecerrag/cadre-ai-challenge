@@ -146,3 +146,25 @@ def test_a_walkthrough_the_visitor_cannot_follow_is_sent_back_to_the_assistant(
     assert names == ["tool", "tool", "text", "done"]
     assert "2 to 4 steps" in provider.requests[1].messages[-1].content
 
+
+def test_an_escalation_names_the_language_the_visitor_is_reading_it_in(
+    client: TestClient, provider: StubModelProvider
+) -> None:
+    """The Escalation card's own chrome — its "Next step:" label — has to follow the language
+    of the card, not the widget's toggle, or a Spanish refusal gets an English label."""
+    spanish = ToolCall(
+        id="call-0801",
+        name="escalate",
+        arguments={
+            "reason": "pricing",
+            "known": "",
+            "next_step": "Escribe a hello@gocadre.ai.",
+            "language": "es",
+        },
+    )
+    provider.script("cuesta", [spanish], [TextDelta("¿Algo más?"), SPEND])
+
+    response = client.post("/api/chat", json={"message": "¿Cuánto cuesta?"})
+
+    escalations = [data for name, data in sse_events(response) if name == "escalation"]
+    assert escalations[0]["language"] == "es"
