@@ -20,3 +20,4 @@
 - Found on the way and fixed: the `full` profile's obfuscated-email regex was a request-path DoS (54 s on 4,000 characters → 2.7 ms); importing the Langfuse SDK reconfigured the `httpx` logger with a plain-text handler.
 - Parked: the module-level `app = create_app()` can build a live tracer at import when keys are exported (serves nothing); `set_trace_io` is deprecated in the SDK; the Langfuse dataset-run upload for the eval suite (ticket 13's `EvalSink` stub) lands with ticket 12.
 - Deployed-app Trace (first and last Turn of a conversation) is recorded by the controller after the merge.
+- Deployed-app check recorded: [docs/transcripts/2026-08-31-deployed-checks-06-10.md](../../../docs/transcripts/2026-08-31-deployed-checks-06-10.md) — revision `56aa909` on the public URL.
