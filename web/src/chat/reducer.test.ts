@@ -88,6 +88,17 @@ const FAILED_ANSWER: ChatEvent[] = [
   { event: 'error', data: { message: "Something went wrong on my side and I couldn't finish." } },
 ]
 
+/** The 32-hex id Langfuse gives a Trace, as the `done` event carries it. */
+const TRACE = 'a'.repeat(32)
+const SECOND_TRACE = 'b'.repeat(32)
+
+/** The same recorded Turn, answered by a service that has Langfuse keys. */
+function traced(events: ChatEvent[], traceId: string): ChatEvent[] {
+  return events.map((event) =>
+    event.event === 'done' ? { ...event, data: { ...event.data, trace_id: traceId } } : event,
+  )
+}
+
 /** Recorded from `POST /api/chat` with the stub provider (api/tests/test_handover.py). */
 const HANDOVER_OFFER: ChatEvent[] = [
   { event: 'tool', data: { name: 'offer_live_handover', status: 'started' } },
@@ -301,6 +312,131 @@ describe('the chat reducer', () => {
     ].reduce(chatReducer, loaded)
 
     expect(after.sections).toEqual({ 'not-published#pricing': 'Pricing' })
+  })
+
+  it('attaches the Turn\'s Trace to the answer it produced, and to nothing else', () => {
+    const state = replay('What does Cadre AI do?', traced(GROUNDED_ANSWER, TRACE))
+
+    expect(state.traceId).toBe(TRACE)
+    expect(state.messages[2]).toMatchObject({ kind: 'text', role: 'assistant', traceId: TRACE })
+    // The greeting and the Visitor's own message were not answers this Turn produced.
+    expect(state.messages[0]).not.toHaveProperty('traceId', TRACE)
+    expect(state.messages[1]).not.toHaveProperty('traceId', TRACE)
+  })
+
+  it('rates the last thing the Assistant said, so a Turn carries one set of thumbs', () => {
+    const state = replay("How do I see my agents' results?", traced(WALKTHROUGH_ANSWER, TRACE))
+
+    expect(state.messages.map((message) => message.kind)).toEqual([
+      'text',
+      'text',
+      'text',
+      'walkthrough',
+      'text',
+    ])
+    expect(state.messages.filter((message) => 'traceId' in message && message.traceId)).toEqual([
+      state.messages[4],
+    ])
+  })
+
+  it('leaves an untraced Turn unrateable rather than inventing an id for it', () => {
+    // No Langfuse keys — `make dev`, CI, a reviewer's laptop. There is no Trace to score, so
+    // the widget has nothing to attach thumbs to and shows none.
+    const state = replay('What does Cadre AI do?', GROUNDED_ANSWER)
+
+    expect(state.traceId).toBeNull()
+    expect(state.messages.every((message) => !('traceId' in message && message.traceId))).toBe(true)
+  })
+
+  it('records the rating the moment the server takes it, and offers the one change', () => {
+    const answered = replay('What does Cadre AI do?', traced(GROUNDED_ANSWER, TRACE))
+
+    expect(answered.feedback).toEqual({})
+
+    const rated = chatReducer(answered, {
+      type: 'feedback_sent',
+      traceId: TRACE,
+      rating: 'down',
+      changed: false,
+    })
+
+    expect(rated.feedback[TRACE]).toEqual({ rating: 'down', status: 'sent' })
+  })
+
+  it('takes a note on the rating that stands without spending the change', () => {
+    // The widget sends the thumb first and the sentence after it, so the same rating arrives
+    // twice for one opinion. The server calls that unchanged, and so does this.
+    const noted = [
+      { type: 'feedback_sent', traceId: TRACE, rating: 'down', changed: false },
+      { type: 'feedback_sent', traceId: TRACE, rating: 'down', changed: false },
+    ].reduce(
+      (state, action) => chatReducer(state, action as ChatAction),
+      replay('What does Cadre AI do?', traced(GROUNDED_ANSWER, TRACE)),
+    )
+
+    expect(noted.feedback[TRACE]).toEqual({ rating: 'down', status: 'sent' })
+  })
+
+  it('closes the control once the other thumb has spent the one change', () => {
+    const changed = [
+      { type: 'feedback_sent', traceId: TRACE, rating: 'up', changed: false },
+      { type: 'feedback_sent', traceId: TRACE, rating: 'down', changed: true },
+    ].reduce(
+      (state, action) => chatReducer(state, action as ChatAction),
+      replay('What does Cadre AI do?', traced(GROUNDED_ANSWER, TRACE)),
+    )
+
+    expect(changed.feedback[TRACE]).toEqual({ rating: 'down', status: 'changed' })
+
+    const pressedAgain = chatReducer(changed, {
+      type: 'feedback_sent',
+      traceId: TRACE,
+      rating: 'up',
+      changed: true,
+    })
+
+    expect(pressedAgain.feedback[TRACE]).toEqual({ rating: 'down', status: 'changed' })
+  })
+
+  it('locks the control when the server says this answer has been rated once too often', () => {
+    const locked = [
+      { type: 'feedback_sent', traceId: TRACE, rating: 'up', changed: false },
+      { type: 'feedback_locked', traceId: TRACE },
+    ].reduce(
+      (state, action) => chatReducer(state, action as ChatAction),
+      replay('What does Cadre AI do?', traced(GROUNDED_ANSWER, TRACE)),
+    )
+
+    expect(locked.feedback[TRACE]).toEqual({ rating: 'up', status: 'locked' })
+
+    // Terminal: a late reply from a request that crossed the lock cannot reopen it.
+    const late = chatReducer(locked, {
+      type: 'feedback_sent',
+      traceId: TRACE,
+      rating: 'down',
+      changed: true,
+    })
+
+    expect(late.feedback[TRACE]).toEqual({ rating: 'up', status: 'locked' })
+  })
+
+  it("keeps each Turn's Feedback to its own Trace", () => {
+    const first = chatReducer(replay('What does Cadre AI do?', traced(GROUNDED_ANSWER, TRACE)), {
+      type: 'feedback_sent',
+      traceId: TRACE,
+      rating: 'down',
+      changed: false,
+    })
+
+    const second = [
+      { type: 'visitor_message', text: 'What does it cost?' } as ChatAction,
+      ...traced(ESCALATED_ANSWER, SECOND_TRACE).map(
+        (event): ChatAction => ({ type: 'event', event }),
+      ),
+    ].reduce(chatReducer, first)
+
+    expect(second.feedback[TRACE]).toEqual({ rating: 'down', status: 'sent' })
+    expect(second.feedback[SECOND_TRACE]).toBeUndefined()
   })
 
   it('reports a stream that never arrived in the same shape as a failed Turn', () => {

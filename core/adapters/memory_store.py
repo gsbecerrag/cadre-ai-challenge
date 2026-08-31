@@ -13,7 +13,7 @@ from datetime import UTC, datetime
 from core.auth import StrategistIdentity
 from core.handover import HandoverMode, HandoverRequest, HandoverState, LeadSnapshot
 from core.provider import ModelMessage
-from core.store import DEFAULT_HANDOVER_PAGE, DEFAULT_LEAD_PAGE, Lead
+from core.store import DEFAULT_HANDOVER_PAGE, DEFAULT_LEAD_PAGE, Feedback, Lead
 
 
 class InMemoryConversationStore:
@@ -21,6 +21,11 @@ class InMemoryConversationStore:
         self._sessions: defaultdict[str, list[ModelMessage]] = defaultdict(list)
         self._leads: dict[str, Lead] = {}
         self._online: set[str] = set()
+        # Which Traces each Session produced, and the Feedback left on them, keyed by the
+        # Feedback's own id. In Firestore the first of these is a field on the stored messages
+        # and the second a collection; in one process a set and a dict say the same thing.
+        self._traces: dict[str, set[str]] = {}
+        self._feedback: dict[str, Feedback] = {}
         # Insertion order is "oldest first", which `list_handovers` reverses — the same trick
         # `list_leads` uses, and what Firestore's `created_at` ordering gives it.
         self._handovers: dict[str, HandoverRequest] = {}
@@ -28,8 +33,23 @@ class InMemoryConversationStore:
     async def load(self, session_id: str) -> tuple[ModelMessage, ...]:
         return tuple(self._sessions[session_id])
 
-    async def append(self, session_id: str, messages: Sequence[ModelMessage]) -> None:
+    async def append(
+        self, session_id: str, messages: Sequence[ModelMessage], trace_id: str | None = None
+    ) -> None:
         self._sessions[session_id].extend(messages)
+        if trace_id:
+            self._traces.setdefault(session_id, set()).add(trace_id)
+
+    async def trace_belongs_to(self, session_id: str, trace_id: str) -> bool:
+        return trace_id in self._traces.get(session_id, frozenset())
+
+    async def get_feedback(self, session_id: str, trace_id: str) -> Feedback | None:
+        stored = self._feedback.get(trace_id)
+        return stored if stored is not None and stored.session_id == session_id else None
+
+    async def save_feedback(self, feedback: Feedback) -> Feedback:
+        self._feedback[feedback.id] = feedback
+        return feedback
 
     async def get_lead(self, session_id: str) -> Lead | None:
         return self._leads.get(session_id)

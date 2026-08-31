@@ -4,7 +4,7 @@
  * bubble is white and left-aligned, and citation chips sit under the bubble they belong to.
  */
 
-import { useState } from 'react'
+import { type ReactNode, useState } from 'react'
 
 import { type Chrome, chromeFor } from './strings'
 import type { CardDestination, LeadContact, Message, OfferMessage } from './types'
@@ -249,6 +249,7 @@ export function MessageView({
   chrome,
   sectionTitles,
   onNavigate,
+  feedback,
   handover,
 }: {
   message: Message
@@ -257,6 +258,9 @@ export function MessageView({
   sectionTitles: Record<string, string>
   /** Follow a Walkthrough Card into the app, without unmounting the panel. */
   onNavigate: (href: string) => void
+  /** The thumbs for this answer, when it has a Trace to attach them to. Passed in rather than
+   * built here so that one component owns which answers are rateable. */
+  feedback?: ReactNode
   handover: HandoverActions
 }) {
   const alignment = message.role === 'visitor' ? 'items-end' : 'items-start'
@@ -368,6 +372,8 @@ export function MessageView({
           {message.text}
         </div>
       )}
+
+      {feedback}
     </div>
   )
 }

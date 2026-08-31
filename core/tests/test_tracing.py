@@ -17,13 +17,22 @@ from datetime import date
 from typing import cast
 
 from core.adapters.memory_store import InMemoryConversationStore
-from core.adapters.recording_tracer import RecordingTracer
+from core.adapters.recording_tracer import RecordedScore, RecordingTracer
 from core.adapters.stub_provider import StubModelProvider
 from core.events import ChatEvent
 from core.prompt import SystemPrompt, build_system_prompt
 from core.provider import TextDelta, Usage
 from core.tools import default_tools
-from core.tracing import PROVIDER_ERROR_TAG, TOOL_TAGS, TraceBoundary, turn_tags
+from core.tracing import (
+    FEEDBACK_SCORE_NAME,
+    NOOP_TRACE,
+    PROVIDER_ERROR_TAG,
+    TOOL_TAGS,
+    NoopTracer,
+    TraceBoundary,
+    TurnTrace,
+    turn_tags,
+)
 from core.turn import TurnRunner
 
 SPEND = Usage(input_tokens=12_400, output_tokens=48, cached_tokens=12_200, cost_usd=0.0031)
@@ -126,3 +135,65 @@ def test_a_visitor_who_closes_the_tab_mid_turn_still_leaves_a_trace() -> None:
     assert trace.output_text == "Cadre AI is"
     assert [span.closed_with for span in trace.spans] == ["GeneratorExit"]
     assert asyncio.run(store.load(SESSION)) == ()
+
+
+# ------------------------------------------------------------------ Feedback as a score
+
+
+class TracerThatCannotScore:
+    """A `Tracer` whose score call fails, which is what a Langfuse outage looks like from
+    inside `POST /api/feedback`. A Visitor's thumb is recorded whatever the vendor does."""
+
+    def start_turn(self, session_id: str, request_id: str, input_text: str) -> TurnTrace:
+        return NOOP_TRACE
+
+    def score(self, trace_id: str, name: str, value: float, comment: str = "") -> None:
+        raise RuntimeError("Langfuse rejected the score")
+
+    def shutdown(self) -> None:
+        return
+
+
+def test_feedback_reaches_the_tracer_as_a_score_on_the_turns_own_trace() -> None:
+    """A thumbs-down is worth nothing next to the conversation it judges, so it is a score on
+    that Trace — which is what makes "show me the Turns Visitors disliked" a filter."""
+    recorder = RecordingTracer()
+
+    TraceBoundary(recorder).score(
+        trace_id="a" * 32, name=FEEDBACK_SCORE_NAME, value=0.0, comment="Missed the question."
+    )
+
+    assert recorder.scores == [
+        RecordedScore(trace_id="a" * 32, name="feedback", value=0.0, comment="Missed the question.")
+    ]
+
+
+def test_a_visitors_comment_goes_through_the_full_redaction_profile_before_langfuse() -> None:
+    """The same rule the Trace's own bodies obey (ADR-0006): a Visitor who types their email
+    into the comment box has typed it to Cadre, not to an observability vendor."""
+    recorder = RecordingTracer()
+
+    TraceBoundary(recorder).score(
+        trace_id="b" * 32,
+        name=FEEDBACK_SCORE_NAME,
+        value=1.0,
+        comment="Great — mail me at jane@example.com",
+    )
+
+    (score,) = recorder.scores
+    assert score.comment == "Great — mail me at [EMAIL_1]"
+    assert "jane@example.com" not in score.comment
+
+
+def test_a_tracer_that_cannot_score_does_not_fail_the_feedback_request() -> None:
+    """The boundary's second rule, at the one call site outside a Turn: the Feedback document
+    is written and the Visitor is thanked whether or not Langfuse is up."""
+    TraceBoundary(TracerThatCannotScore()).score(
+        trace_id="c" * 32, name=FEEDBACK_SCORE_NAME, value=0.0
+    )
+
+
+def test_scoring_with_tracing_off_records_nothing_and_raises_nothing() -> None:
+    """`NoopTracer` is CI, `make dev` and every reviewer's laptop: the Feedback endpoint runs
+    the identical code path there, and nothing leaves."""
+    NoopTracer().score(trace_id="d" * 32, name=FEEDBACK_SCORE_NAME, value=1.0, comment="")

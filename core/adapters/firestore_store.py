@@ -8,12 +8,15 @@ which is correct for exactly one process.
 Layout, per docs/architecture.md:
 
     sessions/{session_id}                 created_at, updated_at, turn_count, message_count
-    sessions/{session_id}/messages/{seq}  sequence, role, content, tool fields, created_at
+    sessions/{session_id}/messages/{seq}  sequence, role, content, tool fields, trace_id,
+                                          created_at
     leads/{session_id}                    created_at, updated_at, session ref, Contact Details,
                                           signals, score, qualified
     handover_requests/{request_id}        created_at, updated_at, session ref, session_id,
                                           state, mode, prompt, trace_id, lead snapshot
     strategists/{uid}                     online, email, name, updated_at
+    feedback/{trace_id}                   session_id, trace_id, rating, comment, changes,
+                                          created_at, updated_at
 
 The document id of a message is its zero-padded sequence, and `sequence` is written as a field
 as well, because ordering is the one thing this store must never get wrong: messages out of
@@ -41,7 +44,9 @@ from core.store import (
     CONTACT_DETAIL_NAMES,
     DEFAULT_HANDOVER_PAGE,
     DEFAULT_LEAD_PAGE,
+    Feedback,
     Lead,
+    Rating,
 )
 
 SESSIONS = "sessions"
@@ -49,6 +54,11 @@ MESSAGES = "messages"
 # A top-level collection, keyed by the Session id: one Lead per Session, and a Console that
 # lists Leads without walking every Session first (docs/architecture.md §5).
 LEADS = "leads"
+# A top-level collection, keyed by the Trace the Feedback judges: one Feedback per Trace, and
+# the collection the Triage Agent's trigger watches (ADR-0005). Top-level rather than under the
+# Session because a Firestore trigger is a collection path, and `sessions/{id}/feedback/{id}`
+# would fire the Triage Agent on a wildcard nobody else in this schema needs.
+FEEDBACK = "feedback"
 # Handover Requests, keyed by the request id. A top-level collection because it is the
 # Console's work list: a Strategist opens one screen and reads every waiting request, and the
 # realtime listener that raises their notification is a listener on this one collection.
@@ -107,7 +117,9 @@ class FirestoreConversationStore:
         stored = session.collection(MESSAGES).order_by("sequence")
         return tuple([_message(document.to_dict() or {}) async for document in stored.stream()])
 
-    async def append(self, session_id: str, messages: Sequence[ModelMessage]) -> None:
+    async def append(
+        self, session_id: str, messages: Sequence[ModelMessage], trace_id: str | None = None
+    ) -> None:
         if not messages:
             return
         client = self._connect()
@@ -116,8 +128,64 @@ class FirestoreConversationStore:
         # the count this read returns. Two Turns racing on one Session — two tabs, a
         # double-submit, two Cloud Run instances — would otherwise read the same count, write
         # the same document ids, and the later commit would erase the earlier Turn.
-        await _append_in_sequence(client.transaction(), session, messages)
+        await _append_in_sequence(client.transaction(), session, messages, trace_id)
         logger.info("Session written", extra={"messages": len(messages)})
+
+    async def trace_belongs_to(self, session_id: str, trace_id: str) -> bool:
+        """Whether one of this Session's messages was written under that Trace.
+
+        A query inside the Session's own subcollection, which is what makes this an ownership
+        check rather than a lookup: a Trace id from another conversation matches nothing here,
+        whoever is holding it. `limit(1)` because the answer is a boolean, and the equality
+        filter needs only Firestore's automatic single-field index.
+        """
+        if not trace_id:
+            return False
+        query = (
+            self._connect()
+            .collection(self._collection)
+            .document(session_id)
+            .collection(MESSAGES)
+            .where(filter=FieldFilter("trace_id", "==", trace_id))
+            .limit(1)
+        )
+        return any([True async for _ in query.stream()])
+
+    async def get_feedback(self, session_id: str, trace_id: str) -> Feedback | None:
+        document = await self._connect().collection(FEEDBACK).document(trace_id).get()
+        if not document.exists:
+            return None
+        stored = _feedback(document.to_dict() or {}, trace_id)
+        return stored if stored.session_id == session_id else None
+
+    async def save_feedback(self, feedback: Feedback) -> Feedback:
+        """Write the one Feedback document for this Trace.
+
+        `merge=True` and `created_at` only on the first write, as for a Lead: a Visitor who
+        changes their mind has not left a second, newer Feedback — they have corrected the one
+        they left, and the Triage Agent (ADR-0005) reads the correction.
+        """
+        reference = self._connect().collection(FEEDBACK).document(feedback.id)
+        document: dict[str, Any] = {
+            "session_id": feedback.session_id,
+            "trace_id": feedback.trace_id,
+            # A plain string, not an enum or a nested map: this field is the whole trigger
+            # condition of the Triage Agent, and a trigger that has to parse a structure is a
+            # trigger that can fail to fire (ADR-0005).
+            "rating": feedback.rating,
+            "comment": feedback.comment,
+            "changes": feedback.changes,
+            "updated_at": firestore.SERVER_TIMESTAMP,
+        }
+        snapshot = await reference.get()
+        if not snapshot.exists:
+            document["created_at"] = firestore.SERVER_TIMESTAMP
+        await reference.set(document, merge=True)
+        logger.info(
+            "Feedback written",
+            extra={"rating": feedback.rating, "changed": feedback.changed},
+        )
+        return feedback
 
     async def get_lead(self, session_id: str) -> Lead | None:
         document = (
@@ -320,6 +388,7 @@ async def _append_in_sequence(
     transaction: AsyncTransaction,
     session: AsyncDocumentReference,
     messages: Sequence[ModelMessage],
+    trace_id: str | None = None,
 ) -> None:
     """Allocate this Turn's sequence numbers and write its messages, atomically.
 
@@ -335,7 +404,7 @@ async def _append_in_sequence(
         sequence = first + offset
         transaction.set(
             session.collection(MESSAGES).document(f"{sequence:0{SEQUENCE_WIDTH}d}"),
-            _document(message, sequence),
+            _document(message, sequence, trace_id),
         )
     session_state: dict[str, Any] = {
         "updated_at": firestore.SERVER_TIMESTAMP,
@@ -347,14 +416,21 @@ async def _append_in_sequence(
     transaction.set(session, session_state, merge=True)
 
 
-def _document(message: ModelMessage, sequence: int) -> dict[str, Any]:
-    """One message as a Firestore document. The roles are ours (`visitor`), not the wire's."""
+def _document(message: ModelMessage, sequence: int, trace_id: str | None = None) -> dict[str, Any]:
+    """One message as a Firestore document. The roles are ours (`visitor`), not the wire's.
+
+    The Trace id is written on the Assistant's own messages: it is the answer a thumb rates,
+    and keeping the field off the Visitor's message and the tool results means the ownership
+    query reads exactly the documents it is asking about.
+    """
     document: dict[str, Any] = {
         "sequence": sequence,
         "role": message.role,
         "content": message.content,
         "created_at": firestore.SERVER_TIMESTAMP,
     }
+    if trace_id and message.role == "assistant":
+        document["trace_id"] = trace_id
     if message.tool_calls:
         document["tool_calls"] = [
             {"id": call.id, "name": call.name, "arguments": json.dumps(dict(call.arguments))}
@@ -385,6 +461,17 @@ def _tool_call(stored: Mapping[str, Any]) -> ToolCall:
         id=stored.get("id", ""),
         name=stored.get("name", ""),
         arguments=arguments if isinstance(arguments, dict) else {},
+    )
+
+
+def _feedback(document: Mapping[str, Any], trace_id: str) -> Feedback:
+    rating: Rating = "down" if str(document.get("rating")) == "down" else "up"
+    return Feedback(
+        session_id=str(document.get("session_id") or ""),
+        trace_id=str(document.get("trace_id") or trace_id),
+        rating=rating,
+        comment=str(document.get("comment") or ""),
+        changes=int(document.get("changes", 0)),
     )
 
 
