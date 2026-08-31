@@ -6,7 +6,7 @@
 
 **Design reference:** [docs/design](../../../docs/design/README.md) — none directly: the design captures details through a "Your details" form card, which ticket 11 builds on top of this ticket's Lead upsert; this ticket implements the conversational `capture_lead` path from the spec. Ruling: the five Qualification Signals are the spec's (industry fit, company size or role, concrete initiative or pain, timeline or budget, explicit intent); the design's labels are superseded — see the rulings table.
 
-**Status:** ready-for-agent
+**Status:** in-progress
 
 - [ ] The score function returns the count of present signals (0–5) and the threshold comparison; covered at seam S2 with all boundary cases.
 - [ ] A Turn in which the provider calls `capture_lead` creates a Lead bound to the Session with the raw Contact Details, the signals, and the computed score; a second call updates the same Lead rather than creating another; covered at seam S1 with the in-memory store.
