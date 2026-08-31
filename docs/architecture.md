@@ -325,7 +325,7 @@ Solid boxes are MVP; grey dashed boxes are Phase 2 (triggered upgrades) and Phas
 The 25,000 tokens are a budget, not a measurement: `KNOWLEDGE_TOKEN_BUDGET` in
 `core/knowledge.py` holds the compiled Knowledge Base under it and a unit test fails if the
 authored topics grow past it. The Knowledge Base as authored in ticket 04 is 62 KB Sections,
-24,929 characters, about **7,100 tokens** by the conservative 3.5-characters-per-token
+25,075 characters, about **7,165 tokens** by the conservative 3.5-characters-per-token
 estimate — so the rows above are priced with roughly 3.5x of headroom for the rules, the tool
 definitions and the topics later tickets add.
 
