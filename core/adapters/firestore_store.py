@@ -285,8 +285,13 @@ class FirestoreConversationStore:
 
         Ordered on `created_at` — when the Visitor asked — rather than `updated_at`: a queue
         that reshuffled itself every time a Strategist changed a state would move the card
-        under their cursor. The `mode` filter is an equality on one field plus an order on
-        another, which Firestore serves from its single-field indexes.
+        under their cursor.
+
+        The `mode` filter is an equality on one field plus an order on another, which is the
+        one shape Firestore's single-field indexes cannot serve — it is the composite index in
+        `firestore.indexes.json`, deployed by `make deploy-rules`. Verified against the real
+        project rather than assumed: the first run of that check failed with
+        `FailedPrecondition: the query requires an index`.
         """
         collection = self._connect().collection(self._handovers_collection)
         query = collection.order_by("created_at", direction=firestore.Query.DESCENDING)

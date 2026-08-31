@@ -1,4 +1,14 @@
 {
-  "indexes": [],
+  "indexes": [
+    {
+      "//": "The Callbacks tab: Handover Requests with mode == 'callback', newest first. An equality on one field plus an order on another is the one query shape Firestore's single-field indexes cannot serve, so it is declared here and deployed with `make deploy-rules`. Every other read in the app orders on one field and needs nothing.",
+      "collectionGroup": "handover_requests",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "mode", "order": "ASCENDING" },
+        { "fieldPath": "created_at", "order": "DESCENDING" }
+      ]
+    }
+  ],
   "fieldOverrides": []
 }
