@@ -221,7 +221,7 @@ erDiagram
   }
 ```
 
-Not drawn: every document carries `created_at`; `sessions` also `last_seen` and `turn_count`; `messages` an optional `tool_calls` array; `leads` are keyed by the session id and hold the raw typed contact fields `name`, `email`, `phone`, `company`, `role` (all optional), a `session` reference, and `updated_at` (industry is not a field of its own: industry fit is one of the five signals); `handover_requests` keep an optional `room_url` and a `timestamps` map with one entry per transition; `strategists` carry `email` and `updated_at`; `feedback` an optional refuse-redacted `comment`; `triage_reports` a `summary`, an `evidence` list and the `model` used. Phase 2 adds a `kb_docs` collection behind the `KnowledgeSource` seam; nothing else changes.
+Not drawn: every document carries `created_at`; `sessions` also `last_seen` and `turn_count`; `messages` an optional `tool_calls` array; `leads` are keyed by the session id and hold the raw typed contact fields `name`, `email`, `phone`, `company`, `role` (all optional), a `session` reference, and `updated_at` (industry is not a field of its own: industry fit is one of the five signals); `handover_requests` keep an optional `room_url` and a `timestamps` map with one entry per transition; `strategists` are keyed by the Firebase uid and carry `online`, `email`, `name` and `updated_at` — written by `PUT /api/console/availability`, and the one document a browser may write (its own, per `firestore.rules`); `feedback` an optional refuse-redacted `comment`; `triage_reports` a `summary`, an `evidence` list and the `model` used. Phase 2 adds a `kb_docs` collection behind the `KnowledgeSource` seam; nothing else changes.
 
 ### Handover state machine
 

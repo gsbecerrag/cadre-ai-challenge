@@ -1,4 +1,5 @@
 import { CADRE_LOGO_URL } from './chrome'
+import { FAKE_AUTH, FAKE_STRATEGIST_EMAIL } from './firebase'
 
 /**
  * The way into the Console, and the way it says no.
@@ -52,8 +53,19 @@ export function SignInPage({
               disabled={busy}
               className="w-full rounded-pill bg-cadre-ink px-6 py-3.5 text-sm font-semibold text-white disabled:opacity-60"
             >
-              {busy ? 'Signing in…' : 'Sign in with Google'}
+              {busy
+                ? 'Signing in…'
+                : FAKE_AUTH
+                  ? 'Continue as demo Strategist'
+                  : 'Sign in with Google'}
             </button>
+            {FAKE_AUTH ? (
+              // A button labelled "Sign in with Google" that does not use Google would be a
+              // lie on a screenshot. The deployed Console refuses to start in this mode.
+              <p className="mt-4 rounded-2xl bg-cadre-sand-dark px-4 py-3 text-left text-xs leading-relaxed text-[#996]">
+                Demo mode: this build signs in as {FAKE_STRATEGIST_EMAIL} without Google.
+              </p>
+            ) : null}
             {error ? (
               <p className="mt-4 rounded-2xl bg-cadre-sand-dark px-4 py-3 text-left text-xs leading-relaxed text-[#8a5a5a]">
                 {error}
