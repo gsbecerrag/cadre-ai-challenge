@@ -1,5 +1,75 @@
+import { type FormEvent, useState } from 'react'
+
 import { CADRE_LOGO_URL } from './chrome'
 import { FAKE_AUTH, FAKE_STRATEGIST_EMAIL } from './firebase'
+
+/** The email + password inputs, styled like the rest of the app's form fields. */
+const FIELD =
+  'w-full rounded-[10px] border border-cadre-line bg-cadre-sand px-3.5 py-2.5 text-sm text-cadre-ink outline-none placeholder:text-[#999] focus:border-cadre-ink'
+
+/**
+ * The email + password form (ticket 20): a second way in for a reviewer without a Google
+ * account, using the demo Strategist credentials. Google stays primary — this is the "or"
+ * underneath it — and both paths end at the same `onAuthStateChanged` listener in
+ * `session.ts`, so nothing downstream (the ID token, the allowlist check, sign-out) needs to
+ * know which one ran.
+ */
+function EmailSignInForm({
+  onSignInWithEmail,
+  busy,
+}: {
+  onSignInWithEmail: (email: string, password: string) => void
+  busy?: boolean
+}) {
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    onSignInWithEmail(email.trim(), password)
+  }
+
+  return (
+    <>
+      <div className="my-5 flex items-center gap-3 text-[11px] font-semibold uppercase tracking-wide text-[#bbb]">
+        <span className="h-px flex-1 bg-cadre-line" />
+        or sign in with email
+        <span className="h-px flex-1 bg-cadre-line" />
+      </div>
+      <form className="flex flex-col gap-3 text-left" onSubmit={handleSubmit}>
+        <label className="flex flex-col gap-1.5 text-xs font-semibold text-cadre-muted">
+          Email
+          <input
+            className={FIELD}
+            type="email"
+            autoComplete="email"
+            required
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+          />
+        </label>
+        <label className="flex flex-col gap-1.5 text-xs font-semibold text-cadre-muted">
+          Password
+          <input
+            className={FIELD}
+            type="password"
+            autoComplete="current-password"
+            required
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+          />
+        </label>
+        <button
+          type="submit"
+          disabled={busy}
+          className="mt-1 w-full rounded-pill border border-cadre-ink px-6 py-3 text-sm font-semibold text-cadre-ink disabled:opacity-60"
+        >
+          {busy ? 'Signing in…' : 'Sign in with email'}
+        </button>
+      </form>
+    </>
+  )
+}
 
 /**
  * The way into the Console, and the way it says no.
@@ -11,16 +81,20 @@ import { FAKE_AUTH, FAKE_STRATEGIST_EMAIL } from './firebase'
  */
 export function SignInPage({
   onSignIn,
+  onSignInWithEmail,
   onLeave,
   refusal,
   error,
   busy,
+  emailBusy,
 }: {
   onSignIn: () => void
+  onSignInWithEmail: (email: string, password: string) => void
   onLeave: () => void
   refusal?: string
   error?: string
   busy?: boolean
+  emailBusy?: boolean
 }) {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-cadre-sand px-6 font-sans text-cadre-body">
@@ -61,13 +135,17 @@ export function SignInPage({
             </button>
             {FAKE_AUTH ? (
               // A button labelled "Sign in with Google" that does not use Google would be a
-              // lie on a screenshot. The deployed Console refuses to start in this mode.
+              // lie on a screenshot. The deployed Console refuses to start in this mode. The
+              // fake-auth build already has a one-click demo path, so the email form (a real
+              // Firebase call) does not apply here.
               <p className="mt-4 rounded-2xl bg-cadre-sand-dark px-4 py-3 text-left text-xs leading-relaxed text-[#996]">
                 Demo mode: this build signs in as {FAKE_STRATEGIST_EMAIL} without Google.
               </p>
-            ) : null}
+            ) : (
+              <EmailSignInForm onSignInWithEmail={onSignInWithEmail} busy={emailBusy} />
+            )}
             {error ? (
-              <p className="mt-4 rounded-2xl bg-cadre-sand-dark px-4 py-3 text-left text-xs leading-relaxed text-[#8a5a5a]">
+              <p role="alert" className="mt-4 rounded-2xl bg-cadre-sand-dark px-4 py-3 text-left text-xs leading-relaxed text-[#8a5a5a]">
                 {error}
               </p>
             ) : null}

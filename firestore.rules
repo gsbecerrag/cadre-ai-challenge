@@ -18,7 +18,8 @@ service cloud.firestore {
     // BEGIN allowlist — rendered by `make rules` from ADMIN_ALLOWED_EMAILS. Do not edit by hand.
     function allowlist() {
       return [
-        'galo.s.becerra@gmail.com'
+        'galo.s.becerra@gmail.com',
+        'strategist@cadre-demo.example'
       ];
     }
     // END allowlist

@@ -27,9 +27,12 @@ VERSION := $(shell git rev-parse --short HEAD 2>/dev/null || echo dev)
 # The Strategist Console allowlist the deployed service reads (ADR-0010). It is set here, not
 # left to a one-off gcloud command, because a blank allowlist admits nobody: a deploy that
 # forgot it would close the Console and look exactly like a broken sign-in. `make rules`
-# renders the same value into firestore.rules. Override for a different list:
+# renders the same value into firestore.rules. The demo account (ticket 20) is on the list so
+# a reviewer without a Google account can sign in with email/password and the demo credentials
+# from Secret Manager (`console-demo-password`) — it is a real, verified Firebase Auth user,
+# not a code path, so no server change was needed to add it. Override for a different list:
 #   make deploy ADMIN_ALLOWED_EMAILS="a@gocadre.ai,b@gocadre.ai"
-ADMIN_ALLOWED_EMAILS ?= galo.s.becerra@gmail.com
+ADMIN_ALLOWED_EMAILS ?= galo.s.becerra@gmail.com,strategist@cadre-demo.example
 
 # The dotenv is a development convenience only: uv loads it when it exists, and it never
 # exists in CI or in the container, so tests and Cloud Run cannot pick up a stray .env.

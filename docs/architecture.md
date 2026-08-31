@@ -74,6 +74,8 @@ flowchart TB
 
 The four seams are the only places a second implementation is allowed to appear. Each ships with one production implementation and one test implementation (stub provider, in-memory store); portability claims stop there.
 
+**Console sign-in (ticket 20).** The sign-in page offers two paths into the same gate: Google (default) and email/password, added so a reviewer without a Google account can sign in with shared demo credentials. Both produce a Firebase ID token, and the API's `TokenVerifier` and `firestore.rules` check the token's claims — `email_verified` and membership in `ADMIN_ALLOWED_EMAILS` — not which provider issued it, so neither changed. The demo account (`strategist@cadre-demo.example`) is a real Firebase Auth user provisioned server-side with `emailVerified: true`, which is what lets it clear the same `email_verified` check a Google sign-in clears; its password lives in Secret Manager, never in the repository.
+
 ## 4. Sequence diagrams
 
 ### 4a. One chat turn
@@ -321,7 +323,7 @@ Solid boxes are MVP; grey dashed boxes are Phase 2 (triggered upgrades) and Phas
 | Video hand-over | Daily.co prebuilt iframe, room per handover via REST | No login for either side | Jitsi (self-hosted vision target), JaaS | [0007](adr/0007-daily-video-handover.md) |
 | Evals | pytest plus JSONL cases, Haiku judge, results to Langfuse datasets | No retrieval, so retrieval metrics do not apply | RAGAS | [0008](adr/0008-pytest-evals-over-ragas.md) |
 | Qualification | BANT-lite score 0 to 5 computed in code from `capture_lead` arguments | Deterministic, testable threshold for the hand-over offer | Intent-only, offer after N turns | [0009](adr/0009-bant-lite-qualification.md) |
-| Console auth | Firebase Auth Google sign-in plus email allowlist, ID token verified server-side | Preference, allowlist is enough for a handful of strategists | Identity Platform, own JWT, shared token (fallback only) | [0010](adr/0010-firebase-auth-console.md) |
+| Console auth | Firebase Auth (Google or email/password) plus email allowlist, ID token verified server-side | Preference, allowlist is enough for a handful of strategists; email/password is the reviewer path (ticket 20) | Identity Platform, own JWT, shared token (fallback only) | [0010](adr/0010-firebase-auth-console.md) |
 | Observability | Langfuse Cloud | Open source, cost from `usage.cost`, sessions, datasets, scores | LangSmith, Traceloop | [0002](adr/0002-openrouter-sole-provider.md) |
 | Logs and secrets | structlog JSON to Cloud Logging; Secret Manager injected into Cloud Run | Correlate session_id, request_id and trace_id; no secrets in the image or repo | Plain logging; env vars in the service config | [0003](adr/0003-gcp-with-seams.md) |
 | CI | GitHub Actions on pull requests: lint, unit tests, stub-provider eval subset | Deterministic, zero model spend on PRs | Cloud Build | [0008](adr/0008-pytest-evals-over-ragas.md) |
