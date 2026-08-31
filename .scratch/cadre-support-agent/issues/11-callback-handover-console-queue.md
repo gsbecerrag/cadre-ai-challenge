@@ -6,7 +6,7 @@
 
 **Design reference:** [docs/design](../../../docs/design/README.md) — brief §2.5 kinds 5–7 and §3.1–3.2. Chat side: the "Your details" card (Full name / Work email / Company, "Share details", done state "✓ Details shared with the strategist") posting to this ticket's Lead endpoint (reusing ticket 09's upsert), the hand-over offer card ("Do you want to jump into a call with our experts?", Yes / "Keep chatting"), the decline line, and the Callback confirmation card ("A strategist will call you back"). Console side: the "Handover requests" list cards (name, pulsing state badge, company · industry, time, "score n/5"), the request detail (name header with the contact line, Qualification panel with ✓/— rows, Request panel with Mode / State / Session / Trace, "Conversation so far" bubbles) and the Callbacks table (Lead / Contact / Requested / Score). Rulings (see the rulings table): the spec's state machine with derived display labels; one Handover Request type with a mode field (Callbacks tab = `callback` filter); the calendar picker and "Scheduled for" slot are out of scope; the chat header's presence line is wired to Availability here.
 
-**Status:** ready-for-agent
+**Status:** in-progress
 
 - [ ] The offer tool is absent from the tool list below the threshold, present at or above it, and absent again after one offer in the Session; covered at seam S1 by inspecting the tools the stub provider receives.
 - [ ] Accepting creates a Handover Request in `callback` mode when no Strategist is online or `LIVE_HANDOVER_ENABLED` is off, and in `video` mode otherwise (mode only; the video path is ticket 15); declining sets `declined`; invalid transitions are rejected; covered at S1 with the in-memory store and notifier.
