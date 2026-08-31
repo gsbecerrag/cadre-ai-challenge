@@ -6,9 +6,12 @@ unauditable, drifts with the prompt, and cannot be unit-tested; a score counted 
 file plus a table of boundary cases, and the threshold that gates the Hand-over offer moves in
 configuration rather than in a paragraph of English.
 
-A signal is *present* when the Assistant put something in it. Anything else — an argument the
-model left out, an empty string, a string of spaces — is absent, so a model filling every field
-with `""` cannot manufacture a Qualified Lead.
+A signal is *present* when the Assistant actually learned something and put it in the argument.
+Anything else is absent: an argument the model left out, an empty string, a string of spaces —
+and the filler a model writes *instead* of omitting an optional field. "Not mentioned" is the
+model saying it learned nothing, in the field meant for what it learned, and counting it would
+put a Strategist in front of a Visitor who told us nothing. The prompt asks for omission; this
+set is what makes the score independent of whether the prompt was obeyed.
 """
 
 from collections.abc import Mapping
@@ -29,9 +32,37 @@ MAX_QUALIFICATION_SCORE = len(SIGNAL_NAMES)
 DEFAULT_QUALIFICATION_THRESHOLD = 3
 
 
+# The ways a model says "I did not learn this" in a field that asked what it learned. Compared
+# case-folded, after stripping, so `Not Provided` and `  unknown  ` are the same thing.
+FILLER_VALUES: frozenset[str] = frozenset(
+    {
+        "unknown",
+        "n/a",
+        "na",
+        "none",
+        "not mentioned",
+        "not specified",
+        "not provided",
+        "tbd",
+        "-",
+        "?",
+    }
+)
+
+
+def learned(value: object) -> str:
+    """What the Assistant actually learned in this argument, or an empty string.
+
+    The one place the difference between "absent" and "filler" is decided, so the score, the
+    Lead's stored signals and its Contact Details cannot disagree about it.
+    """
+    text = str(value if value is not None else "").strip()
+    return "" if text.casefold() in FILLER_VALUES else text
+
+
 def present_signals(signals: Mapping[str, str]) -> tuple[str, ...]:
     """The names of the Qualification Signals this Lead actually carries."""
-    return tuple(name for name in SIGNAL_NAMES if str(signals.get(name, "") or "").strip())
+    return tuple(name for name in SIGNAL_NAMES if learned(signals.get(name)))
 
 
 def qualification_score(signals: Mapping[str, str]) -> int:

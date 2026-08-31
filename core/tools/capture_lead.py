@@ -22,6 +22,7 @@ from core.qualification import (
     MAX_QUALIFICATION_SCORE,
     SIGNAL_NAMES,
     is_qualified,
+    learned,
     present_signals,
     qualification_score,
 )
@@ -78,9 +79,10 @@ DEFINITION = ToolDefinition(
         "gives you any one Contact Detail — a name, work email, company, phone number or role "
         "— and call it again whenever another detail or another signal appears: the same Lead "
         "is updated and anything you leave out is kept. Pass only what the Visitor actually "
-        "told you, in your own short words; omit what you have not learned, never guess, and "
-        "never rate or score the Visitor. The Visitor does not see this tool, so acknowledge "
-        "their details in your own reply and carry on with their question."
+        "told you, in your own short words; leave an argument out entirely when you have not "
+        'learned it — never write "unknown", "N/A" or "not mentioned" into it — never '
+        "guess, and never rate or score the Visitor. The Visitor does not see this tool, so "
+        "acknowledge their details in your own reply and carry on with their question."
     ),
     parameters={
         "type": "object",
@@ -100,9 +102,10 @@ DEFINITION = ToolDefinition(
 )
 
 
-def _text(value: object) -> str:
-    """One argument as the Lead holds it: a model may send `null`, a number, or spaces."""
-    return str(value if value is not None else "").strip()
+# What an argument is worth keeping: `learned` (core.qualification) strips it and reads the
+# filler a model writes in place of omitting a field — "unknown", "N/A", "not mentioned" — as
+# nothing learned. The same rule for the Contact Details and for the signals, so a later call
+# saying `email: "unknown"` cannot overwrite the address the Visitor actually gave.
 
 
 def merged_lead(
@@ -113,16 +116,18 @@ def merged_lead(
 ) -> Lead:
     """This call folded into the Session's Lead, with the Qualification Score recounted.
 
-    Pure, so the merge rule and the score are one readable function: an argument that is absent
-    or blank keeps what the Lead already had, and every Qualification Signal present in the
-    result counts once.
+    Pure, so the merge rule and the score are one readable function: an argument that is
+    absent, blank, or filler keeps what the Lead already had — it never overwrites a real value
+    with "unknown" — and every Qualification Signal present in the result counts once.
     """
     details = {
-        name: _text(arguments.get(name)) or (getattr(existing, name, "") if existing else "")
+        name: learned(arguments.get(name)) or (getattr(existing, name, "") if existing else "")
         for name in CONTACT_DETAIL_NAMES
     }
     signals = dict(existing.signals) if existing else {}
-    signals.update({name: value for name in SIGNAL_NAMES if (value := _text(arguments.get(name)))})
+    signals.update(
+        {name: value for name in SIGNAL_NAMES if (value := learned(arguments.get(name)))}
+    )
     score = qualification_score(signals)
     return Lead(
         session_id=session_id,
@@ -155,7 +160,7 @@ def capture_lead_tool(
     async def run(arguments: Mapping[str, Any], session_id: str) -> ToolOutcome:
         existing = await store.get_lead(session_id)
         if existing is None and not any(
-            _text(arguments.get(name)) for name in CONTACT_DETAIL_NAMES
+            learned(arguments.get(name)) for name in CONTACT_DETAIL_NAMES
         ):
             logger.info("capture_lead called with no Contact Detail; no Lead recorded")
             return ToolOutcome(result=NO_CONTACT_DETAIL)
