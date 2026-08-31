@@ -11,9 +11,12 @@ Three rules make up the whole contract:
 - **A Trace is rated by the Session that produced it.** A Trace id is not a capability: it
   travels to one browser in one `done` event, and a Session that did not produce it gets a 404
   — not a 403, because "that one is not yours" tells a caller a Trace they guessed exists.
-- **One Feedback per Trace, changed once.** A second thumb corrects a misclick; a third is a
-  control being held down, and it is refused with a conflict. So the Triage Agent sees one
-  rating per Turn rather than a stream of them, and one thumb cannot become a write loop.
+- **One Feedback per Trace, changed once.** The *other* thumb corrects a misclick; a second
+  correction is a control being held down, and it is refused with a conflict. The **same**
+  thumb again is not a change at all: the widget sends the rating the moment it is pressed and
+  the Visitor's sentence a moment later, so one opinion arrives as two requests, and a repeat
+  is an idempotent update of the Feedback that stands. So the Triage Agent sees one rating per
+  Turn rather than a stream of them, and a double-click costs the Visitor nothing.
 - **The comment goes through the `full` Redaction Profile.** It is a free-text box, so a
   Visitor will type their email into it, and what is written here is read by the Triage Agent
   and copied to an observability vendor (ADR-0006).
@@ -60,12 +63,32 @@ class FeedbackRequest(BaseModel):
 
 class FeedbackReceipt(BaseModel):
     """What the widget locks its control on: the Feedback's id, the rating that now stands,
-    and whether this request changed an earlier one — because after a change there is no
-    further change to offer."""
+    and whether the Visitor has spent their one change — because after that there is no
+    further change to offer. `changed` describes the Feedback, not this request, so a note
+    added to a rating that was already changed still reads as changed."""
 
     feedback_id: str
     rating: Rating
     changed: bool
+
+
+def receipt(feedback: Feedback) -> FeedbackReceipt:
+    return FeedbackReceipt(
+        feedback_id=feedback.id, rating=feedback.rating, changed=feedback.changed
+    )
+
+
+def comment_for(existing: Feedback | None, submission: FeedbackRequest, changed_mind: bool) -> str:
+    """The sentence the Feedback ends up carrying, through the `full` Redaction Profile.
+
+    An empty comment means "nothing to add", never "delete what I wrote": the widget sends the
+    rating on the press and the note afterwards, so most requests arrive with no comment at
+    all. The one exception is a change of mind — the sentence explained the thumb it came with,
+    and keeping "exactly what I needed" under a thumbs-down would misreport the Visitor.
+    """
+    if submission.comment:
+        return redaction.full(submission.comment).text
+    return existing.comment if existing is not None and not changed_mind else ""
 
 
 def create_feedback_router(
@@ -80,24 +103,37 @@ def create_feedback_router(
         # No Session at all and a Trace from someone else's are the same answer on purpose: a
         # caller with no conversation has nothing to rate, and minting them a fresh Session —
         # which every other endpoint does — would be issuing a cookie to say "not found".
-        if session_id is None or not await store.trace_belongs_to(session_id, submission.trace_id):
-            logger.info("Feedback refused for a Trace outside the Session")
+        if session_id is None:
+            logger.info("Feedback refused for a caller with no Session")
             raise HTTPException(status.HTTP_404_NOT_FOUND, NOT_THIS_SESSIONS_TRACE)
 
         with session_context(session_id):
+            if not await store.trace_belongs_to(session_id, submission.trace_id):
+                logger.info("Feedback refused for a Trace outside the Session")
+                raise HTTPException(status.HTTP_404_NOT_FOUND, NOT_THIS_SESSIONS_TRACE)
+
             existing = await store.get_feedback(session_id, submission.trace_id)
-            if existing is not None and existing.changes >= MAX_FEEDBACK_CHANGES:
+            changed_mind = existing is not None and existing.rating != submission.rating
+            if existing is not None and changed_mind and existing.changes >= MAX_FEEDBACK_CHANGES:
                 raise HTTPException(status.HTTP_409_CONFLICT, ALREADY_CHANGED)
 
-            stored = await store.save_feedback(
-                Feedback(
-                    session_id=session_id,
-                    trace_id=submission.trace_id,
-                    rating=submission.rating,
-                    comment=redaction.full(submission.comment).text,
-                    changes=0 if existing is None else existing.changes + 1,
-                )
+            feedback = Feedback(
+                session_id=session_id,
+                trace_id=submission.trace_id,
+                rating=submission.rating,
+                comment=comment_for(existing, submission, changed_mind),
+                # Only the other thumb spends the change. Pressing the same one again is the
+                # widget sending the note that goes with a rating it has already sent.
+                changes=(existing.changes + (1 if changed_mind else 0)) if existing else 0,
             )
+            if existing is not None and existing == feedback:
+                # A double-click, a retried request, a second tab agreeing with the first.
+                # Nothing about the Feedback has changed, so nothing is written and nothing is
+                # said about it — a repeated score would otherwise be a second row in Langfuse
+                # and a second document event for the Triage Agent.
+                return receipt(existing)
+
+            stored = await store.save_feedback(feedback)
             # After the write, never before it: the document is what the Triage Agent runs on,
             # and a score in Langfuse for a thumb that was never stored is a Turn flagged with
             # nothing behind it. The tracing boundary swallows whatever Langfuse says.
@@ -110,8 +146,6 @@ def create_feedback_router(
             logger.info(
                 "Feedback recorded", extra={"rating": stored.rating, "changed": stored.changed}
             )
-            return FeedbackReceipt(
-                feedback_id=stored.id, rating=stored.rating, changed=stored.changed
-            )
+            return receipt(stored)
 
     return router

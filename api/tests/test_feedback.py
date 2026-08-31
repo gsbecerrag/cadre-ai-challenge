@@ -202,6 +202,70 @@ def test_a_visitor_may_change_their_mind_once_and_the_second_change_is_refused(
     assert [score.value for score in tracer.scores] == [1.0, 0.0]
 
 
+def test_pressing_the_same_thumb_again_is_the_same_opinion_and_spends_no_change(
+    traced_client: TestClient, store: InMemoryConversationStore, tracer: RecordingTracer
+) -> None:
+    """A Visitor rates the answer, then types the sentence that explains it — two requests
+    saying one thing. Only a different thumb is a change of mind, so a repeat leaves the one
+    change unspent, and the second request is the first one with a comment on it."""
+    trace_id = answer_one_turn(traced_client)
+
+    first = rate(traced_client, trace_id, "down")
+    again = rate(traced_client, trace_id, "down", comment="It skipped the industries.")
+
+    assert again.status_code == 200
+    assert again.json() == first.json()
+    assert again.json()["changed"] is False
+
+    stored = feedback_on(store, session_of(traced_client), trace_id)
+    assert stored.rating == "down"
+    assert stored.comment == "It skipped the industries."
+    assert stored.changes == 0
+    # The comment is new, so Langfuse is told again; the rating it carries is the same.
+    assert [(score.value, score.comment) for score in tracer.scores] == [
+        (0.0, ""),
+        (0.0, "It skipped the industries."),
+    ]
+
+    # And the change is still there to be spent.
+    assert rate(traced_client, trace_id, "up").json()["changed"] is True
+
+
+def test_the_very_same_thumb_and_the_very_same_words_are_not_sent_anywhere_twice(
+    traced_client: TestClient, store: InMemoryConversationStore, tracer: RecordingTracer
+) -> None:
+    """A double-click, a retried request, a Visitor pressing 👎 twice: nothing about the
+    Feedback has changed, so nothing is said about it a second time."""
+    trace_id = answer_one_turn(traced_client)
+
+    rate(traced_client, trace_id, "down", comment="It skipped the industries.")
+    repeat = rate(traced_client, trace_id, "down", comment="It skipped the industries.")
+
+    assert repeat.status_code == 200
+    assert len(tracer.scores) == 1
+    assert feedback_on(store, session_of(traced_client), trace_id).changes == 0
+
+
+def test_a_thumb_with_no_comment_keeps_the_sentence_the_visitor_already_wrote(
+    traced_client: TestClient, store: InMemoryConversationStore
+) -> None:
+    """The note box is optional and the widget sends the rating first, so an empty comment
+    means "nothing to add" — never "delete what I wrote". A different thumb does replace it:
+    the sentence explained the rating it came with."""
+    trace_id = answer_one_turn(traced_client)
+
+    rate(traced_client, trace_id, "down", comment="It skipped the industries.")
+    rate(traced_client, trace_id, "down")
+
+    assert feedback_on(store, session_of(traced_client), trace_id).comment == (
+        "It skipped the industries."
+    )
+
+    rate(traced_client, trace_id, "up")
+
+    assert feedback_on(store, session_of(traced_client), trace_id).comment == ""
+
+
 @pytest.mark.parametrize(
     "body",
     [
