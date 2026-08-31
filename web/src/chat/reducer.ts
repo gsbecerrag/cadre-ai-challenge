@@ -29,6 +29,7 @@ export function initialChatState(greeting: string): ChatState {
     traceId: null,
     streamingId: null,
     seq: 1,
+    sections: {},
   }
 }
 
@@ -127,5 +128,13 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
 
     case 'stream_failed':
       return failed(state, action.message)
+
+    case 'sections_loaded':
+      return {
+        ...state,
+        sections: Object.fromEntries(
+          action.sections.map((section) => [section.id, section.title]),
+        ),
+      }
   }
 }

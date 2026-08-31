@@ -5,17 +5,21 @@
  * logic worth testing lives in the reducer; this is the plumbing around it.
  */
 
-import { useCallback, useReducer, useState } from 'react'
+import { useCallback, useReducer, useRef, useState } from 'react'
 
 import { chatReducer, initialChatState } from './reducer'
 import { readChatEvents } from './sse'
-import type { ChatState } from './types'
+import type { ChatState, KBSectionTitle } from './types'
 
 export const CHAT_ENDPOINT = '/api/chat'
+export const SECTIONS_ENDPOINT = '/api/knowledge/sections'
 
 export interface Chat {
   state: ChatState
   send: (text: string) => Promise<void>
+  /** Fetch the KB Section titles the citation chips reveal. Idempotent; called when the
+   * panel first opens, so a Visitor who never opens it never pays for the request. */
+  loadSections: () => Promise<void>
 }
 
 export function useChat(greeting: string, connectionError: string): Chat {
@@ -23,6 +27,7 @@ export function useChat(greeting: string, connectionError: string): Chat {
   // One Turn at a time: the composer is disabled while `state.pending`, and this guards the
   // case where it is submitted anyway (a double Enter, a stale click).
   const [inFlight, setInFlight] = useState(false)
+  const sectionsRequested = useRef(false)
 
   const send = useCallback(
     async (text: string) => {
@@ -60,5 +65,24 @@ export function useChat(greeting: string, connectionError: string): Chat {
     [connectionError, inFlight],
   )
 
-  return { state, send }
+  const loadSections = useCallback(async () => {
+    if (sectionsRequested.current) {
+      return
+    }
+    sectionsRequested.current = true
+    try {
+      const response = await fetch(SECTIONS_ENDPOINT, { credentials: 'same-origin' })
+      if (!response.ok) {
+        throw new Error(`the sections endpoint answered ${response.status}`)
+      }
+      const body = (await response.json()) as { sections: KBSectionTitle[] }
+      dispatch({ type: 'sections_loaded', sections: body.sections })
+    } catch {
+      // A chip without its title still shows the id it cites, so this failure is not worth
+      // interrupting the Visitor over — it just leaves the next open free to try again.
+      sectionsRequested.current = false
+    }
+  }, [])
+
+  return { state, send, loadSections }
 }
