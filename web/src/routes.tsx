@@ -31,7 +31,7 @@ const CallbacksPage = lazy(() =>
   import('./console/CallbacksPage').then((module) => ({ default: module.CallbacksPage })),
 )
 const TriagePage = lazy(() =>
-  import('./console/PlannedTabPage').then((module) => ({ default: module.TriagePage })),
+  import('./console/TriagePage').then((module) => ({ default: module.TriagePage })),
 )
 
 /**
