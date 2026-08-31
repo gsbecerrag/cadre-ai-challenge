@@ -6,10 +6,12 @@ per tool the Assistant ran. Latency is the spans' own, so nothing here times any
 
 Two things about the way this is written are worth the reader's time.
 
-**Nothing is flushed here.** The SDK batches spans and exports them from its own thread; the
-Turn closes the root span after the `done` event has already been streamed and returns. A
-Visitor's last frame never waits behind an observability vendor, and a Langfuse outage shows up
-as a missing Trace rather than a missing answer (the boundary in `core.tracing` swallows it).
+**Nothing is flushed on the Turn's path.** The SDK batches spans and exports them from its own
+thread; the Turn closes the root span after the `done` event has already been streamed and
+returns. A Visitor's last frame never waits behind an observability vendor, and a Langfuse
+outage shows up as a missing Trace rather than a missing answer (the boundary in `core.tracing`
+swallows it). The batching is tuned down from the SDK's defaults and the process flushes once
+on the way out, for the reason written above `EXPORT_INTERVAL_SECONDS`.
 
 **Trace-level attributes are set on the root span directly.** In the v4 SDK a Trace is the root
 span, and its session id, name and tags are OpenTelemetry attributes on it — that is exactly
@@ -36,6 +38,16 @@ logger = get_logger("tracing.langfuse")
 # itself, so the name stays the same whichever model answered and the Traces of two models
 # line up next to each other.
 MODEL_CALL_NAME = "model call"
+
+# Cloud Run allocates CPU during a request and almost none between requests, and it reclaims an
+# idle instance minutes after its last Turn. The SDK's defaults — 512 spans or five seconds —
+# are written for a process that keeps running, and under that pairing the last Turns of a
+# conversation can sit in the queue until the instance is gone. So the exporter is woken every
+# second, while the request that produced the spans is often still streaming, and it batches at
+# a size a handful of Turns reach rather than a hundred. `shutdown` covers the rest: Cloud Run
+# sends SIGTERM and waits, which is when the queue is drained for good.
+EXPORT_INTERVAL_SECONDS = 1.0
+EXPORT_BATCH_SIZE = 32
 
 
 def _usage_details(usage: Usage) -> dict[str, int]:
@@ -173,6 +185,8 @@ class LangfuseTracer:
             host=host,
             release=release or None,
             environment=environment,
+            flush_interval=EXPORT_INTERVAL_SECONDS,
+            flush_at=EXPORT_BATCH_SIZE,
         )
         logger.info("Tracing Turns to Langfuse", extra={"langfuse_host": host})
 
@@ -182,10 +196,19 @@ class LangfuseTracer:
             as_type="span",
             input=input_text,
         )
-        _set_trace_attributes(
-            root,
-            session_id=session_id,
-            # The id a Turn's log lines carry, so Cloud Logging and Langfuse join on it.
-            metadata={"request_id": request_id} if request_id else None,
-        )
+        try:
+            _set_trace_attributes(
+                root,
+                session_id=session_id,
+                # The id a Turn's log lines carry, so Cloud Logging and Langfuse join on it.
+                metadata={"request_id": request_id} if request_id else None,
+            )
+        except Exception:
+            # The span exists and something has to end it, so the Trace is handed back
+            # anyway: a Trace missing its session id beats a span left open forever.
+            logger.exception("Could not set the Trace's attributes")
         return LangfuseTurnTrace(root=root, input_text=input_text)
+
+    def shutdown(self) -> None:
+        """Drain the queue. Called once, from the application's shutdown hook."""
+        self._client.shutdown()

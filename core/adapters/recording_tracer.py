@@ -84,6 +84,8 @@ class RecordingTracer:
     """Every Trace this process opened, in order."""
 
     traces: list[RecordedTrace] = field(default_factory=list)
+    # How many times the process said it was going away. One, at the end, is right.
+    shutdowns: int = 0
 
     def start_turn(self, session_id: str, request_id: str, input_text: str) -> TurnTrace:
         # A thirty-two character hex id, the shape Langfuse gives a Trace, so a test that
@@ -96,3 +98,6 @@ class RecordingTracer:
         )
         self.traces.append(trace)
         return trace
+
+    def shutdown(self) -> None:
+        self.shutdowns += 1

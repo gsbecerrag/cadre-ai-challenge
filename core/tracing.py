@@ -116,6 +116,14 @@ class Tracer(Protocol):
 
     def start_turn(self, session_id: str, request_id: str, input_text: str) -> TurnTrace: ...
 
+    def shutdown(self) -> None:
+        """Send whatever is still queued, because the process is going away.
+
+        Called once, from the application's shutdown hook. Cloud Run reclaims an instance
+        minutes after its last Turn and gives an exporter's background thread almost no CPU in
+        between, so a Trace that was only queued is a Trace nobody will ever read.
+        """
+
 
 # ------------------------------------------------------------------ tracing switched off
 
@@ -168,6 +176,9 @@ class NoopTracer:
     def start_turn(self, session_id: str, request_id: str, input_text: str) -> TurnTrace:
         return NOOP_TRACE
 
+    def shutdown(self) -> None:
+        return
+
 
 # ---------------------------------------------------------------------- the boundary
 
@@ -191,6 +202,12 @@ class TraceBoundary:
         except Exception:
             logger.exception("Tracing could not start a Trace")
             return NOOP_TRACE
+
+    def shutdown(self) -> None:
+        try:
+            self.inner.shutdown()
+        except Exception:
+            logger.exception("Tracing could not flush what it had queued")
 
 
 @dataclass(frozen=True)

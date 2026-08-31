@@ -78,6 +78,9 @@ class BrokenTracer:
     def start_turn(self, session_id: str, request_id: str, input_text: str) -> TurnTrace:
         raise RuntimeError("Langfuse is unreachable")
 
+    def shutdown(self) -> None:
+        raise RuntimeError("Langfuse is unreachable")
+
 
 class HalfBrokenTracer:
     """Worse than an outage: a tracer that starts a Trace and then fails on everything else,
@@ -85,6 +88,9 @@ class HalfBrokenTracer:
 
     def start_turn(self, session_id: str, request_id: str, input_text: str) -> TurnTrace:
         return _FailingTrace()
+
+    def shutdown(self) -> None:
+        raise RuntimeError("the export never happened")
 
 
 class _FailingTrace:
@@ -305,6 +311,28 @@ def test_a_provider_error_is_still_a_trace_and_is_tagged_as_one(
     # are tokenised along with everything else. Losing a published phone number from a Trace
     # is the harmless half of a boundary that cannot be talked into an exception.
     assert trace.output_text.startswith(PROVIDER_ERROR_MESSAGE.split(" Please try again")[0])
+
+
+def test_the_instance_flushes_its_traces_on_the_way_out(
+    settings: Settings,
+    web_dist: Path,
+    provider: StubModelProvider,
+    store: InMemoryConversationStore,
+    tracer: RecordingTracer,
+) -> None:
+    """Cloud Run reclaims an instance minutes after the last Turn, and the SDK exports from a
+    background thread that gets no CPU once the request is over. A Turn whose Trace never left
+    the container is a Turn nobody can read, so the instance flushes on its way out."""
+    provider.script("what does cadre", [TextDelta(ANSWER), SPEND])
+    app = create_app(
+        settings=settings, web_dist=web_dist, provider=provider, store=store, tracer=tracer
+    )
+
+    with TestClient(app, base_url="https://testserver") as client:
+        client.post("/api/chat", json={"message": "What does Cadre AI do?"})
+        assert tracer.shutdowns == 0
+
+    assert tracer.shutdowns == 1
 
 
 def test_a_turn_is_served_normally_when_langfuse_is_not_configured(

@@ -9,6 +9,8 @@ single-page fallback.
 """
 
 import secrets
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import UTC, date, datetime
 from pathlib import Path
 
@@ -154,6 +156,9 @@ def create_app(
     def build_prompt() -> SystemPrompt:
         return build_system_prompt(knowledge_block, today=_today())
 
+    # Every Trace passes through the boundary, whichever tracer is behind it: bodies through
+    # the `full` Redaction Profile, and no tracer exception reaching the Turn.
+    traced = TraceBoundary(build_tracer(resolved) if tracer is None else tracer)
     # One store instance, not two: the Turn's history and the Session's Lead are written to
     # the same database, and `capture_lead` reaches it through the tool registry.
     conversation_store = store if store is not None else build_store(resolved)
@@ -167,14 +172,24 @@ def create_app(
         # The one pre-model, pre-store hook: the Refuse Set stops here, at the only place
         # both the provider call and the Session write can be reached from (ADR-0006).
         prepare_message=refuse,
-        # Every Trace passes through the boundary, whichever tracer is behind it: bodies
-        # through the `full` Redaction Profile, and no tracer exception reaching the Turn.
-        tracer=TraceBoundary(build_tracer(resolved) if tracer is None else tracer),
+        tracer=traced,
         model=model_name(resolved),
         max_turns=resolved.max_turns_per_session,
     )
 
-    app = FastAPI(title="Cadre AI Support Agent", version=resolved.app_version)
+    @asynccontextmanager
+    async def flush_traces_on_the_way_out(_: FastAPI) -> AsyncIterator[None]:
+        """Cloud Run sends SIGTERM and waits before it takes an instance away. That grace
+        period is the last chance a queued Trace has to leave the container, because between
+        requests the exporter's thread gets almost no CPU."""
+        yield
+        traced.shutdown()
+
+    app = FastAPI(
+        title="Cadre AI Support Agent",
+        version=resolved.app_version,
+        lifespan=flush_traces_on_the_way_out,
+    )
     app.state.settings = resolved
     app.add_middleware(RequestContextMiddleware)
     app.include_router(create_health_router(resolved))
