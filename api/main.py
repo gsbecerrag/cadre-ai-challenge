@@ -21,6 +21,7 @@ from api.middleware import RequestContextMiddleware
 from api.web import mount_web_app
 from core.adapters.knowledge_files import FileKnowledgeSource
 from core.adapters.memory_store import InMemoryConversationStore
+from core.adapters.openrouter_provider import OpenRouterModelProvider
 from core.adapters.stub_demo_script import demo_fallback, demo_scripts
 from core.adapters.stub_provider import StubModelProvider
 from core.config import MissingConfigurationError, Settings, load_settings
@@ -59,22 +60,40 @@ def resolve_cookie_secret(settings: Settings) -> str:
 
 
 def build_provider(settings: Settings) -> ModelProvider:
+    """The `ModelProvider` seam. `stub` spends nothing and needs no key, which is what CI and
+    a local demo run on; `openrouter` is the one production implementation (ADR-0002)."""
     if settings.model_provider == "stub":
         return StubModelProvider(
             scripts=demo_scripts(),
             fallback=demo_fallback(),
             delay_seconds=DEMO_DELAY_SECONDS,
         )
-    raise MissingConfigurationError(
-        "MODEL_PROVIDER=openrouter has no implementation yet — it arrives with ticket 03. "
-        "Set MODEL_PROVIDER=stub to run the Assistant against the scripted provider."
+    if not settings.openrouter_api_key.strip():
+        raise MissingConfigurationError(
+            "MODEL_PROVIDER=openrouter needs OPENROUTER_API_KEY. On Cloud Run it is bound "
+            "from Secret Manager by `make deploy`; locally it comes from .env "
+            "(see .env.example). Set MODEL_PROVIDER=stub to run without a key."
+        )
+    return OpenRouterModelProvider(
+        api_key=settings.openrouter_api_key,
+        model=settings.chat_model,
+        app_url=settings.openrouter_app_url,
+        app_name=settings.openrouter_app_name,
+        cache_ttl=settings.prompt_cache_ttl,
+        base_url=settings.openrouter_base_url,
     )
 
 
 def build_store(settings: Settings) -> ConversationStore:
     """The `ConversationStore` seam. In memory a Session lives in one process, which is wrong
     for a service that scales past one instance — Cloud Run selects `firestore`."""
-    return InMemoryConversationStore()
+    if settings.conversation_store == "memory":
+        return InMemoryConversationStore()
+    # Imported here, not at the top: the Firestore client drags in gRPC and protobuf, and a
+    # container running the in-memory store should not pay for that on a cold start.
+    from core.adapters.firestore_store import FirestoreConversationStore
+
+    return FirestoreConversationStore(project=settings.google_cloud_project)
 
 
 def create_app(
