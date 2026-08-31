@@ -6,6 +6,7 @@ hold that table against the two things it has to agree with — the demo Portal'
 the published contact URL in the Knowledge Base — because both live in other people's files.
 """
 
+import re
 from datetime import date
 from pathlib import Path
 
@@ -22,7 +23,13 @@ from core.tools.walkthroughs import (
     resolve_destination,
 )
 
-PORTAL_SOURCE = Path(__file__).resolve().parents[2] / "web" / "src" / "portal"
+WEB_SOURCE = Path(__file__).resolve().parents[2] / "web" / "src"
+ROUTE_TABLE = WEB_SOURCE / "routes.tsx"
+PORTAL_SOURCE = WEB_SOURCE / "portal"
+
+# `{ path: 'tools', element: <ToolsPage /> }` and `{ index: true, element: <DashboardPage /> }`
+PORTAL_ROUTE = re.compile(r"\{ (?:path: '([^']+)'|index: (true)), element: <(\w+) /> \}")
+PORTAL_LAYOUT = re.compile(r"path: '/portal',\s*element: <(\w+) />")
 KNOWLEDGE_BLOCK = "[services#what-cadre-does] What Cadre does\nCadre AI is a consultancy."
 
 
@@ -41,13 +48,27 @@ def test_a_destination_the_assistant_invents_does_not_resolve() -> None:
     assert resolve_destination("") is None
 
 
+def portal_routes() -> dict[str, tuple[str, ...]]:
+    """Every demo Portal route, read off the app's own route table, with the components that
+    render on it: the shared layout, and that route's page."""
+    source = ROUTE_TABLE.read_text(encoding="utf-8")
+    layout = PORTAL_LAYOUT.search(source)
+    assert layout, "the route table no longer mounts a layout at /portal"
+
+    _, _, children = source.partition("path: '/portal',")
+    routes: dict[str, tuple[str, ...]] = {}
+    for path, index, component in PORTAL_ROUTE.findall(children):
+        routes["/portal" if index else f"/portal/{path}"] = (layout.group(1), component)
+    return routes
+
+
 def test_every_portal_destination_names_a_page_the_demo_portal_actually_renders() -> None:
-    """A Walkthrough Card that opens a route nobody serves, or scrolls to an anchor nobody
-    renders, is the invented page this tool exists to prevent. The routes and the stable ids
-    belong to the demo Portal (ticket 07), so they are read from it rather than retyped."""
-    rendered = "".join(
-        path.read_text(encoding="utf-8") for path in sorted(PORTAL_SOURCE.glob("*.tsx"))
-    )
+    """A Walkthrough Card that opens a route nobody serves, or scrolls to an anchor that route
+    does not render, is the invented page this tool exists to prevent. Both halves come from
+    the demo Portal itself (ticket 07) rather than being retyped here — and the anchor is
+    checked against the components that render on *that* route, so pointing `/portal/tools` at
+    the Agents table fails rather than passing on a repository-wide grep."""
+    routes = portal_routes()
     portal_destinations = [
         destination for destination in WALKTHROUGH_DESTINATIONS.values() if not destination.external
     ]
@@ -55,12 +76,15 @@ def test_every_portal_destination_names_a_page_the_demo_portal_actually_renders(
     assert portal_destinations, "the catalogue has no Portal destination, so this proves nothing"
     for destination in portal_destinations:
         route, _, fragment = destination.href.partition("#")
-        assert route.startswith("/portal"), destination.id
-        assert route in rendered, (
-            f"{destination.id} links to {route}, which the Portal has no tab for"
+        assert route in routes, (
+            f"{destination.id} links to {route}, which the route table has no page for"
+        )
+        rendered = "".join(
+            (PORTAL_SOURCE / f"{component}.tsx").read_text(encoding="utf-8")
+            for component in routes[route]
         )
         assert f'id="{fragment}"' in rendered, (
-            f"{destination.id} scrolls to #{fragment}, which no Portal page renders"
+            f"{destination.id} scrolls to #{fragment}, which nothing on {route} renders"
         )
 
 
