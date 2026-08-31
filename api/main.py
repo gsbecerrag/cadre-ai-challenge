@@ -18,12 +18,15 @@ from fastapi import FastAPI
 
 from api.chat import create_chat_router
 from api.console import create_console_router
+from api.handover import create_handover_router
 from api.health import create_health_router
 from api.knowledge import create_knowledge_router
 from api.middleware import RequestContextMiddleware
 from api.web import mount_web_app
 from core.adapters.fake_verifier import DevTokenVerifier
+from core.adapters.firestore_notifier import FirestoreNotifier
 from core.adapters.knowledge_files import FileKnowledgeSource
+from core.adapters.memory_notifier import InMemoryNotifier
 from core.adapters.memory_store import InMemoryConversationStore
 from core.adapters.openrouter_provider import OpenRouterModelProvider
 from core.adapters.stub_demo_script import demo_fallback, demo_scripts
@@ -32,6 +35,7 @@ from core.auth import ClosedTokenVerifier, TokenVerifier, parse_allowlist
 from core.config import MissingConfigurationError, Settings, load_settings
 from core.knowledge import KnowledgeSource, compile_knowledge_base, render_knowledge_block
 from core.logging import configure_logging, get_logger
+from core.notifier import Notifier
 from core.prompt import SystemPrompt, build_system_prompt
 from core.provider import ModelProvider
 from core.redaction import refuse
@@ -129,6 +133,15 @@ def build_store(settings: Settings) -> ConversationStore:
     return FirestoreConversationStore(project=settings.google_cloud_project)
 
 
+def build_notifier(settings: Settings) -> Notifier:
+    """The `Notifier` seam. Its production implementation writes nothing of its own: the
+    Console's realtime listener on `handover_requests` is what a Strategist hears, and the
+    store already wrote that document (see core/adapters/firestore_notifier.py)."""
+    if settings.conversation_store == "memory":
+        return InMemoryNotifier()
+    return FirestoreNotifier()
+
+
 def build_token_verifier(settings: Settings, allowlist: frozenset[str]) -> TokenVerifier:
     """The `TokenVerifier` seam: who the Console believes a request comes from (ADR-0010).
 
@@ -181,6 +194,7 @@ def create_app(
     knowledge: KnowledgeSource | None = None,
     tracer: Tracer | None = None,
     verifier: TokenVerifier | None = None,
+    notifier: Notifier | None = None,
 ) -> FastAPI:
     """Wire the application. A missing required variable fails fast here, before serving."""
     resolved = load_settings() if settings is None else settings
@@ -210,11 +224,14 @@ def create_app(
     # One store instance, not two: the Turn's history and the Session's Lead are written to
     # the same database, and `capture_lead` reaches it through the tool registry.
     conversation_store = store if store is not None else build_store(resolved)
+    handover_notifier = notifier if notifier is not None else build_notifier(resolved)
     runner = TurnRunner(
         provider=provider if provider is not None else build_provider(resolved),
         store=conversation_store,
         tools=default_tools(
-            conversation_store, qualification_threshold=resolved.qualification_threshold
+            conversation_store,
+            handover_notifier,
+            qualification_threshold=resolved.qualification_threshold,
         ),
         build_prompt=build_prompt,
         # The one pre-model, pre-store hook: the Refuse Set stops here, at the only place
@@ -253,6 +270,19 @@ def create_app(
         prefix="/api",
     )
     app.include_router(create_knowledge_router(sections), prefix="/api")
+    # The Visitor's side of the Hand-over: accept, decline, the details card, and the one
+    # boolean the chat header's presence line reads. Same origin, same Session cookie, no CORS.
+    app.include_router(
+        create_handover_router(
+            conversation_store,
+            cookie_secret=cookie_secret,
+            live_handover_enabled=resolved.live_handover_enabled,
+            # The same threshold `capture_lead` scores against, for the same reason: one Lead
+            # cannot be a Qualified Lead down one path and not down the other.
+            qualification_threshold=resolved.qualification_threshold,
+        ),
+        prefix="/api",
+    )
     # The allowlist is parsed once, here, and the same environment variable renders
     # `firestore.rules` (`make rules`) — the two enforcement points ADR-0010 accepted have one
     # source, even though they cannot share a runtime.

@@ -14,6 +14,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Literal
 
+from core.handover import HandoverMode
 from core.provider import Usage
 
 ChatEventName = Literal[
@@ -28,7 +29,6 @@ ChatEventName = Literal[
 ]
 
 ToolStatus = Literal["started", "finished"]
-HandoverMode = Literal["video", "callback"]
 
 
 @dataclass(frozen=True)
@@ -119,8 +119,9 @@ def offer_event(request_id: str, prompt: str) -> ChatEvent:
     return ChatEvent("offer", {"request_id": request_id, "prompt": prompt})
 
 
-def handover_event(request_id: str, state: str, mode: HandoverMode) -> ChatEvent:
-    """A Handover Request changing state. Ticket 11 emits it."""
+def handover_event(request_id: str, state: str, mode: HandoverMode | None) -> ChatEvent:
+    """A Handover Request changing state. The mode is null until the Visitor accepts, and
+    stays null on a declined offer — a Hand-over that never happened has no mode."""
     return ChatEvent("handover", {"request_id": request_id, "state": state, "mode": mode})
 
 

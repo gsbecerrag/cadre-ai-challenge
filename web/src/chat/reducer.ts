@@ -6,7 +6,18 @@
  */
 
 import { splitCitations } from './citations'
-import type { ChatAction, ChatEvent, ChatState, Message, TextMessage } from './types'
+import type {
+  ChatAction,
+  ChatEvent,
+  ChatState,
+  HandoverMode,
+  HandoverState,
+  LeadContact,
+  Message,
+  NoteKey,
+  OfferMessage,
+  TextMessage,
+} from './types'
 
 function nextState(state: ChatState, messages: Message[], patch: Partial<ChatState>): ChatState {
   return { ...state, ...patch, messages }
@@ -99,6 +110,29 @@ function reduceEvent(state: ChatState, event: ChatEvent): ChatState {
       })
     }
 
+    case 'offer': {
+      const id = `m${state.seq + 1}`
+      const offer: Message = {
+        id,
+        kind: 'offer',
+        role: 'assistant',
+        requestId: event.data.request_id,
+        prompt: event.data.prompt,
+        status: 'open',
+      }
+      // A card, like an Escalation or a Walkthrough Card: it closes the streaming bubble.
+      return nextState(state, [...withoutTyping(state.messages), offer], {
+        seq: state.seq + 1,
+        streamingId: null,
+      })
+    }
+
+    // The same Hand-over reduction as the button's own answer, for a state change that
+    // arrives on the wire instead. It carries no Contact Details — the stream is not the
+    // Visitor's own request — so the widget asks for them exactly as it does after an accept.
+    case 'handover':
+      return handover(state, event.data.state, event.data.mode, EMPTY_CONTACT)
+
     case 'done':
       return nextState(state, withoutTyping(state.messages), {
         pending: false,
@@ -111,11 +145,81 @@ function reduceEvent(state: ChatState, event: ChatEvent): ChatState {
     case 'error':
       return failed(state, event.data.message)
 
-    // `offer` and `handover` are part of the contract but nothing emits them yet: ticket 11
-    // fills in the Hand-over offer and its states.
     default:
       return state
   }
+}
+
+const EMPTY_CONTACT: LeadContact = { name: '', email: '', company: '' }
+
+/** A Lead a Strategist could actually reach: the Callback is confirmed rather than asked for. */
+function reachable(lead: LeadContact): boolean {
+  return lead.name.trim() !== '' && lead.email.trim() !== ''
+}
+
+function note(state: ChatState, key: NoteKey): Message {
+  return { id: `m${state.seq + 1}`, kind: 'note', role: 'assistant', note: key }
+}
+
+/**
+ * What the Visitor sees after they answer the offer.
+ *
+ * The offer card goes to its answered state — once, so a double-pressed button or a retried
+ * request does not stack two confirmations — and the reply that belongs to the answer follows
+ * it: the Callback confirmation, the details card when the Lead is not reachable yet, the
+ * decline line, or the connecting line that ticket 15 replaces with the call itself.
+ */
+function handover(
+  state: ChatState,
+  handoverState: HandoverState,
+  mode: HandoverMode | null,
+  lead: LeadContact,
+): ChatState {
+  const open = state.messages.find(
+    (message): message is OfferMessage => message.kind === 'offer' && message.status === 'open',
+  )
+  if (!open) {
+    return state
+  }
+  const declined = handoverState === 'declined'
+  const answered = state.messages.map((message) =>
+    message.id === open.id
+      ? { ...open, status: declined ? ('declined' as const) : ('accepted' as const) }
+      : message,
+  )
+  const reply: Message = declined
+    ? note(state, 'handoverDeclined')
+    : mode === 'video'
+      ? note(state, 'handoverConnecting')
+      : reachable(lead)
+        ? { id: `m${state.seq + 1}`, kind: 'callback', role: 'assistant', lead }
+        : { id: `m${state.seq + 1}`, kind: 'details', role: 'assistant', done: false, lead }
+  return nextState(state, [...withoutTyping(answered), reply], {
+    seq: state.seq + 1,
+    streamingId: null,
+  })
+}
+
+/**
+ * The details card is answered, and the Callback is confirmed with what was typed into it.
+ *
+ * Once. A card that is already done is a Callback already confirmed, so a double-pressed
+ * "Share details" or a retried request returns the state untouched rather than stacking a
+ * second confirmation under the first — the same rule the offer card's answer follows.
+ */
+function detailsShared(state: ChatState, lead: LeadContact): ChatState {
+  const open = state.messages.some((message) => message.kind === 'details' && !message.done)
+  if (!open) {
+    return state
+  }
+  const messages = state.messages.map((message) =>
+    message.kind === 'details' && !message.done ? { ...message, done: true, lead } : message,
+  )
+  return nextState(
+    state,
+    [...messages, { id: `m${state.seq + 1}`, kind: 'callback', role: 'assistant', lead }],
+    { seq: state.seq + 1 },
+  )
 }
 
 function failed(state: ChatState, message: string): ChatState {
@@ -145,6 +249,12 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
 
     case 'event':
       return reduceEvent(state, action.event)
+
+    case 'handover':
+      return handover(state, action.state, action.mode, action.lead)
+
+    case 'details_shared':
+      return detailsShared(state, action.lead)
 
     case 'stream_failed':
       return failed(state, action.message)

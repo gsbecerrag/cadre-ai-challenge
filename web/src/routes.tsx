@@ -25,10 +25,10 @@ const LeadsPage = lazy(() =>
   import('./console/LeadsPage').then((module) => ({ default: module.LeadsPage })),
 )
 const HandoverQueuePage = lazy(() =>
-  import('./console/PlannedTabPage').then((module) => ({ default: module.HandoverQueuePage })),
+  import('./console/HandoverQueuePage').then((module) => ({ default: module.HandoverQueuePage })),
 )
 const CallbacksPage = lazy(() =>
-  import('./console/PlannedTabPage').then((module) => ({ default: module.CallbacksPage })),
+  import('./console/CallbacksPage').then((module) => ({ default: module.CallbacksPage })),
 )
 const TriagePage = lazy(() =>
   import('./console/PlannedTabPage').then((module) => ({ default: module.TriagePage })),

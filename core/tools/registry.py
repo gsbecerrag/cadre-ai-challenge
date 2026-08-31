@@ -9,6 +9,12 @@ A tool is called with the Session id and awaited, because a tool that writes wri
 Session: `capture_lead` (ticket 09) reads and writes that Session's Lead through the
 `ConversationStore`, which is async like everything else that leaves the process. A tool with
 nothing to store — `escalate` — simply ignores the id.
+
+A tool may also say when it is available at all. `offer_live_handover` (ticket 11) may be
+called only for a Qualified Lead that has not been offered a Hand-over yet, and those are facts
+about the Session, not instructions a prompt can be trusted to follow: a tool the model was
+never given cannot be called, where a rule in English can be argued with and cannot be tested.
+So the definitions are computed per provider call rather than fixed at startup.
 """
 
 from collections.abc import Awaitable, Callable, Mapping, Sequence
@@ -33,11 +39,20 @@ class ToolOutcome:
 # The arguments the model sent, and the Session the Turn belongs to.
 ToolRun = Callable[[Mapping[str, Any], str], Awaitable[ToolOutcome]]
 
+# Whether this tool may be offered to the model for this Session.
+ToolAvailability = Callable[[str], Awaitable[bool]]
+
+
+async def always(_session_id: str) -> bool:
+    """The default: a tool the model may always call."""
+    return True
+
 
 @dataclass(frozen=True)
 class Tool:
     definition: ToolDefinition
     run: ToolRun
+    available: ToolAvailability = always
 
 
 class ToolRegistry:
@@ -47,7 +62,18 @@ class ToolRegistry:
 
     @property
     def definitions(self) -> tuple[ToolDefinition, ...]:
+        """Every tool, in serialisation order — what a tool-agnostic caller (the prompt tests,
+        the demo script guard) reads."""
         return tuple(tool.definition for tool in self._tools)
+
+    async def definitions_for(self, session_id: str) -> tuple[ToolDefinition, ...]:
+        """The tools this Session may be offered right now, in the same fixed order.
+
+        Order is preserved rather than rebuilt, because the definitions sit in the prompt's
+        cached prefix (ADR-0001) — a tool appearing changes the prefix once, which is the price
+        of the gate; reordering the rest would change it on every Turn for nothing.
+        """
+        return tuple([tool.definition for tool in self._tools if await tool.available(session_id)])
 
     async def run(self, call: ToolCall, session_id: str) -> ToolOutcome:
         """Never raises: a hallucinated tool name or a malformed argument comes back to the

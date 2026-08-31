@@ -26,24 +26,6 @@ export function PlannedTabPage({
   )
 }
 
-export function HandoverQueuePage() {
-  return (
-    <PlannedTabPage title="Handover queue" ticket="11">
-      Hand-overs a Qualified Lead has accepted will queue here with the Lead’s Contact Details,
-      Qualification Signals and the conversation so far, so a Strategist joins informed.
-    </PlannedTabPage>
-  )
-}
-
-export function CallbacksPage() {
-  return (
-    <PlannedTabPage title="Callbacks" ticket="11">
-      When no Strategist is online, a Hand-over becomes a Callback. Those requests will be
-      listed here with the Lead’s details, so they can be picked up later.
-    </PlannedTabPage>
-  )
-}
-
 export function TriagePage() {
   return (
     <PlannedTabPage title="Triage" ticket="14">

@@ -23,14 +23,28 @@ from core.auth import (
     TokenVerifier,
     is_allowlisted,
 )
+from core.handover import HandoverMode, HandoverRequest, HandoverState, LeadSnapshot
 from core.logging import get_logger
 from core.qualification import present_signals
-from core.store import CONTACT_DETAIL_NAMES, DEFAULT_LEAD_PAGE, ConversationStore, Lead
+from core.store import (
+    CONTACT_DETAIL_NAMES,
+    DEFAULT_HANDOVER_PAGE,
+    DEFAULT_LEAD_PAGE,
+    ConversationStore,
+    Lead,
+)
 
 BEARER = "bearer"
 # Returned with every 401 so a browser client can tell "sign in again" from "you are not one
 # of ours", which is the 403 below.
 AUTHENTICATE_HEADER = {"WWW-Authenticate": "Bearer"}
+
+NO_SUCH_REQUEST = "There is no Handover Request with that id."
+
+# The two roles a Strategist reads in "Conversation so far". The tool traffic between them is
+# not conversation: a `capture_lead` result rendered as a bubble would show a Strategist an
+# exchange that never happened.
+CONVERSATION_ROLES = ("visitor", "assistant")
 
 NO_CREDENTIAL = (
     "This is Cadre's Strategist Console. Sign in with your Cadre Google account to continue."
@@ -77,6 +91,49 @@ class ConsoleLead(BaseModel):
 
 class ConsoleLeads(BaseModel):
     leads: list[ConsoleLead]
+
+
+class ConsoleHandover(BaseModel):
+    """One Handover Request as the queue card and the Callbacks row need it.
+
+    The Lead travels as the snapshot taken when the Hand-over was offered, in the same shape
+    the Leads page already renders — so the Console has one Lead component, and the queue is
+    one read per screen rather than a join across two collections for every row.
+    """
+
+    request_id: str
+    session_id: str
+    state: HandoverState
+    mode: HandoverMode | None
+    prompt: str
+    created_at: str | None
+    trace_id: str | None
+    lead: ConsoleLead
+
+
+class ConsoleHandovers(BaseModel):
+    handovers: list[ConsoleHandover]
+
+
+class ConsoleMessage(BaseModel):
+    """One line of "Conversation so far"."""
+
+    role: str
+    text: str
+
+
+class ConsoleHandoverDetail(BaseModel):
+    """What the request detail draws: the request, the Lead as it stands now, and the
+    conversation up to the offer.
+
+    The transcript is read here and not in the browser on purpose: `firestore.rules` denies a
+    client every read of `sessions`, because a Session is the Visitor's side of the product,
+    and the one audience allowed to see a conversation gets it through this endpoint.
+    """
+
+    handover: ConsoleHandover
+    lead: ConsoleLead
+    conversation: list[ConsoleMessage]
 
 
 def not_allowlisted(email: str) -> str:
@@ -172,6 +229,40 @@ def create_console_router(
         leads = await store.list_leads(DEFAULT_LEAD_PAGE)
         return ConsoleLeads(leads=[console_lead(lead) for lead in leads])
 
+    @router.get("/handovers")
+    async def list_handovers(mode: HandoverMode | None = None) -> ConsoleHandovers:
+        """The Handover queue, and — with `mode=callback` — the Callbacks tab.
+
+        One collection and one type, filtered (docs/design/README.md ruling). This is also the
+        Console's fallback path: the browser normally holds a realtime listener on
+        `handover_requests`, and polls this when the listener cannot start.
+        """
+        requests = await store.list_handovers(mode, DEFAULT_HANDOVER_PAGE)
+        return ConsoleHandovers(handovers=[console_handover(request) for request in requests])
+
+    @router.get("/handovers/{request_id}")
+    async def read_handover(request_id: str) -> ConsoleHandoverDetail:
+        stored = await store.get_handover(request_id)
+        if stored is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, NO_SUCH_REQUEST)
+        # The live Lead, because Contact Details keep arriving after the offer — and the
+        # snapshot when the Session has none, so the panel is never empty.
+        lead = await store.get_lead(stored.session_id)
+        history = await store.load(stored.session_id)
+        return ConsoleHandoverDetail(
+            handover=console_handover(stored),
+            lead=(
+                console_lead(lead)
+                if lead is not None
+                else console_lead_from_snapshot(stored.session_id, stored.lead)
+            ),
+            conversation=[
+                ConsoleMessage(role=message.role, text=message.content)
+                for message in history
+                if message.role in CONVERSATION_ROLES and message.content.strip()
+            ],
+        )
+
     return router
 
 
@@ -183,4 +274,31 @@ def console_lead(lead: Lead) -> ConsoleLead:
         score=lead.score,
         qualified=lead.qualified,
         **{name: str(getattr(lead, name, "") or "") for name in CONTACT_DETAIL_NAMES},
+    )
+
+
+def console_lead_from_snapshot(session_id: str, snapshot: LeadSnapshot) -> ConsoleLead:
+    """The Lead snapshot on a Handover Request, in the same shape as a live Lead."""
+    return ConsoleLead(
+        session_id=session_id,
+        signals=dict(snapshot.signals),
+        present_signals=list(present_signals(snapshot.signals)),
+        score=snapshot.score,
+        qualified=snapshot.qualified,
+        **{name: str(getattr(snapshot, name, "") or "") for name in CONTACT_DETAIL_NAMES},
+    )
+
+
+def console_handover(request: HandoverRequest) -> ConsoleHandover:
+    return ConsoleHandover(
+        request_id=request.id,
+        session_id=request.session_id,
+        state=request.state,
+        mode=request.mode,
+        prompt=request.prompt,
+        # ISO 8601 rather than a timestamp, so the browser renders "9:41 AM" from a string it
+        # cannot misread as seconds or milliseconds.
+        created_at=request.created_at.isoformat() if request.created_at else None,
+        trace_id=request.trace_id,
+        lead=console_lead_from_snapshot(request.session_id, request.lead),
     )
