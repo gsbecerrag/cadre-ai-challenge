@@ -223,7 +223,9 @@ class TurnRunner:
             # front would leave it behind whenever the Turn failed or the browser walked away
             # mid-stream, and the next Turn would send two Visitor messages back to back —
             # which is not a conversation any provider accepts.
-            await self.store.append(session_id, [visitor, *answered])
+            # With the Trace id, so the Session owns a record of which Traces it produced —
+            # which is what `POST /api/feedback` checks before it accepts a thumb (ticket 12).
+            await self.store.append(session_id, [visitor, *answered], trace_id=trace.trace_id)
             logger.info(
                 "Turn finished",
                 extra={
