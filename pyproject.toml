@@ -56,7 +56,7 @@ known-first-party = ["api", "core"]
 
 [tool.mypy]
 python_version = "3.12"
-files = ["api", "core"]
+files = ["api", "core", "evals"]
 strict = true
 
 [tool.pytest.ini_options]

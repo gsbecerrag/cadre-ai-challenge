@@ -22,7 +22,7 @@ proposes new cases in this shape (ADR-0005), and a one-line addition is a review
 """
 
 import json
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal, get_args
@@ -146,8 +146,11 @@ def _records(path: Path) -> Iterator[Mapping[str, Any]]:
 
 
 def _strings(value: object) -> tuple[str, ...]:
+    """A field that may be absent, one string, or a list of them, as a tuple of strings."""
     if value is None:
         return ()
     if isinstance(value, str):
         return (value,)
-    return tuple(str(item) for item in value)  # type: ignore[union-attr]
+    if isinstance(value, Iterable):
+        return tuple(str(item) for item in value)
+    raise MalformedCaseError(f"expected a string or a list of strings, got {value!r}")

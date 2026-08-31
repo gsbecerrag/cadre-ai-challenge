@@ -30,7 +30,7 @@ from core.citations import split_citations
 from core.knowledge import KBSection
 from core.qualification import present_signals, qualification_score
 from core.store import CONTACT_DETAIL_NAMES, Lead
-from core.tools.escalate import ESCALATION_COPY, ESCALATION_REASONS, Language
+from core.tools.escalate import ESCALATION_COPY, ESCALATION_REASONS, LANGUAGES, Language
 from evals.cases import EvalCase
 from evals.judge import Judge, correctness_instruction, groundedness_instruction
 
@@ -290,11 +290,18 @@ def _forbidden_hit(forbidden: Sequence[str], answer: str) -> str:
     return ""
 
 
+def _language_of(card: Mapping[str, Any]) -> Language:
+    """The language an Escalation card was written in. Anything the card does not say, or says
+    wrongly, reads as English — the same fallback `escalate` itself applies."""
+    for language in LANGUAGES:
+        if card.get("language") == language:
+            return language
+    return DEFAULT_LANGUAGE
+
+
 def _reasons_of(card: Mapping[str, Any]) -> frozenset[str]:
     """Which `escalate` reasons this card's title could have come from, in its own language."""
-    language: Language = (
-        card.get("language") if card.get("language") in ("en", "es") else DEFAULT_LANGUAGE
-    )
+    language = _language_of(card)
     title = str(card.get("title", ""))
     return frozenset(
         reason for reason in ESCALATION_REASONS if ESCALATION_COPY[reason][language].title == title
