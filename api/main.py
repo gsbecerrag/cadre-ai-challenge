@@ -27,6 +27,9 @@ def create_app(settings: Settings | None = None, web_dist: Path | None = None) -
     app.state.settings = resolved
     app.add_middleware(RequestContextMiddleware)
     app.include_router(create_health_router(resolved))
+    # Google's frontend answers `/healthz` on *.run.app itself and the request never reaches
+    # the container, so the deployed service is probed under the API prefix instead.
+    app.include_router(create_health_router(resolved), prefix="/api")
     mount_web_app(app, DEFAULT_WEB_DIST if web_dist is None else web_dist)
     return app
 

@@ -15,6 +15,15 @@ def test_healthz_names_the_service_and_version(client: TestClient) -> None:
     assert response.json() == {"service": "cadre-support-agent", "version": "0.1.0"}
 
 
+def test_healthz_is_also_reachable_under_the_api_prefix(client: TestClient) -> None:
+    """Google's frontend answers `/healthz` on *.run.app itself, so the request never reaches
+    the container. `/api/healthz` is the path that is actually probeable in production."""
+    response = client.get("/api/healthz")
+
+    assert response.status_code == 200
+    assert response.json() == client.get("/healthz").json()
+
+
 def test_the_version_comes_from_configuration(web_dist: Path) -> None:
     settings = Settings(app_version="a1b2c3d")
 

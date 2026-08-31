@@ -58,4 +58,4 @@ deploy:
 	@url=$$(gcloud run services describe $(SERVICE) --project $(PROJECT) --region $(REGION) \
 	    --format='value(status.url)'); \
 	  echo "Service URL: $$url"; \
-	  curl -sS "$$url/healthz"; echo
+	  curl -sS "$$url/api/healthz"; echo
