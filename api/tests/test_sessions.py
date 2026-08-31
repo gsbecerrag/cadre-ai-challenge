@@ -12,11 +12,12 @@ from fastapi.testclient import TestClient
 
 from api.main import create_app
 from api.session import SESSION_COOKIE, session_id_from_cookie, sign_session_id
-from api.tests.conftest import COOKIE_SECRET
+from api.tests.conftest import COOKIE_SECRET, sse_events
 from core.adapters.memory_store import InMemoryConversationStore
 from core.adapters.stub_provider import StubModelProvider
 from core.config import MissingConfigurationError, Settings
 from core.provider import TextDelta, Usage
+from core.turn import SESSION_CLOSED
 
 # The cookie jar stores single-label hosts with `.local` appended, so a cookie planted by a
 # test has to name the same domain the API's own `Set-Cookie` lands under.
@@ -101,3 +102,33 @@ def test_the_assistant_refuses_to_start_in_production_without_a_cookie_secret(
         create_app(settings=settings, web_dist=web_dist)  # type: ignore[arg-type]
 
     assert "SESSION_COOKIE_SECRET" in str(refusal.value)
+
+
+def test_a_session_at_its_turn_cap_is_closed_with_the_contact_path(
+    capped_client: TestClient, provider: StubModelProvider
+) -> None:
+    provider.script("hello", [TextDelta("Hi there."), SPEND])
+
+    capped_client.post("/api/chat", json={"message": "hello"})
+    capped_client.post("/api/chat", json={"message": "hello"})
+    response = capped_client.post("/api/chat", json={"message": "hello"})
+
+    events = sse_events(response)
+    assert [name for name, _ in events] == ["text", "done"]
+    assert events[0] == ("text", {"delta": SESSION_CLOSED})
+    assert "hello@gocadre.ai" in SESSION_CLOSED
+    assert "cadreai.com/contact" in SESSION_CLOSED
+
+
+def test_a_session_at_its_turn_cap_costs_nothing_and_stores_nothing(
+    capped_client: TestClient, provider: StubModelProvider, store: InMemoryConversationStore
+) -> None:
+    provider.script("hello", [TextDelta("Hi there."), SPEND])
+    capped_client.post("/api/chat", json={"message": "hello"})
+    capped_client.post("/api/chat", json={"message": "hello"})
+
+    capped_client.post("/api/chat", json={"message": "over the cap"})
+
+    assert provider.calls == 2
+    stored = asyncio.run(store.load(stored_session_id(capped_client)))
+    assert [message.content for message in stored] == ["hello", "Hi there.", "hello", "Hi there."]

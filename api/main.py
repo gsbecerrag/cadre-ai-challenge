@@ -111,6 +111,7 @@ def create_app(
         store=store if store is not None else build_store(resolved),
         tools=default_tools(),
         build_prompt=build_prompt,
+        max_turns=resolved.max_turns_per_session,
     )
 
     app = FastAPI(title="Cadre AI Support Agent", version=resolved.app_version)
