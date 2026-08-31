@@ -125,10 +125,15 @@ def create_app(
     def build_prompt() -> SystemPrompt:
         return build_system_prompt(knowledge_block, today=_today())
 
+    # One store instance, not two: the Turn's history and the Session's Lead are written to
+    # the same database, and `capture_lead` reaches it through the tool registry.
+    conversation_store = store if store is not None else build_store(resolved)
     runner = TurnRunner(
         provider=provider if provider is not None else build_provider(resolved),
-        store=store if store is not None else build_store(resolved),
-        tools=default_tools(),
+        store=conversation_store,
+        tools=default_tools(
+            conversation_store, qualification_threshold=resolved.qualification_threshold
+        ),
         build_prompt=build_prompt,
         max_turns=resolved.max_turns_per_session,
     )

@@ -6,10 +6,19 @@
 
 **Design reference:** [docs/design](../../../docs/design/README.md) — none directly: the design captures details through a "Your details" form card, which ticket 11 builds on top of this ticket's Lead upsert; this ticket implements the conversational `capture_lead` path from the spec. Ruling: the five Qualification Signals are the spec's (industry fit, company size or role, concrete initiative or pain, timeline or budget, explicit intent); the design's labels are superseded — see the rulings table.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] The score function returns the count of present signals (0–5) and the threshold comparison; covered at seam S2 with all boundary cases.
-- [ ] A Turn in which the provider calls `capture_lead` creates a Lead bound to the Session with the raw Contact Details, the signals, and the computed score; a second call updates the same Lead rather than creating another; covered at seam S1 with the in-memory store.
-- [ ] Contact Details on the Lead are stored raw (not tokenised) while the message history still passes through the `refuse` profile; covered at S1.
-- [ ] The Firestore store persists Leads under their own collection with the Session reference (emulator or manual check recorded in the PR).
-- [ ] Manual check on the deployed app: a conversation that shares details and an initiative produces a Lead with the expected score; recorded in the PR.
+- [x] The score function returns the count of present signals (0–5) and the threshold comparison; covered at seam S2 with all boundary cases.
+- [x] A Turn in which the provider calls `capture_lead` creates a Lead bound to the Session with the raw Contact Details, the signals, and the computed score; a second call updates the same Lead rather than creating another; covered at seam S1 with the in-memory store.
+- [x] Contact Details on the Lead are stored raw (not tokenised) while the message history still passes through the `refuse` profile; covered at S1.
+- [x] The Firestore store persists Leads under their own collection with the Session reference (emulator or manual check recorded in the PR).
+- [x] Manual check on the deployed app: a conversation that shares details and an initiative produces a Lead with the expected score; recorded in the PR.
+
+## Comments
+
+- Delivered in [PR #14](https://github.com/gsbecerrag/cadre-ai-challenge/pull/14). Reviewer: one Important (filler text inflated the score) fixed in round 1 with three minors; scoped re-review: all addressed, no new breakage.
+- Ruling: the five Qualification Signals are free-text strings the model reports; the code counts presence only, with a filler set ("unknown", "n/a", "not mentioned" …) that never scores and never overwrites a real value — a stated deviation from ADR-0009's typed signals.
+- Ruling: one store seam — `ConversationStore` grows `upsert_lead` / `get_lead`; one Lead per Session in Firestore `leads/{session_id}`; later `capture_lead` calls merge (≥1 Contact Detail required only on the first call).
+- Ruling: tools run as `async run(arguments, session_id)` so a tool can write through the async store; `escalate` and `show_walkthrough` adapted on the rebase; the registry never raises.
+- Parked: Spanish filler spellings (pinned by the eval suite, ticket 13); `get_lead` returns the stored `qualified` rather than recomputing against a changed threshold (Console ticket); the Lead merge is read-modify-write.
+- Deployed-app check (a conversation sharing fake details and an initiative produces a Lead with the expected score) is recorded by the controller after the merge.

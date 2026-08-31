@@ -123,7 +123,7 @@ class TurnRunner:
 
                 for call in tool_calls:
                     yield tool_event(call.name, "started")
-                    outcome = self.tools.run(call)
+                    outcome = await self.tools.run(call, session_id)
                     for tool_output in outcome.events:
                         yield tool_output
                     yield tool_event(call.name, "finished")
