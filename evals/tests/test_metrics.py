@@ -413,3 +413,26 @@ def test_parse_verdict_fails_the_case_when_the_judge_returned_broken_json() -> N
     verdict = parse_verdict('{"pass": tru')
 
     assert not verdict.passed
+
+
+def test_tool_correctness_reads_a_contact_detail_the_assistant_recapitalised() -> None:
+    # The Visitor typed their role in lower case and the Assistant title-cased it on the way
+    # into the tool call. That is the same Lead: a Strategist calls this person either way.
+    lead = Lead(session_id="s1", role="Directora De Operaciones", signals={}, score=0)
+    result = TurnResult(events=tuple(tool("capture_lead")), lead=lead)
+
+    outcome = tool_correctness(
+        qualification_case({"role": "directora de operaciones"}, [], 0), result
+    )
+
+    assert outcome.passed, outcome.reason
+
+
+def test_tool_correctness_still_fails_a_contact_detail_that_is_a_different_value() -> None:
+    lead = Lead(session_id="s1", email="someone.else@example.com", signals={}, score=0)
+    result = TurnResult(events=tuple(tool("capture_lead")), lead=lead)
+
+    outcome = tool_correctness(qualification_case({"email": VISITOR_EMAIL}, [], 0), result)
+
+    assert not outcome.passed
+    assert "email" in outcome.reason

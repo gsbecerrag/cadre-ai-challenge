@@ -180,7 +180,8 @@ def tool_correctness(case: EvalCase, result: TurnResult) -> MetricOutcome:
     wrong = [
         f"{name}={getattr(lead, name, '')!r} (expected {expected!r})"
         for name, expected in case.expected_arguments.items()
-        if name in CONTACT_DETAIL_NAMES and str(getattr(lead, name, "")).strip() != expected.strip()
+        if name in CONTACT_DETAIL_NAMES
+        and _same_detail(str(getattr(lead, name, "")), expected) is False
     ]
     if wrong:
         return MetricOutcome(
@@ -267,6 +268,18 @@ async def groundedness(
         groundedness_instruction([sections[section_id] for section_id in cited], answer)
     )
     return MetricOutcome(GROUNDEDNESS, passed=verdict.passed, reason=verdict.reason)
+
+
+def _same_detail(recorded: str, expected: str) -> bool:
+    """Whether a Contact Detail on the Lead is the one the Visitor gave.
+
+    Compared case-folded and with runs of whitespace collapsed. A Visitor who types their role
+    in lower case and an Assistant that title-cases it on the way into the tool call have
+    produced the same Lead — a Strategist calls that person either way — and a metric that
+    failed on the capital D would be pinning one model's habits, not the tool contract. A
+    different value is still a different value.
+    """
+    return " ".join(recorded.split()).casefold() == " ".join(expected.split()).casefold()
 
 
 def _forbidden_hit(forbidden: Sequence[str], answer: str) -> str:
