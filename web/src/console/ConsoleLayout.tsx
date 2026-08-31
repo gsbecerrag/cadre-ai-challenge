@@ -87,11 +87,30 @@ function availabilityLabel(availability: Availability | undefined, problem?: str
 }
 
 /**
- * The count beside a tab. Leads counts what has been captured; the Handover queue counts what
- * is waiting for a person, which is the only number on this page that means "do something".
+ * The count beside a tab. Leads counts what has been captured; the other two count what is
+ * waiting for a person, which is the only number on this page that means "do something" — and
+ * each count sits on the tab that shows the requests it counts, so a Strategist who clicks the
+ * badge finds the work behind it.
  */
-function NavBadge({ tab, leads, pending }: { tab: string; leads: number; pending: number }) {
-  const count = tab === 'Leads' ? leads : tab === 'Handover queue' ? pending : 0
+function NavBadge({
+  tab,
+  leads,
+  pending,
+  callbacks,
+}: {
+  tab: string
+  leads: number
+  pending: number
+  callbacks: number
+}) {
+  const count =
+    tab === 'Leads'
+      ? leads
+      : tab === 'Handover queue'
+        ? pending
+        : tab === 'Callbacks'
+          ? callbacks
+          : 0
   if (count === 0) {
     return null
   }
@@ -174,8 +193,11 @@ function ConsoleShell({
 
   const online = availability?.online ?? false
   const unknown = availability === undefined
-  // What the nav badge counts: Hand-overs nobody has picked up yet.
-  const pending = handovers.filter(isPending).length
+  // What the nav badges count: Hand-overs nobody has picked up yet, split the way the tabs
+  // split them — the queue's own requests, and the Callbacks to return.
+  const waiting = handovers.filter(isPending)
+  const pending = waiting.filter((request) => request.mode !== 'callback').length
+  const callbacks = waiting.filter((request) => request.mode === 'callback').length
   // One freshness line for the page. Both feeds run on the same listener-or-poll fallback, so
   // if either had to fall back the Console as a whole is polling.
   const tabStatus: FeedStatus =
@@ -292,7 +314,12 @@ function ConsoleShell({
               }
             >
               {tab.label}
-              <NavBadge tab={tab.label} leads={leads.length} pending={pending} />
+              <NavBadge
+                tab={tab.label}
+                leads={leads.length}
+                pending={pending}
+                callbacks={callbacks}
+              />
             </NavLink>
           ))}
         </nav>

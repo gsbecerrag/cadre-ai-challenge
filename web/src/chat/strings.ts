@@ -79,7 +79,7 @@ const EN: Chrome = {
   offerPrompt: 'Do you want to jump into a call with our experts?',
   offerYes: 'Yes',
   offerKeepChatting: 'Keep chatting',
-  offerAccepted: 'Connecting…',
+  offerAccepted: 'Passing you to a strategist…',
   offerDeclined: 'No problem — offer stays open on our side.',
   handoverDeclined:
     "No problem — I'm right here if you change your mind. What else can I help with?",
@@ -125,7 +125,7 @@ const ES: Chrome = {
   offerPrompt: '¿Quieres entrar en una llamada con nuestros expertos?',
   offerYes: 'Sí',
   offerKeepChatting: 'Seguir conversando',
-  offerAccepted: 'Conectando…',
+  offerAccepted: 'Te paso con un estratega…',
   offerDeclined: 'Sin problema — la oferta sigue abierta de nuestro lado.',
   handoverDeclined:
     'Sin problema — aquí sigo si cambias de opinión. ¿En qué más te puedo ayudar?',

@@ -146,7 +146,15 @@ function RequestDetail({ detail }: { detail: HandoverDetail }) {
         </Panel>
 
         <Panel title="Request">
-          <Field label="Mode">{handover.mode === 'video' ? 'Video (Daily)' : 'Callback'}</Field>
+          <Field label="Mode">
+            {/* Mode is decided when the Visitor accepts, so an offer that has not been
+                answered has none — saying "Callback" here would promise the wrong thing. */}
+            {handover.mode === 'video'
+              ? 'Video (Daily)'
+              : handover.mode === 'callback'
+                ? 'Callback'
+                : 'Not decided yet'}
+          </Field>
           <Field label="State">
             <StateBadge request={handover} />
           </Field>
