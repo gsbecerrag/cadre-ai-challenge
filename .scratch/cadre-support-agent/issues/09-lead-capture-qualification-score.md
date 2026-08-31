@@ -22,3 +22,4 @@
 - Ruling: tools run as `async run(arguments, session_id)` so a tool can write through the async store; `escalate` and `show_walkthrough` adapted on the rebase; the registry never raises.
 - Parked: Spanish filler spellings (pinned by the eval suite, ticket 13); `get_lead` returns the stored `qualified` rather than recomputing against a changed threshold (Console ticket); the Lead merge is read-modify-write.
 - Deployed-app check (a conversation sharing fake details and an initiative produces a Lead with the expected score) is recorded by the controller after the merge.
+- Deployed-app check recorded: [docs/transcripts/2026-08-31-deployed-checks-05-08-09.md](../../../docs/transcripts/2026-08-31-deployed-checks-05-08-09.md) — revision `93e79e6` on the public URL.
