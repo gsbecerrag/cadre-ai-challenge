@@ -3,9 +3,10 @@
 
 The key is read from stdin — never from an argument — so it appears in no shell history and
 no process list. Prints one line per fact OpenRouter reports about the key (label, usage,
-limit, what remains, when the limit resets, when the key expires) and exits 0 when the key is accepted, 1 when OpenRouter rejects it, 2
-when nothing was given. The Makefile's `check-openrouter-key` pipes the deployed secret in;
-`rotate-openrouter-key` pipes the candidate key in before writing it anywhere.
+limit, what remains, when the limit resets, when the key expires) and exits 0 when the key is
+accepted, 1 when OpenRouter rejects it, 2 when nothing was given. The Makefile's
+`check-openrouter-key` pipes the deployed secret in; `rotate-openrouter-key` pipes the
+candidate key in before writing it anywhere.
 """
 
 from __future__ import annotations
