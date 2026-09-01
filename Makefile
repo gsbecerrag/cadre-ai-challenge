@@ -1,6 +1,8 @@
 SHELL := /bin/bash
 
 SERVICE := cadre-support-agent
+# The Triage Agent function is a gen2 Firebase Function, which is a Cloud Run service underneath.
+FUNCTION_SERVICE := triage-on-feedback-written
 PROJECT := cadre-ai-challenge
 REGION  := us-central1
 
@@ -50,7 +52,7 @@ ADMIN_ALLOWED_EMAILS ?= galo.s.becerra@gmail.com,strategist@cadre-demo.example
 # exists in CI or in the container, so tests and Cloud Run cannot pick up a stray .env.
 ENV_FILE := $(if $(wildcard .env),--env-file .env,)
 
-.PHONY: help install dev check test build-web deploy deploy-secrets eval eval-stub rules deploy-rules deploy-functions
+.PHONY: help install dev check test build-web deploy deploy-secrets eval eval-stub rules deploy-rules deploy-functions check-openrouter-key rotate-openrouter-key
 
 help:
 	@echo "install    install Python (uv) and web (pnpm) dependencies"
@@ -64,6 +66,8 @@ help:
 	@echo "rules      render ADMIN_ALLOWED_EMAILS into firestore.rules"
 	@echo "deploy-rules  deploy firestore.rules and the indexes to Firebase"
 	@echo "deploy-functions  copy core/ and knowledge/ into functions/ and deploy the Triage Agent"
+	@echo "check-openrouter-key   is the deployed OpenRouter key alive, and how much credit is left"
+	@echo "rotate-openrouter-key  replace the OpenRouter key everywhere: both secrets, Cloud Run, the Function, .env"
 
 install:
 	uv sync
@@ -201,3 +205,48 @@ deploy-functions:
 	else \
 	  firebase deploy --only functions --project $(PROJECT); \
 	fi
+
+# The OpenRouter key in Secret Manager is whichever one the operator put there — a personal key
+# today, the one Cadre issued held in reserve — and any key can be revoked, capped or run dry at
+# any moment, so swapping it must be one command and no code change. Rotation is three moves:
+#   1. add the new key as a version of BOTH secrets — Cloud Run binds `openrouter-api-key`, the
+#      Triage Agent function binds the copy `OPENROUTER_API_KEY` (see FUNCTION_SECRET_PAIRS);
+#   2. roll the Cloud Run service — it binds `:latest`, but an instance resolves the version when
+#      it starts, so only a new revision (no rebuild, ~30 s) makes every instance read the new one;
+#   3. re-bind the function's own Cloud Run service to `:latest` — `firebase deploy` pins the
+#      version number that was current at deploy time, so without this step the Triage Agent
+#      would keep the dead key until the next `make deploy-functions`.
+# The key is read from the terminal with echo off (or from stdin when piped in), verified with
+# OpenRouter before anything is written, and never appears on a command line or in the output.
+rotate-openrouter-key:
+	@if [ -t 0 ]; then printf 'New OpenRouter key (input hidden): '; read -rs key; echo; else read -r key; fi; \
+	[ -n "$$key" ] || { echo "No key given; nothing changed."; exit 2; }; \
+	echo "Checking the key with OpenRouter before writing it anywhere"; \
+	printf '%s' "$$key" | uv run python scripts/openrouter-key-status.py || { echo "Nothing changed."; exit 1; }; \
+	for secret in $(OPENROUTER_SECRET) OPENROUTER_API_KEY; do \
+	  version=$$(printf '%s' "$$key" | gcloud secrets versions add "$$secret" --project $(PROJECT) \
+	      --data-file=- --format='value(name)'); \
+	  echo "$$secret: added version $${version##*/}"; \
+	done; \
+	echo "Rolling $(SERVICE) so every instance reads the new version"; \
+	gcloud run services update $(SERVICE) --project $(PROJECT) --region $(REGION) --quiet \
+	  --update-secrets OPENROUTER_API_KEY=$(OPENROUTER_SECRET):latest \
+	  --update-env-vars OPENROUTER_KEY_ROTATED_AT=$$(date -u +%Y-%m-%dT%H:%M:%SZ) >/dev/null; \
+	echo "Re-binding $(FUNCTION_SERVICE) to the latest version of OPENROUTER_API_KEY"; \
+	gcloud run services update $(FUNCTION_SERVICE) --project $(PROJECT) --region $(REGION) --quiet \
+	  --update-secrets OPENROUTER_API_KEY=OPENROUTER_API_KEY:latest >/dev/null \
+	  || echo "Could not update $(FUNCTION_SERVICE) in place — run: make deploy-functions"; \
+	if [ -f .env ]; then \
+	  NEW_KEY="$$key" perl -pi -e 's/^OPENROUTER_API_KEY=.*/OPENROUTER_API_KEY=$$ENV{NEW_KEY}/' .env; \
+	  echo ".env: OPENROUTER_API_KEY replaced (local runs and make eval use the new key too)"; \
+	fi; \
+	url=$$(gcloud run services describe $(SERVICE) --project $(PROJECT) --region $(REGION) --format='value(status.url)'); \
+	printf 'Health: '; curl -sS "$$url/api/healthz"; echo; \
+	echo "Rotated. Send one message on the live app to confirm the model answers."
+
+# The pre-demo question — "is the key still alive, and how much is left on it?" — asked of the
+# very version Cloud Run is bound to. The value goes from Secret Manager into the script
+# over a pipe and is never printed.
+check-openrouter-key:
+	@gcloud secrets versions access latest --secret=$(OPENROUTER_SECRET) --project $(PROJECT) \
+	  | uv run python scripts/openrouter-key-status.py

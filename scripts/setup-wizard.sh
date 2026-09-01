@@ -256,8 +256,8 @@ fi
 pause
 
 # ── Stage 3: OpenRouter ───────────────────────────────────────────────────
-stage "OpenRouter: the key Cadre sent you"
-say "OpenRouter is the only LLM provider; the key is Cadre's, so it is verified, never echoed."
+stage "OpenRouter: the API key"
+say "OpenRouter is the only LLM provider; the key (yours, or the one Cadre issued) is verified, never echoed."
 ask_secret OPENROUTER_API_KEY "Paste the OpenRouter key (sk-or-…):"
 _key=$(curl -sS --max-time 15 https://openrouter.ai/api/v1/key -H "Authorization: Bearer ${OPENROUTER_API_KEY}" || true)
 _label=$(printf '%s' "$_key" | _json_get data.label); _left=$(printf '%s' "$_key" | _json_get data.limit_remaining)
