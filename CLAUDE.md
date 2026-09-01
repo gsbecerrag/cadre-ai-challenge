@@ -76,6 +76,8 @@ make eval       # all 50 Eval Cases against the real provider + Haiku judge; sco
 make eval-stub  # the 30 deterministic Eval Cases against the stub provider — free, no key; CI runs this after make check
 make build-web  # build web/dist so the API can serve it
 make deploy     # gcloud run deploy --source . to cadre-support-agent in us-central1, then curl the health endpoint
+make check-openrouter-key   # is the deployed OpenRouter key alive, and how much credit is left (value never printed)
+make rotate-openrouter-key  # new key → both secrets, a new Cloud Run revision, the Function re-bound, .env updated
 ```
 
 One test: `uv run pytest api/tests/test_chat.py::test_a_turn_streams_the_answer_as_text_deltas_and_ends_with_usage`, or `cd web && pnpm vitest run src/chat/reducer.test.ts`.

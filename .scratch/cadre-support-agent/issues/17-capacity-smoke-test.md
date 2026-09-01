@@ -4,8 +4,12 @@
 
 **Blocked by:** 03 (Real Grounded Answers on the public URL)
 
-**Status:** ready-for-agent
+**Status:** wontfix
 
 - [ ] A load script (Locust or k6) runs 200 virtual users against the chat endpoint with the stub provider and reports the metrics above.
 - [ ] The architecture document's capacity section gains a "measured" row with the numbers and the command used.
 - [ ] Any app-layer defect found (blocking call, unbounded memory) is fixed in this ticket with a test at seam S1 where possible.
+
+## Comments
+
+- 2026-08-31 — wontfix (ticket 19, [PR #28](https://github.com/gsbecerrag/cadre-ai-challenge/pull/28)): Deadline. Consequence recorded in plan.md §7: the capacity table in architecture §8 is a model, not a measurement; the binding constraint it identifies (the provider's rate-limit tier) does not depend on the missing run.

@@ -378,7 +378,7 @@ Without caching the same turn costs about 5.7¢, so caching removes roughly 80% 
 
 **Burst mitigations.** At 174 turns per minute the spend is about $125 per hour, at 870 about $625; the provider rate-limit tier is the real ceiling in every row past the first, and it is a commercial setting rather than an engineering one. A per-session turn cap (surfaced as an escalation with the contact channels) bounds what one visitor can consume. On a provider 429 the API retries with backoff while the widget shows a queue state rather than an error. Degraded mode switches `MODEL` to `anthropic/claude-haiku-4.5` by env var, half the price and a different upstream bucket, with no code deploy.
 
-**Why no live load test.** None is planned. Driving hundreds of turns through OpenRouter measures the rate-limit tier of Cadre's key, a billing setting that changes with a support ticket, and burns credits to learn it. The questions the app layer owns (SSE fan-out, one Firestore round-trip per turn, tool-loop bounds) are checked with a 200-VU smoke test against the stub provider, which proves the API is not the bottleneck below the provider ceiling at zero model spend.
+**Why no live load test.** None is planned. Driving hundreds of turns through OpenRouter measures the rate-limit tier of the OpenRouter key, a billing setting that changes with a support ticket, and burns credits to learn it. The questions the app layer owns (SSE fan-out, one Firestore round-trip per turn, tool-loop bounds) are checked with a 200-VU smoke test against the stub provider, which proves the API is not the bottleneck below the provider ceiling at zero model spend.
 
 ## 9. Scaling trade-offs
 

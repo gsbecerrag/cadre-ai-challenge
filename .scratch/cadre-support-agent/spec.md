@@ -100,7 +100,7 @@ Deployed as one container on Cloud Run with Firestore, Firebase Auth, a Firebase
 ### Shape and runtime
 
 - One Cloud Run service runs the API (Python, FastAPI) and serves the built single-page web app (React, Vite, TypeScript) from the same origin. The service is stateless: every Turn loads the Session from Firestore and writes back; nothing conversational lives in process memory. (ADR-0003)
-- A separate Firebase Function (Python) is the Triage Agent, triggered by Firestore document creation. It shares the core package with the API by copying it at deploy time. (ADR-0005)
+- A separate Firebase Function (Python) is the Triage Agent, triggered by Firestore document writes (a create or an update, because a thumbs-up changed to a thumbs-down is an update). It shares the core package with the API by copying it at deploy time. (ADR-0005)
 - Firestore Native is the only database and the event bus. Firebase Auth (Google sign-in) protects the Console. Secret Manager holds runtime secrets; the deployed services never read a dotenv file.
 - OpenRouter is the only runtime model provider, behind the `ModelProvider` seam. Default conversation model is Claude Sonnet 5 with a one-hour prompt cache on the system prompt; a cheaper model is used as the evaluation judge; the Triage Agent uses the conversation model with structured output. Model ids are configuration. (ADR-0002)
 - Four seams, each with one production implementation and one test implementation: `ModelProvider` (OpenRouter, stub), `ConversationStore` (Firestore, in-memory), `KnowledgeSource` (markdown files; Firestore-backed is Phase 2), `Notifier` (Firestore write that the Console observes; Slack/email are Phase 2). Third-party SDKs are imported only inside their adapter.
@@ -144,7 +144,7 @@ Deployed as one container on Cloud Run with Firestore, Firebase Auth, a Firebase
 ### Feedback and Triage Agent
 
 - Feedback (thumbs up/down, optional comment) is written to Firestore with the Session id and Trace id and mirrored to Langfuse as a score on that Trace.
-- The Triage Agent runs on creation of a Feedback document, exits immediately unless the rating is thumbs-down, loads the conversation (Refuse-Set-redacted) and Trace metadata, makes one structured-output model call, and writes a Triage Report keyed by the Feedback id (so redelivery is idempotent) with: category (knowledge gap, wrong escalation, hallucination, tone, personal data, bug, other), summary, evidence quotes, suggested Knowledge Base addition, suggested Eval Case, severity, and the model used. It posts the summary back to Langfuse as a comment or score. (ADR-0005)
+- The Triage Agent runs on every write of a Feedback document — create or update — and exits immediately unless the rating is, or has just become, thumbs-down; loads the conversation (Refuse-Set-redacted) and Trace metadata, makes one structured-output model call, and writes a Triage Report keyed by the Feedback id (so redelivery is idempotent) with: category (knowledge gap, wrong escalation, hallucination, tone, personal data, bug, other), summary, evidence quotes, suggested Knowledge Base addition, suggested Eval Case, severity, and the model used. It posts the summary back to Langfuse as a comment or score. (ADR-0005)
 
 ### Personal data
 
