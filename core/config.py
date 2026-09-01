@@ -74,6 +74,11 @@ class Settings(BaseSettings):
     session_cookie_secret: str = ""
     # A burst guard: past this many Turns a Session is closed politely with the contact path.
     max_turns_per_session: int = 40
+    # --- Access Code (ticket 21) ---
+    # A shared code a browser gives once before the Assistant answers. Blank is no gate at all
+    # — CI, `make dev`, a reviewer's laptop. Set, it stands between a public URL and a metered
+    # model key: the two endpoints that spend the key refuse until the code has been given.
+    chat_access_code: str = ""
 
     # --- Leads ---
     # The Qualification Score at which a Lead becomes a Qualified Lead and the Hand-over offer

@@ -15,6 +15,7 @@ from datetime import date
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from api.access import AccessGate
 from api.chat import create_chat_router
 from api.session import SESSION_COOKIE, session_id_from_cookie
 from api.tests.conftest import COOKIE_SECRET, sse_events
@@ -189,7 +190,12 @@ def masked_client(provider: StubModelProvider, store: InMemoryConversationStore)
     )
     app = FastAPI()
     app.include_router(
-        create_chat_router(runner, cookie_secret=COOKIE_SECRET, secure_cookie=False),
+        create_chat_router(
+            runner,
+            gate=AccessGate(code="", cookie_secret=COOKIE_SECRET),
+            cookie_secret=COOKIE_SECRET,
+            secure_cookie=False,
+        ),
         prefix="/api",
     )
     return TestClient(app)

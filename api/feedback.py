@@ -27,6 +27,7 @@ from collections.abc import Mapping
 from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
+from api.access import AccessGate
 from api.session import read_session_id
 from core import redaction
 from core.logging import get_logger, session_context
@@ -92,13 +93,15 @@ def comment_for(existing: Feedback | None, submission: FeedbackRequest, changed_
 
 
 def create_feedback_router(
-    store: ConversationStore, *, tracer: Tracer, cookie_secret: str
+    store: ConversationStore, *, gate: AccessGate, tracer: Tracer, cookie_secret: str
 ) -> APIRouter:
     """The Feedback route, with the store, the tracer and the cookie's key closed over."""
     router = APIRouter(tags=["feedback"])
 
     @router.post("/feedback")
     async def leave_feedback(request: Request, submission: FeedbackRequest) -> FeedbackReceipt:
+        # A thumbs-down runs the Triage Agent, which spends the model key too.
+        gate.check(request)
         session_id = read_session_id(request, cookie_secret)
         # No Session at all and a Trace from someone else's are the same answer on purpose: a
         # caller with no conversation has nothing to rate, and minting them a fresh Session —

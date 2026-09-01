@@ -13,6 +13,7 @@ from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
 from starlette.responses import StreamingResponse
 
+from api.access import AccessGate
 from api.session import new_session_id, read_session_id, set_session_cookie
 from core.events import error_event
 from core.logging import get_logger, session_context
@@ -35,11 +36,15 @@ class TurnRequest(BaseModel):
     message: str = Field(min_length=1, max_length=MAX_MESSAGE_LENGTH, pattern=r"\S")
 
 
-def create_chat_router(runner: TurnRunner, *, cookie_secret: str, secure_cookie: bool) -> APIRouter:
+def create_chat_router(
+    runner: TurnRunner, *, gate: AccessGate, cookie_secret: str, secure_cookie: bool
+) -> APIRouter:
     router = APIRouter(tags=["chat"])
 
     @router.post("/chat")
     async def chat(request: Request, turn: TurnRequest) -> StreamingResponse:
+        # Before a Session is minted or a message is looked at: a Turn spends the model key.
+        gate.check(request)
         session_id = read_session_id(request, cookie_secret) or new_session_id()
 
         async def frames() -> AsyncIterator[str]:
