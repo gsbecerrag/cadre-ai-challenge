@@ -144,6 +144,7 @@ Deployed as one container on Cloud Run with Firestore, Firebase Auth, a Firebase
 ### Feedback and Triage Agent
 
 - Feedback (thumbs up/down, optional comment) is written to Firestore with the Session id and Trace id and mirrored to Langfuse as a score on that Trace.
+- Access Code (scope addition, 31 Aug): with `CHAT_ACCESS_CODE` set, a Turn and a Feedback are refused with 401 `access_code_required` until the browser holds the signed `cadre_access` cookie that `POST /api/access` sets for the right code; a wrong code is refused without a reason and five wrong ones lock the caller; `?code=` on the page URL unlocks silently; blank means no gate. It protects a metered key behind a public URL and is not authentication.
 - The Triage Agent runs on every write of a Feedback document — create or update — and exits immediately unless the rating is, or has just become, thumbs-down; loads the conversation (Refuse-Set-redacted) and Trace metadata, makes one structured-output model call, and writes a Triage Report keyed by the Feedback id (so redelivery is idempotent) with: category (knowledge gap, wrong escalation, hallucination, tone, personal data, bug, other), summary, evidence quotes, suggested Knowledge Base addition, suggested Eval Case, severity, and the model used. It posts the summary back to Langfuse as a comment or score. (ADR-0005)
 
 ### Personal data

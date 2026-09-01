@@ -890,3 +890,41 @@ Binding for every task and every review. Quoted verbatim into each implementer a
 10. **Dependencies:** any new dependency is listed in the report with a one-line reason. Python via uv, web via pnpm.
 11. **Scope:** when the ticket's acceptance criteria are met, stop. Follow-ups go in the report, not the code.
 12. **Verification before done:** run the focused tests while iterating, then `make check` (lint, typecheck, full unit suite) once before the final commit and paste its summary in the report.
+
+# Task 21: Access Code on the chat — the metered key behind a public URL
+
+Source ticket: `.scratch/cadre-support-agent/issues/21-chat-access-code.md` — read it first; it is your requirements. Then read the spec's Testing Decisions, CONTEXT.md, and the ADRs this area touches.
+
+
+**What to build:** The deployed Assistant runs on a metered OpenRouter key with a small balance, on a URL anyone can reach. A Visitor who has not entered the shared Access Code — handed to the Cadre team privately, never in the repository — sees the greeting and a small "enter the access code" field instead of the composer; the right code unlocks that browser for the rest of its Session and the composer appears. The gate is enforced on the server on the two endpoints that spend the key (a Turn and a thumbs-down's Triage), so a script cannot bypass the widget. A link with `?code=…` unlocks silently, so the reviewer who opens the review pack's link never types anything. With no code configured (CI, `make dev`, a reviewer's laptop) there is no gate at all. Scope addition of 31 Aug (Phase P8).
+
+**Blocked by:** 19 (Honesty pass)
+
+**Status:** done
+
+- [x] `POST /api/chat` and `POST /api/feedback` answer 401 `access_code_required` until the Session's browser holds a valid unlock cookie, and are unchanged when no code is configured.
+- [x] `POST /api/access {code}` sets a signed, HTTP-only unlock cookie on the right code, refuses a wrong one without saying why, and refuses further attempts after five wrong codes in a Session; `GET /api/access` reports `{required, unlocked}`.
+- [x] The widget shows the code field in place of the composer while locked, unlocks on the right code, and honours `?code=` on the page URL.
+- [x] The code lives in Secret Manager (`chat-access-code`); `make set-chat-access-code` creates or rotates it with a hidden prompt and rolls the service; `make deploy` binds it only when it exists. The value never appears in the repository, a log line, or a command line.
+- [x] README, plan.md, the demo script, CLAUDE.md, CONTEXT.md and the spec record the gate; tests at S1 show RED then GREEN.
+
+## Comments
+
+- 2026-08-31 — done in [PR #32](https://github.com/gsbecerrag/cadre-ai-challenge/pull/32). Built directly by the controller (TDD at S1: 8 tests RED on a missing `api.access`, GREEN after; the full suite, mypy, ruff, eslint, tsc and vitest green) — the subagent seat was skipped because every subagent build that day ran a pnpm install inside the VS Code workspace, which was the crash trigger. The code itself is set by the operator with `make set-chat-access-code`; the gate is off until then.
+
+## Global Constraints
+
+Binding for every task and every review. Quoted verbatim into each implementer and reviewer brief.
+
+1. **TDD is required.** Loop: `superpowers:test-driven-development` — no production code without a failing test; run the test and confirm it fails for the expected reason (RED); write the minimum to pass (GREEN); small refactors only while green and only in files this task touches. Test quality and seams: `mattpocock-skills:tdd` (`tests.md`, `mocking.md`) — no mocking of internals, no tautological assertions, expected values come from the spec or a known-good literal.
+2. **Tests exist only at the agreed seams** (spec → Testing Decisions): S1 HTTP through the API with the stub provider, in-memory store, in-memory notifier, fake auth verifier; S2 pure units in core; S3 the Triage Agent handler with fake event and client; S4 one web reducer test; S5 the evaluation suite. Nothing else gets tests; the ticket says which seams it uses.
+3. **The report must contain TDD evidence** for each test added: the RED command with its failing output and why the failure was expected, and the GREEN command with its passing output. No evidence, task not done.
+4. **Unit tests and CI never reach the network.** No call to OpenRouter, Firestore, Langfuse, Daily.co, or Firebase Auth from a unit test or from CI. Real providers are reached only by `make eval`, `make benchmark`, and the deployed app.
+5. **Personal data:** no real names, emails, phones, card numbers, or ids in tests, fixtures, logs, or commits — obviously fake values only (`jane@example.com`, `+1 555 0100`, the skill catalog's synthetic ids). The `refuse` Redaction Profile runs before the model and before any store write; the `full` profile runs before any trace or log emission; typed Contact Details on the Lead stay raw.
+6. **Vocabulary:** names, test names, and messages use the terms in CONTEXT.md (Assistant, Visitor, Session, Turn, KB Section, Grounded Answer, Trap Question, Escalation, Hand-over, Handover Request, Strategist, Availability, Console, Lead, Qualification Signal/Score, Walkthrough Card, Portal, Feedback, Trace, Triage Agent, Triage Report, Eval Case, Refuse Set, Redaction Profile). Respect the ADRs in docs/adr; if a change contradicts one, say so in the report instead of quietly deviating.
+7. **Seams are interfaces with one production implementation each** — `ModelProvider`, `ConversationStore`, `KnowledgeSource`, `Notifier` (and the video adapter). Third-party SDKs are imported only inside their adapter module.
+8. **Logging:** structured JSON through the core logging module, level from `LOGLEVEL`; every line carries `request_id` and `session_id` when known; no `print`; never log a secret or unredacted personal data.
+9. **Git:** Conventional Commits, small commits, on the ticket's branch only — never `main`, never force-push. The PR body names the ticket.
+10. **Dependencies:** any new dependency is listed in the report with a one-line reason. Python via uv, web via pnpm.
+11. **Scope:** when the ticket's acceptance criteria are met, stop. Follow-ups go in the report, not the code.
+12. **Verification before done:** run the focused tests while iterating, then `make check` (lint, typecheck, full unit suite) once before the final commit and paste its summary in the report.

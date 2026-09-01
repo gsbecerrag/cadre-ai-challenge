@@ -18,7 +18,9 @@ the plan that drove the build is [`plan.md`](plan.md).
 ## Two minutes on the live app
 
 Open the URL. It renders a mock cadreai.com host page with the Assistant docked bottom-right
-(the widget is the product; the page under it is scenery).
+(the widget is the product; the page under it is scenery). The chat asks for an **access code**
+once per browser — it is in the review pack, and the pack's link carries it, so following the
+link is enough. The deployed model key is metered; the gate keeps its balance for reviewers.
 
 1. **A grounded answer.** "What does Cadre AI do, and which industries do you work with?" —
    the answer streams, and every claim carries a `[topic#heading]` citation chip you can tap
@@ -51,8 +53,9 @@ Personal data note: it is a live demo on a real project. Use obviously fake deta
 
 ## Demo prompts
 
-The full set, in the order [`docs/demo-script.md`](docs/demo-script.md) narrates them. Type them
-into the widget on the live URL; the Console is at `/console`.
+The full set, in the order [`docs/demo-script.md`](docs/demo-script.md) narrates them. Unlock
+the chat with the review pack's code (or its link), then type them into the widget on the live
+URL; the Console is at `/console`.
 
 **1 · Grounded answers with citations (the Knowledge Base)**
 
@@ -213,6 +216,7 @@ cp .env.example .env
 | Traces, costs and the thumbs | `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_HOST` |
 | Video Hand-over | `LIVE_HANDOVER_ENABLED=true`, `DAILY_API_KEY`, `DAILY_DOMAIN` — off, every accepted Hand-over is a Callback |
 | `make eval` | `OPENROUTER_API_KEY` (about $0.60 a run) |
+| The access-code gate, locally | `CHAT_ACCESS_CODE` — blank is no gate |
 
 [`scripts/setup-wizard.sh`](scripts/setup-wizard.sh) walks the human-only steps once — ADC,
 Google sign-in in Firebase Auth, the OpenRouter key, Langfuse keys, Daily.co, Secret Manager —
@@ -274,6 +278,25 @@ parallel**.
 Health checks: `/healthz` exists and is tested, but Google's frontend answers that exact path
 on `*.run.app` before the request reaches the container, so probe the deployed service at
 `/api/healthz` (the same handler).
+
+### Gate the chat
+
+The deployed chat sits behind an **access code** — a shared secret between the public URL and
+the metered model key, handed to the Cadre team privately and never committed. It is enforced
+on the server on the two endpoints that spend the key (a Turn, and a thumbs-down because it
+runs the Triage Agent); the host page, the Portal and the Console stay open.
+
+```bash
+make set-chat-access-code    # type the code at a hidden prompt → Secret Manager → a new revision
+make unset-chat-access-code  # the gate off again, one revision, the secret kept
+```
+
+The right code sets a signed, HTTP-only cookie beside the Session's, so a browser unlocks once
+and stays unlocked through a Session's Turn cap; a wrong code is refused without saying why,
+and five wrong ones lock further attempts for that caller. A link with `?code=…` unlocks
+silently and strips the code from the address bar — put that link in the review pack and nobody
+types anything. With no `chat-access-code` secret, `make deploy` deploys the chat open and says
+so.
 
 ### Swap the OpenRouter key
 
@@ -348,6 +371,9 @@ are deliberate, and the reasoning is in `plan.md`'s cut log or the linked ADR.
   guessed at. Traces, scores and Triage comments *are* live; only the dataset run is missing.
 - **Thumbs need a Trace id.** Feedback is keyed by the Langfuse trace id, so with no Langfuse
   keys configured the thumbs do not appear. Decoupling Feedback from Langfuse is Phase 2.
+- **The access code is a shared secret, not authentication.** It protects the model key's
+  balance from strangers and scripts, not from anyone the review pack's link is forwarded to;
+  the attempt lock is per Cloud Run instance. A per-day Turn cap would be the next layer.
 - **Secret copies do not follow their source.** The Firebase Function cannot name a hyphenated
   Secret Manager id, so `deploy-secrets` keeps `OPENROUTER_API_KEY` / `LANGFUSE_PUBLIC_KEY` /
   `LANGFUSE_SECRET_KEY` as *copies* of the hyphenated originals. `make rotate-openrouter-key`

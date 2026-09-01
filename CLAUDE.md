@@ -78,6 +78,7 @@ make build-web  # build web/dist so the API can serve it
 make deploy     # gcloud run deploy --source . to cadre-support-agent in us-central1, then curl the health endpoint
 make check-openrouter-key   # is the deployed OpenRouter key alive, and how much credit is left (value never printed)
 make rotate-openrouter-key  # new key → both secrets, a new Cloud Run revision, the Function re-bound; .env only with UPDATE_ENV=1
+make set-chat-access-code   # the Access Code the deployed chat asks for (hidden prompt → Secret Manager → new revision); unset-chat-access-code removes it
 ```
 
 One test: `uv run pytest api/tests/test_chat.py::test_a_turn_streams_the_answer_as_text_deltas_and_ends_with_usage`, or `cd web && pnpm vitest run src/chat/reducer.test.ts`.
@@ -92,7 +93,7 @@ Architecture: **one Cloud Run container** serves the API and the built SPA from 
 
 **Knowledge Base and prompt** (ADR-0001): every heading in `knowledge/*.md` compiles to a KB Section addressed `topic#heading-slug`; the block is byte-stable and goes into the cached prefix, assembled by `core/prompt.py` in the spec's fixed order with volatile content (today's date) after the cache breakpoint. The Assistant cites `[topic#heading]` inline and the widget lifts those markers into citation chips.
 
-**Session:** an opaque server-issued id in the HTTP-only `cadre_session` cookie, signed as `<id>.<hmac-sha256(id, SESSION_COOKIE_SECRET)>` (`api/session.py`) — a cookie that does not verify earns a fresh Session rather than a lookup, and a blank secret is fatal at startup in production. The store is keyed by the id, so one Visitor's history can never reach another's, and a Session ends politely after `MAX_TURNS_PER_SESSION` Turns.
+**Session:** an opaque server-issued id in the HTTP-only `cadre_session` cookie, signed as `<id>.<hmac-sha256(id, SESSION_COOKIE_SECRET)>` (`api/session.py`) — a cookie that does not verify earns a fresh Session rather than a lookup, and a blank secret is fatal at startup in production. The store is keyed by the id, so one Visitor's history can never reach another's, and a Session ends politely after `MAX_TURNS_PER_SESSION` Turns. **Access Code** (`api/access.py`): when `CHAT_ACCESS_CODE` is set, `POST /api/chat` and `POST /api/feedback` — the two endpoints that spend the model key — answer 401 `access_code_required` until the browser holds the `cadre_access` cookie that `POST /api/access` sets for the right code; blank means no gate, so tests, CI and `make dev` never see one.
 
 Note on health checks: `/healthz` exists and is tested, but Google's frontend answers that exact path on `*.run.app` before the request reaches the container, so the deployed service is probed at `/api/healthz` (the same handler).
 
