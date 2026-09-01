@@ -58,7 +58,7 @@ Run through this list once, ten minutes before the call.
 
 6. **A terminal** in the repository root, for step 11.
 
-**If the key dies mid-demo:** `make rotate-openrouter-key` with the spare key — the README's
+**If the key dies mid-demo:** `make rotate-openrouter-key` with the spare key (your own) — the README's
 *Swap the OpenRouter key* section documents what it does. Until it finishes, every answer is the user-safe error event, so say so
 and move to the Console, the Triage tab and Langfuse, which do not need the key.
 

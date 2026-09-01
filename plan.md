@@ -88,7 +88,7 @@ This is the authority for what is *not* here. It records both scope cuts (someth
 | Date | Cut / change | Why |
 |---|---|---|
 | 2026-08-30 | Vector RAG, Bedrock, Firecrawl ingestion → Phase 2 | KB fits a cached prompt; site is static HTML |
-| 2026-08-30 | Anthropic-direct provider → Phase 2 | One API for every model, and Cadre issued an OpenRouter key for the platform (kept in reserve — the deployed key is the operator's own; `make rotate-openrouter-key` swaps them) |
+| 2026-08-30 | Anthropic-direct provider → Phase 2 | One API for every model, and the platform ships on the OpenRouter key Cadre issued for it; the operator's own key is the spare, and `make rotate-openrouter-key` swaps them |
 | 2026-08-30 | Slack/email notification → Phase 2 | No Slack workspace; Console realtime notification is enough for the demo |
 | 2026-08-30 | RAGAS → pytest suite | No retrieval to score; kept the faithfulness idea as a groundedness metric |
 | 2026-08-30 | Voice, in-page navigation on cadreai.com → out | No surface / no destination today |
@@ -119,7 +119,7 @@ This is the authority for what is *not* here. It records both scope cuts (someth
 | Firebase Functions (Python) packaging | `make deploy-functions` copies `core/`; fallback is a FastAPI background task, recorded in ADR-0005. Not needed: the Function deployed (gen2, `us-central1`) and fired on the first real thumbs-down |
 | Daily.co / Google sign-in config | `LIVE_HANDOVER_ENABLED=false` keeps the demo on the Callback path; the Console has the email/password demo account (ticket 20) for a reviewer without a Google account |
 | Subagent review loops eat hours | Cap 2 fix rounds; downgrade rule above |
-| The OpenRouter key dies before the review | `make check-openrouter-key` before the call; `make rotate-openrouter-key` with the spare key — one minute, no code change |
+| The OpenRouter key dies before the review | `make check-openrouter-key` before the call; `make rotate-openrouter-key` with the spare key (the operator's own) — one minute, no code change |
 
 ## 9. Document map
 
