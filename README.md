@@ -319,10 +319,11 @@ makes the three moves a rotation actually needs — the ones that are easy to fo
 2. rolls the Cloud Run service to a new revision (no rebuild, about thirty seconds) — the
    service binds `:latest`, but an instance resolves the version when it starts, so a new
    revision is what makes every instance read the new key;
-3. re-binds the function's own Cloud Run service (`triage-on-feedback-written`) to `:latest`,
-   because `firebase deploy` pins the version number that was current at deploy time. If that
-   in-place update is refused the target says so, and `make deploy-functions` is the slower
-   equivalent.
+3. redeploys the Triage Agent function, because `firebase deploy` pins the version number
+   that was current at deploy time and a Function's service cannot be re-bound in place
+   (gcloud rejects the secrets annotation Firebase writes). The chat is back on the new key
+   after step 2, about a minute in; the Function follows a few minutes later, and if its
+   deploy fails the target says so and `make deploy-functions` finishes the job.
 
 Your `.env` is left alone: the deployed key and the developer key are **separate budgets**.
 `make eval` (about $0.60 a run) and `make dev` with the real provider spend whatever is in
