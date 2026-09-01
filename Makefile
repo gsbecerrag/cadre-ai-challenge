@@ -67,7 +67,7 @@ help:
 	@echo "deploy-rules  deploy firestore.rules and the indexes to Firebase"
 	@echo "deploy-functions  copy core/ and knowledge/ into functions/ and deploy the Triage Agent"
 	@echo "check-openrouter-key   is the deployed OpenRouter key alive, and how much credit is left"
-	@echo "rotate-openrouter-key  replace the OpenRouter key everywhere: both secrets, Cloud Run, the Function, .env"
+	@echo "rotate-openrouter-key  replace the deployed OpenRouter key: both secrets, Cloud Run, the Function (.env only with UPDATE_ENV=1)"
 
 install:
 	uv sync
@@ -219,6 +219,8 @@ deploy-functions:
 #      would keep the dead key until the next `make deploy-functions`.
 # The key is read from the terminal with echo off (or from stdin when piped in), verified with
 # OpenRouter before anything is written, and never appears on a command line or in the output.
+# The developer's .env is a separate budget and is left alone unless UPDATE_ENV=1: `make eval`
+# costs ~$0.60 a run and must never draw on the platform's credit by accident.
 rotate-openrouter-key:
 	@if [ -t 0 ]; then printf 'New OpenRouter key (input hidden): '; read -rs key; echo; else read -r key; fi; \
 	[ -n "$$key" ] || { echo "No key given; nothing changed."; exit 2; }; \
@@ -237,9 +239,11 @@ rotate-openrouter-key:
 	gcloud run services update $(FUNCTION_SERVICE) --project $(PROJECT) --region $(REGION) --quiet \
 	  --update-secrets OPENROUTER_API_KEY=OPENROUTER_API_KEY:latest >/dev/null \
 	  || echo "Could not update $(FUNCTION_SERVICE) in place — run: make deploy-functions"; \
-	if [ -f .env ]; then \
+	if [ -n "$(UPDATE_ENV)" ] && [ -f .env ]; then \
 	  NEW_KEY="$$key" perl -pi -e 's/^OPENROUTER_API_KEY=.*/OPENROUTER_API_KEY=$$ENV{NEW_KEY}/' .env; \
-	  echo ".env: OPENROUTER_API_KEY replaced (local runs and make eval use the new key too)"; \
+	  echo ".env: OPENROUTER_API_KEY replaced — local runs and make eval now spend this key"; \
+	else \
+	  echo ".env left alone: local runs and make eval keep the key already there (UPDATE_ENV=1 replaces it)"; \
 	fi; \
 	url=$$(gcloud run services describe $(SERVICE) --project $(PROJECT) --region $(REGION) --format='value(status.url)'); \
 	printf 'Health: '; curl -sS "$$url/api/healthz"; echo; \

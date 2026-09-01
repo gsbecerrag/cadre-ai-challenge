@@ -301,8 +301,11 @@ makes the three moves a rotation actually needs — the ones that are easy to fo
    in-place update is refused the target says so, and `make deploy-functions` is the slower
    equivalent.
 
-It also replaces `OPENROUTER_API_KEY` in your `.env`, so local runs and `make eval` follow. The
-key is read from the terminal with echo off — or piped in, `printf '%s' "$KEY" | make
+Your `.env` is left alone: the deployed key and the developer key are **separate budgets**.
+`make eval` (about $0.60 a run) and `make dev` with the real provider spend whatever is in
+`.env`, so keep the spare there and the platform's credit goes only to the platform —
+`UPDATE_ENV=1` replaces it too if you really want one key everywhere. The key is read from
+the terminal with echo off — or piped in, `printf '%s' "$KEY" | make
 rotate-openrouter-key` — is never passed on a command line, and is never printed. Keep the
 spare key to hand. The first real rotation — the operator's key out, Cadre's in — is also the
 rehearsal; rotating back is the same command with the other key, and rotating to the *same*
@@ -339,7 +342,7 @@ are deliberate, and the reasoning is in `plan.md`'s cut log or the linked ADR.
   politely after `MAX_TURNS_PER_SESSION` (40) Turns, but the documents stay. Parked from
   ticket 03 as a Phase-2 item.
 - **The eval scorecard predates ticket 11's fixes** (see the table above); `make eval` costs
-  about $0.60 and a few minutes to refresh it.
+  about $0.60 and a few minutes to refresh it — on the key in `.env`, never the platform's.
 - **The Langfuse dataset-run upload is a no-op.** `evals/sink.py` is a seam with nothing behind
   it: langfuse 4.15 removed `dataset_item.link`, and wiring the replacement was cut rather than
   guessed at. Traces, scores and Triage comments *are* live; only the dataset run is missing.
