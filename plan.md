@@ -88,7 +88,7 @@ This is the authority for what is *not* here. It records both scope cuts (someth
 | Date | Cut / change | Why |
 |---|---|---|
 | 2026-08-30 | Vector RAG, Bedrock, Firecrawl ingestion → Phase 2 | KB fits a cached prompt; site is static HTML |
-| 2026-08-30 | Anthropic-direct provider → Phase 2 | Cadre supplied an OpenRouter key; one API for every model |
+| 2026-08-30 | Anthropic-direct provider → Phase 2 | One API for every model, and Cadre issued an OpenRouter key for the platform (kept in reserve — the deployed key is the operator's own; `make rotate-openrouter-key` swaps them) |
 | 2026-08-30 | Slack/email notification → Phase 2 | No Slack workspace; Console realtime notification is enough for the demo |
 | 2026-08-30 | RAGAS → pytest suite | No retrieval to score; kept the faithfulness idea as a groundedness metric |
 | 2026-08-30 | Voice, in-page navigation on cadreai.com → out | No surface / no destination today |
@@ -104,7 +104,7 @@ This is the authority for what is *not* here. It records both scope cuts (someth
 | 2026-08-31 | No Firestore **TTL policy on `sessions`** → Phase 2 | Parked from ticket 03. A Session ends politely after `MAX_TURNS_PER_SESSION` (40) Turns, but the documents stay forever. A TTL policy is project configuration rather than code, so it changes nothing about the design and nothing in the demo depends on it |
 | 2026-08-31 | **Feedback stays keyed by the Langfuse Trace id** → Phase 2 | One id was cheaper than two while Langfuse is the only consumer of a score. The visible cost: with no Langfuse keys configured a Turn has no Trace id, so the thumbs do not render and the Triage Agent has nothing to fire on |
 | 2026-08-31 | **The eval scorecard was not re-run** after ticket 11's fixes | The last full run (ticket 13: correctness 19/20 · groundedness 44/50 · escalation 20/20 · tool 6/10) found two `tool_correctness` causes, and ticket 11 fixed both. Re-running costs ~$0.60 and several minutes of the same OpenRouter credit the live demo needs, so 6/10 is quoted as a floor rather than refreshed |
-| 2026-08-31 | **Secret copies do not auto-rotate** | A Firebase Function binds Secret Manager ids as environment variable *names*, so it cannot name `openrouter-api-key`. `deploy-secrets` keeps `OPENROUTER_API_KEY` / `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` as copies of the hyphenated originals; adding a version to one does not update the other, so rotation adds a version to both |
+| 2026-08-31 | **Secret copies do not auto-rotate** | A Firebase Function binds Secret Manager ids as environment variable *names*, so it cannot name `openrouter-api-key`. `deploy-secrets` keeps `OPENROUTER_API_KEY` / `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` as copies of the hyphenated originals; adding a version to one does not update the other, so rotation adds a version to both — `make rotate-openrouter-key` does exactly that for the OpenRouter pair and rolls both services; the Langfuse pair is by hand |
 | 2026-08-31 | **One Strategist identity for the demo** | The allowlist holds one real Google address and the demo account, and Availability is one presence document per signed-in identity — two people signed in as the demo account share one Availability toggle. Multi-Strategist routing was never in scope; the Console shows a queue, not an assignment engine |
 | 2026-08-31 | **An abandoned Handover Request times out lazily** | A Visitor who closes the tab mid-call leaves the request open until the widget's next status poll or the Strategist's "End call". A server-side sweeper is a scheduled Function — the same pattern as the Triage Agent — and was not worth a second Function before the review |
 | 2026-08-31 | **Single region, single provider, no fallback** | Cloud Run `us-central1`, Firestore `nam5`, OpenRouter with no cross-provider failover. Multi-region is a deploy-topology change with nothing to demonstrate; OpenRouter's `models: [...]` fallback is one line and stays a Phase-2 line because an untested failover path is a worse demo-day risk than a tested single path |
@@ -116,14 +116,16 @@ This is the authority for what is *not* here. It records both scope cuts (someth
 | Risk | Fallback |
 |---|---|
 | Cloud Run deploy blocked | Ticket 01 is hello-world deploy; nothing else starts until the URL is live |
-| Firebase Functions (Python) packaging | `make deploy-functions` copies `core/`; fallback is a FastAPI background task, recorded in ADR-0005 |
-| Daily.co / Google sign-in config | `LIVE_HANDOVER_ENABLED=false` keeps the demo on the Callback path; Console falls back to a shared token |
+| Firebase Functions (Python) packaging | `make deploy-functions` copies `core/`; fallback is a FastAPI background task, recorded in ADR-0005. Not needed: the Function deployed (gen2, `us-central1`) and fired on the first real thumbs-down |
+| Daily.co / Google sign-in config | `LIVE_HANDOVER_ENABLED=false` keeps the demo on the Callback path; the Console has the email/password demo account (ticket 20) for a reviewer without a Google account |
 | Subagent review loops eat hours | Cap 2 fix rounds; downgrade rule above |
+| The OpenRouter key dies before the review | `make check-openrouter-key` before the call; `make rotate-openrouter-key` with the spare key — one minute, no code change |
 
 ## 9. Document map
 
 | Path | What |
 |---|---|
+| [README.md](README.md) | The front door: live URL, demo prompts, run/test/deploy, honest limits |
 | [CLAUDE.md](CLAUDE.md) | How Claude Code works in this repo: commands, conventions, process rules |
 | [CONTEXT.md](CONTEXT.md) | Glossary — the words code, docs, and tests must share |
 | [.scratch/cadre-support-agent/spec.md](.scratch/cadre-support-agent/spec.md) | Super spec (PRD + engineering decisions + test seams) |
@@ -132,5 +134,8 @@ This is the authority for what is *not* here. It records both scope cuts (someth
 | [docs/adr/](docs/adr/) | The ten decision records |
 | [docs/research/](docs/research/) | Evidence: cadreai.com facts, OpenRouter and Claude API facts, decision brief |
 | [docs/design/](docs/design/README.md) | Claude Design artboards (chat widget, mock site + Portal, Strategist Console), the design brief, and the spec-vs-design rulings |
+| [docs/demo-script.md](docs/demo-script.md) | The live walkthrough: the exact prompts, both screens, the pre-demo checklist |
+| [docs/transcripts/](docs/transcripts/) | Deployed-app checks per ticket: real Turns, costs, Trace ids |
+| [docs/process/](docs/process/) | The subagent-driven-development ledger: rulings and review rounds |
 | [docs/agents/](docs/agents/) | Conventions for the engineering skills (issue tracker, triage labels, domain docs) |
 | [.claude/skills/](.claude/skills/) | Project skills: `pii-redaction` (adapted for B2B), `mvp-prioritization` |
