@@ -12,6 +12,9 @@ COOKIE_SECRET     := session-cookie-secret
 LANGFUSE_PUBLIC   := langfuse-public-key
 LANGFUSE_SECRET   := langfuse-secret-key
 DAILY_SECRET      := daily-api-key
+# The Access Code a browser gives once before the Assistant answers (ticket 21). Optional: with
+# no such secret the chat deploys open, which is what a laptop and CI see.
+ACCESS_SECRET     := chat-access-code
 
 # The same three secrets again, under a second set of ids — because the Triage Agent function
 # cannot name the ones above. `firebase-functions` takes `secrets=[...]` as Secret Manager
@@ -52,7 +55,7 @@ ADMIN_ALLOWED_EMAILS ?= galo.s.becerra@gmail.com,strategist@cadre-demo.example
 # exists in CI or in the container, so tests and Cloud Run cannot pick up a stray .env.
 ENV_FILE := $(if $(wildcard .env),--env-file .env,)
 
-.PHONY: help install dev check test build-web deploy deploy-secrets eval eval-stub rules deploy-rules deploy-functions check-openrouter-key rotate-openrouter-key
+.PHONY: help install dev check test build-web deploy deploy-secrets eval eval-stub rules deploy-rules deploy-functions check-openrouter-key rotate-openrouter-key set-chat-access-code unset-chat-access-code
 
 help:
 	@echo "install    install Python (uv) and web (pnpm) dependencies"
@@ -68,6 +71,8 @@ help:
 	@echo "deploy-functions  copy core/ and knowledge/ into functions/ and deploy the Triage Agent"
 	@echo "check-openrouter-key   is the deployed OpenRouter key alive, and how much credit is left"
 	@echo "rotate-openrouter-key  replace the deployed OpenRouter key: both secrets, Cloud Run, the Function (.env only with UPDATE_ENV=1)"
+	@echo "set-chat-access-code   set or change the Access Code the deployed chat asks for (hidden prompt)"
+	@echo "unset-chat-access-code remove the Access Code gate from the deployed chat"
 
 install:
 	uv sync
@@ -141,7 +146,7 @@ deploy-secrets:
 	        --replication-policy=automatic --data-file=- >/dev/null; \
 	done; \
 	for secret in $(OPENROUTER_SECRET) $(COOKIE_SECRET) $(LANGFUSE_PUBLIC) $(LANGFUSE_SECRET) \
-	              $(DAILY_SECRET) $(FUNCTION_SECRETS); do \
+	              $(DAILY_SECRET) $(ACCESS_SECRET) $(FUNCTION_SECRETS); do \
 	  gcloud secrets describe "$$secret" --project $(PROJECT) >/dev/null 2>&1 || { \
 	    echo "Skipping the grant on $$secret: it does not exist"; \
 	    continue; \
@@ -161,6 +166,12 @@ deploy-secrets:
 deploy: deploy-secrets
 	@url=$$(gcloud run services describe $(SERVICE) --project $(PROJECT) --region $(REGION) \
 	    --format='value(status.url)' 2>/dev/null); \
+	access=""; \
+	if gcloud secrets describe $(ACCESS_SECRET) --project $(PROJECT) >/dev/null 2>&1; then \
+	  access=",CHAT_ACCESS_CODE=$(ACCESS_SECRET):latest"; \
+	else \
+	  echo "No $(ACCESS_SECRET) secret: the chat deploys with no Access Code (make set-chat-access-code)"; \
+	fi; \
 	gcloud run deploy $(SERVICE) \
 	  --source . \
 	  --project $(PROJECT) \
@@ -168,7 +179,7 @@ deploy: deploy-secrets
 	  --port 8080 \
 	  --allow-unauthenticated \
 	  --update-env-vars "^|^ENV=production|APP_VERSION=$(VERSION)|MODEL_PROVIDER=openrouter|CONVERSATION_STORE=firestore|GOOGLE_CLOUD_PROJECT=$(PROJECT)|ADMIN_ALLOWED_EMAILS=$(ADMIN_ALLOWED_EMAILS)|OPENROUTER_APP_URL=$${url:-https://cadreai.com}|LANGFUSE_HOST=$(LANGFUSE_HOST)|LIVE_HANDOVER_ENABLED=true|DAILY_DOMAIN=$(DAILY_DOMAIN)" \
-	  --update-secrets OPENROUTER_API_KEY=$(OPENROUTER_SECRET):latest,SESSION_COOKIE_SECRET=$(COOKIE_SECRET):latest,LANGFUSE_PUBLIC_KEY=$(LANGFUSE_PUBLIC):latest,LANGFUSE_SECRET_KEY=$(LANGFUSE_SECRET):latest,DAILY_API_KEY=$(DAILY_SECRET):latest
+	  --update-secrets OPENROUTER_API_KEY=$(OPENROUTER_SECRET):latest,SESSION_COOKIE_SECRET=$(COOKIE_SECRET):latest,LANGFUSE_PUBLIC_KEY=$(LANGFUSE_PUBLIC):latest,LANGFUSE_SECRET_KEY=$(LANGFUSE_SECRET):latest,DAILY_API_KEY=$(DAILY_SECRET):latest$$access
 	@url=$$(gcloud run services describe $(SERVICE) --project $(PROJECT) --region $(REGION) \
 	    --format='value(status.url)'); \
 	  echo "Service URL: $$url"; \
@@ -255,3 +266,34 @@ rotate-openrouter-key:
 check-openrouter-key:
 	@gcloud secrets versions access latest --secret=$(OPENROUTER_SECRET) --project $(PROJECT) \
 	  | uv run python scripts/openrouter-key-status.py
+
+# The Access Code (ticket 21): a public URL in front of a metered model key needs something
+# between a stranger's script and the balance. The code is shared with the Cadre team privately
+# and lives only in Secret Manager — never in the repository, a log line or a command line: it
+# is read with echo off (or piped in), stored, and the service rolled so the new value is live.
+# A link with `?code=<the code>` unlocks a browser without typing.
+set-chat-access-code:
+	@if [ -t 0 ]; then printf 'Access code (input hidden): '; read -rs code; echo; else read -r code; fi; \
+	[ -n "$$code" ] || { echo "No code given; nothing changed."; exit 2; }; \
+	if gcloud secrets describe $(ACCESS_SECRET) --project $(PROJECT) >/dev/null 2>&1; then \
+	  printf '%s' "$$code" | gcloud secrets versions add $(ACCESS_SECRET) --project $(PROJECT) --data-file=- >/dev/null; \
+	  echo "$(ACCESS_SECRET): new version added"; \
+	else \
+	  printf '%s' "$$code" | gcloud secrets create $(ACCESS_SECRET) --project $(PROJECT) \
+	      --replication-policy=automatic --data-file=- >/dev/null; \
+	  echo "$(ACCESS_SECRET): created"; \
+	fi; \
+	sa="$$(gcloud projects describe $(PROJECT) --format='value(projectNumber)')-compute@developer.gserviceaccount.com"; \
+	gcloud secrets add-iam-policy-binding $(ACCESS_SECRET) --project $(PROJECT) \
+	  --member="serviceAccount:$$sa" --role=roles/secretmanager.secretAccessor >/dev/null; \
+	echo "Rolling $(SERVICE) so the code is live"; \
+	gcloud run services update $(SERVICE) --project $(PROJECT) --region $(REGION) --quiet \
+	  --update-secrets CHAT_ACCESS_CODE=$(ACCESS_SECRET):latest \
+	  --update-env-vars CHAT_ACCESS_CODE_SET_AT=$$(date -u +%Y-%m-%dT%H:%M:%SZ) >/dev/null; \
+	echo "Done. Share the code privately; a link with ?code=<the code> unlocks a browser without typing."
+
+# The gate off again, in one revision: the secret stays in Secret Manager for the next
+# `make set-chat-access-code` or `make deploy`, which would bind it once more.
+unset-chat-access-code:
+	@gcloud run services update $(SERVICE) --project $(PROJECT) --region $(REGION) --quiet \
+	  --remove-secrets CHAT_ACCESS_CODE >/dev/null && echo "$(SERVICE): the chat is open again"

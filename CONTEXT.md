@@ -22,6 +22,10 @@ _Avoid_: chat, thread, conversation
 One Visitor message and the Assistant's complete response to it, including any tool calls it makes on the way.
 _Avoid_: exchange, round, request
 
+**Access Code**:
+A shared code a browser gives once before the Assistant answers — what stands between the public URL and the metered model key. It says the Visitor was given the code, nothing about who they are.
+_Avoid_: password, login, token, API key
+
 ### Knowledge
 
 **Knowledge Base**:

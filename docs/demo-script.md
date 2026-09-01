@@ -48,21 +48,27 @@ Run through this list once, ten minutes before the call.
    keep the spare there, never the platform's. If `remaining` is under $1.50, rotate to the
    spare before the call rather than during it.
 
-3. **Screen 2 is signed in.** Open `/console`, sign in, and set **Availability** to **Online**.
+3. **Screen 1 is unlocked.** Open the review pack's link — it carries `?code=` and unlocks the
+   chat silently — or open the plain URL and type the access code into the field the chat
+   shows in place of its composer. The code is in the review pack and in Secret Manager
+   (`chat-access-code`), nowhere in this repository. If the gate misbehaves on the day,
+   `make unset-chat-access-code` opens the chat in one revision.
+
+4. **Screen 2 is signed in.** Open `/console`, sign in, and set **Availability** to **Online**.
    Sign in with Google if the address is on the allowlist, or with the demo account
    `strategist@cadre-demo.example` — its password lives in Secret Manager under
    `console-demo-password` and is deliberately nowhere in this repository. Confirm the widget on
    screen 1 now says **"A strategist is online"** in its header; that string is the Availability
    read, and it is what makes step 5 a video call instead of a Callback.
 
-4. **Browser notifications are allowed** for the Console origin on screen 2 (the browser asks the
+5. **Browser notifications are allowed** for the Console origin on screen 2 (the browser asks the
    first time Availability goes Online). A Handover Request arrives with a sound *and* a
    notification; without the permission you only get the sound.
 
-5. **Langfuse is open** on the project, filtered to today, in its own tab on screen 1. Step 10 is
+6. **Langfuse is open** on the project, filtered to today, in its own tab on screen 1. Step 10 is
    a refresh, not a search.
 
-6. **A terminal** in the repository root, for step 11.
+7. **A terminal** in the repository root, for step 11.
 
 **If the key dies mid-demo:** `make rotate-openrouter-key` with the spare key (your own) — the README's
 *Swap the OpenRouter key* section documents what it does. Until it finishes, every answer is the user-safe error event, so say so

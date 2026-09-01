@@ -16,6 +16,7 @@ from pathlib import Path
 
 from fastapi import FastAPI
 
+from api.access import AccessGate, create_access_router
 from api.chat import create_chat_router
 from api.console import create_console_router
 from api.feedback import create_feedback_router
@@ -285,6 +286,15 @@ def create_app(
     )
     app.state.settings = resolved
     app.add_middleware(RequestContextMiddleware)
+    # The Access Code stands between the public URL and the metered model key (ticket 21).
+    gate = AccessGate(code=resolved.chat_access_code, cookie_secret=cookie_secret)
+    if gate.required:
+        logger.info("Access Code gate is on: a Turn needs the code")
+    secure_cookie = resolved.env == "production"
+    app.include_router(
+        create_access_router(gate, cookie_secret=cookie_secret, secure_cookie=secure_cookie),
+        prefix="/api",
+    )
     app.include_router(create_health_router(resolved))
     # Google's frontend answers `/healthz` on *.run.app itself and the request never reaches
     # the container, so the deployed service is probed under the API prefix instead.
@@ -292,13 +302,16 @@ def create_app(
     app.include_router(
         create_chat_router(
             runner,
+            gate=gate,
             cookie_secret=cookie_secret,
-            secure_cookie=resolved.env == "production",
+            secure_cookie=secure_cookie,
         ),
         prefix="/api",
     )
     app.include_router(
-        create_feedback_router(conversation_store, tracer=traced, cookie_secret=cookie_secret),
+        create_feedback_router(
+            conversation_store, gate=gate, tracer=traced, cookie_secret=cookie_secret
+        ),
         prefix="/api",
     )
     app.include_router(create_knowledge_router(sections), prefix="/api")
