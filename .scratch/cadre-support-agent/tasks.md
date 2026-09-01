@@ -624,14 +624,22 @@ Source ticket: `.scratch/cadre-support-agent/issues/14-triage-agent-and-triage-t
 
 **Design reference:** [docs/design](../../../docs/design/README.md) — brief §3.3: the Triage tab (heading "Triage reports", subtitle "Written by the Triage Agent on every thumbs-down. Newest first."), report cards with the category chip (Knowledge gap on `#f2efe4`/`#996`, Wrong escalation on `#fdeaea`/`#db4545`; add chip styles for the other five categories), severity label, timestamp, "Open trace in Langfuse ↗", summary, italic evidence block on cream, and the dashed boxes "Suggested KB addition" / "Suggested eval case" (monospace).
 
-**Status:** in-progress
+**Status:** done
 
-- [ ] The handler, invoked with a fake Firestore event for a thumbs-up, writes nothing; for a thumbs-down it writes a Triage Report with every field of the schema; invoked twice for the same Feedback id it writes once; covered at seam S3 with a fake Firestore client and the stub provider returning a structured-output fixture.
-- [ ] The structured-output request uses a JSON schema the provider seam supports, and a malformed model response produces a report with category `other` and the raw summary rather than a crash; covered at S3.
-- [ ] The Console Triage tab lists reports via a realtime listener with category, severity, summary, suggestions, and the Trace link; allowlist enforced as in ticket 10.
-- [ ] The function deploys with `make deploy-functions` (core package copied in), and the emulator flow fires it locally; on the deployed app a real thumbs-down produces a report in the Console within a minute. Screenshots attached to the PR.
-- [ ] If the Functions deploy is blocked after a bounded effort, the fallback (a background task in the API) is implemented behind the same handler and recorded in the ADR and plan.md's cut log.
-- [ ] The Triage tab matches the design reference for all seven categories.
+- [x] The handler, invoked with a fake Firestore event for a thumbs-up, writes nothing; for a thumbs-down it writes a Triage Report with every field of the schema; invoked twice for the same Feedback id it writes once; covered at seam S3 with a fake Firestore client and the stub provider returning a structured-output fixture.
+- [x] The structured-output request uses a JSON schema the provider seam supports, and a malformed model response produces a report with category `other` and the raw summary rather than a crash; covered at S3.
+- [x] The Console Triage tab lists reports via a realtime listener with category, severity, summary, suggestions, and the Trace link; allowlist enforced as in ticket 10.
+- [x] The function deploys with `make deploy-functions` (core package copied in), and the emulator flow fires it locally; on the deployed app a real thumbs-down produces a report in the Console within a minute. Screenshots attached to the PR.
+- [x] If the Functions deploy is blocked after a bounded effort, the fallback (a background task in the API) is implemented behind the same handler and recorded in the ADR and plan.md's cut log.
+- [x] The Triage tab matches the design reference for all seven categories.
+
+## Comments
+
+- Delivered in [PR #26](https://github.com/gsbecerrag/cadre-ai-challenge/pull/26). Reviewer: one Important (non-existent function-shaped secret ids) and two minors fixed in round 1; scoped re-review: all addressed, no new breakage.
+- Ruling: the handler is seam-pure in `core/triage.py` (S3 with fakes); the report is keyed by the Feedback id so redelivery overwrites; malformed output degrades to `other`; the triage score has its own name so it can never overwrite the Visitor's thumb; the trigger is document WRITES with the rating-became-down guard (ADR-0005 amended).
+- Parked: secret-copy rotation drift; `functions/main.py` outside mypy (watched via the two log lines on the first deploy); the ADR summary line + the spec's stale creation wording → ticket 19; the emulator run (host crashes) — superseded by the deployed check.
+- The deployed check (a real thumbs-down → a Triage Report in the Console within a minute; screenshots) is recorded here after the merge + make deploy-functions.
+- Deployed-app check recorded: [docs/transcripts/2026-08-31-deployed-checks-14-15-20.md](../../../docs/transcripts/2026-08-31-deployed-checks-14-15-20.md) — revision `e619c71`; the Triage Function is live.
 
 ## Global Constraints
 
@@ -677,6 +685,7 @@ Source ticket: `.scratch/cadre-support-agent/issues/15-live-video-handover.md` �
 - Ruling: the Strategist's email never reaches the Visitor (display name or a localised "a Cadre strategist"); the Visitor always has a local "Back to the chat" exit.
 - Parked: an `event.origin` check on the `left-meeting` listener; Console join/end without CAS; `room_expires_at` unread; the adapter's client never closed; auto-expand on call start.
 - The deployed two-device check and recording (accept → room opens in the chat → Join from the Console → both sides see video → End) need Galo's allowlisted account on a second device — recorded here when done.
+- Deployed-app check recorded: [docs/transcripts/2026-08-31-deployed-checks-14-15-20.md](../../../docs/transcripts/2026-08-31-deployed-checks-14-15-20.md) — revision `e619c71`; the Triage Function is live.
 
 ## Global Constraints
 
@@ -704,11 +713,15 @@ Source ticket: `.scratch/cadre-support-agent/issues/16-model-benchmark.md` — r
 
 **Blocked by:** 13 (Fifty Eval Cases, four metrics, and the CI stub subset)
 
-**Status:** ready-for-agent
+**Status:** wontfix
 
 - [ ] `make benchmark` runs the suite once per configured model id and writes one JSON report per model plus a combined table.
 - [ ] The model-selection document explains the method, the n=50 limitation, the cost of the run, and the decision; it links the ADR on the provider.
 - [ ] The chosen default is reflected in configuration and, if it changed, in plan.md's cut log.
+
+## Comments
+
+- 2026-08-31 — wontfix (ticket 19, [PR #28](https://github.com/gsbecerrag/cadre-ai-challenge/pull/28)): Deadline: the hour went to P4 (Triage Agent) and P5 (Live video) instead. Consequence recorded in plan.md §5 and §7: the default model is a reasoned choice, not a measured one; the 50-case eval suite runs against any model id when the benchmark is wanted.
 
 ## Global Constraints
 
@@ -736,11 +749,15 @@ Source ticket: `.scratch/cadre-support-agent/issues/17-capacity-smoke-test.md` �
 
 **Blocked by:** 03 (Real Grounded Answers on the public URL)
 
-**Status:** ready-for-agent
+**Status:** wontfix
 
 - [ ] A load script (Locust or k6) runs 200 virtual users against the chat endpoint with the stub provider and reports the metrics above.
 - [ ] The architecture document's capacity section gains a "measured" row with the numbers and the command used.
 - [ ] Any app-layer defect found (blocking call, unbounded memory) is fixed in this ticket with a test at seam S1 where possible.
+
+## Comments
+
+- 2026-08-31 — wontfix (ticket 19, [PR #28](https://github.com/gsbecerrag/cadre-ai-challenge/pull/28)): Deadline. Consequence recorded in plan.md §7: the capacity table in architecture §8 is a model, not a measurement; the binding constraint it identifies (the provider's rate-limit tier) does not depend on the missing run.
 
 ## Global Constraints
 
@@ -768,11 +785,15 @@ Source ticket: `.scratch/cadre-support-agent/issues/18-in-app-navigation.md` —
 
 **Blocked by:** 08 (Walkthrough Cards that open the Portal)
 
-**Status:** ready-for-agent
+**Status:** wontfix
 
 - [ ] A Turn in which the provider calls `navigate_to` with a known route and element streams a navigation event; unknown ids are rejected; covered at seam S1 with the stub.
 - [ ] The reducer records the pending navigation and the app performs it, pulsing the target; covered at seam S4 for the reducer part.
 - [ ] On the deployed app, "show me where my agents' results are" navigates to the agents page and highlights the results panel while the chat remains visible; recording attached to the PR.
+
+## Comments
+
+- 2026-08-31 — wontfix (ticket 19, [PR #28](https://github.com/gsbecerrag/cadre-ai-challenge/pull/28)): Deadline, and the least load-bearing of the three optional tickets: a Walkthrough Card already opens the Portal page with the chat still open. Recorded in plan.md §7.
 
 ## Global Constraints
 
@@ -800,13 +821,17 @@ Source ticket: `.scratch/cadre-support-agent/issues/19-honesty-pass.md` — read
 
 **Blocked by:** 13 (Fifty Eval Cases, four metrics, and the CI stub subset), 14 (Triage Agent on thumbs-down and the Console Triage tab), 15 (Live Hand-over on video inside the chat) — or whichever of these were completed; anything not completed is recorded as cut in this ticket
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] plan.md: every phase row has a final status; every cut is in the cut log with a reason; the "if forced to choose" note reflects what actually happened.
-- [ ] README: run, test, `make eval`, deploy, the public URL, and the document map; no stale command.
-- [ ] Demo script committed with the exact prompts to type and what to point at on the second screen.
-- [ ] Final smoke on the deployed URL: health, a cited answer, a Trap Question, a Walkthrough Card, a Lead, a Handover Request in the Console, a Feedback score in Langfuse, and (if shipped) a Triage Report and a video call; results recorded in the PR.
-- [ ] All ticket files carry their final Status and a `## Comments` line with their PR.
+- [x] plan.md: every phase row has a final status; every cut is in the cut log with a reason; the "if forced to choose" note reflects what actually happened.
+- [x] README: run, test, `make eval`, deploy, the public URL, and the document map; no stale command.
+- [x] Demo script committed with the exact prompts to type and what to point at on the second screen.
+- [x] Final smoke on the deployed URL: health, a cited answer, a Trap Question, a Walkthrough Card, a Lead, a Handover Request in the Console, a Feedback score in Langfuse, and (if shipped) a Triage Report and a video call; results recorded in the PR.
+- [x] All ticket files carry their final Status and a `## Comments` line with their PR.
+
+## Comments
+
+- 2026-08-31 — done in [PR #28](https://github.com/gsbecerrag/cadre-ai-challenge/pull/28). Scope added mid-ticket at the operator's request: the README carries the demo prompts, the local-environment setup and the key-swap runbook, and `make rotate-openrouter-key` / `make check-openrouter-key` are the failsafe for a dead OpenRouter key. The final smoke on the deployed revision (e619c71 — unchanged by this docs-only PR) is recorded in the PR body; the two-device video recording and the signed-in Console screenshots stay the operator's.
 
 ## Global Constraints
 
@@ -847,6 +872,7 @@ Source ticket: `.scratch/cadre-support-agent/issues/20-console-email-password.md
 - Delivered in [PR #25](https://github.com/gsbecerrag/cadre-ai-challenge/pull/25). Reviewer: Approved, no Critical/Important findings; two cosmetic minors parked (shared error slot; dead prop on the refusal branch).
 - Ruling: zero server-side changes — the demo account is provisioned with a verified email, so the strict verifier and the rules stay exactly as reviewed in ticket 10; the credential is the secret and the allowlist stays the gate.
 - The deployed check (the demo credentials reach the Console on the public URL) is recorded here after the merge + deploy + deploy-rules.
+- Deployed-app check recorded: [docs/transcripts/2026-08-31-deployed-checks-14-15-20.md](../../../docs/transcripts/2026-08-31-deployed-checks-14-15-20.md) — revision `e619c71`; the Triage Function is live.
 
 ## Global Constraints
 
