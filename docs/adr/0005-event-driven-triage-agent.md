@@ -5,7 +5,7 @@ date: 2026-08-30
 
 # Feedback triage as an event-driven agent on Firestore triggers
 
-A thumbs-down in the chat writes a feedback document; a Firebase Function fires on that document's creation, makes one structured-output Sonnet 5 call, and writes a triage report keyed by the feedback ID that the console shows in a Triage tab. The chat API never knows the triage agent exists. We chose Firestore document triggers over in-process background tasks, Eventarc-to-Cloud-Run or Pub/Sub because they decouple triage from chat latency and failures, decode the event for us, and establish a pattern every later background agent reuses.
+A thumbs-down in the chat writes a feedback document; a Firebase Function fires on that document's write (create or update), makes one structured-output Sonnet 5 call, and writes a triage report keyed by the feedback ID that the console shows in a Triage tab. The chat API never knows the triage agent exists. We chose Firestore document triggers over in-process background tasks, Eventarc-to-Cloud-Run or Pub/Sub because they decouple triage from chat latency and failures, decode the event for us, and establish a pattern every later background agent reuses.
 
 ## Context
 
@@ -17,7 +17,7 @@ A thumbs-down in the chat writes a feedback document; a Firebase Function fires 
 
 ## Decision
 
-- Trigger: creation of a feedback document (session ID, trace ID, rating, optional comment). Only a thumbs-down invokes the model; a thumbs-up is stored for scoring and skipped by the handler.
+- Trigger: a write — create or update — of a feedback document (session ID, trace ID, rating, optional comment); see the amendment below for why not creation. Only a thumbs-down invokes the model; a thumbs-up is stored for scoring and skipped by the handler.
 - Handler: loads the session's messages (already refuse-profile redacted, ADR-0006), the KB and the feedback; makes one Sonnet 5 call with a strict schema: category ∈ {kb_gap, wrong_escalation, hallucination, tone, pii, bug, other}, summary, evidence (quoted turns), optional suggested KB addition, optional suggested eval case, severity. Reusing the byte-identical KB prefix lets the call hit the chat cache when one is warm.
 - Output: a triage report document keyed by the feedback ID (a redelivery overwrites the same document, so the handler is idempotent), plus a comment and a score on the Langfuse trace so the report sits next to the cost and the prompt.
 - Console: a Triage tab lists reports through a realtime listener; a Strategist reads the suggestion. Approving it (writing to the Firestore-backed KB and appending the eval case) is Phase 2.
