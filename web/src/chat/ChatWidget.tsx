@@ -14,6 +14,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import './chat.css'
+import { useAccess } from './access'
 import { CallFrame } from './CallFrame'
 import { FeedbackControl } from './FeedbackControl'
 import { type HandoverActions, MessageView } from './MessageView'
@@ -64,6 +65,13 @@ export function ChatWidget() {
     handoverFailed,
   } = useChat(chromeFor('en').greeting, chrome.connectionError)
   const strategistOnline = useAvailability(open)
+  // The Access Code gate (ticket 21): while the deployment wants a code this browser has not
+  // given, the code field stands where the composer would be. The server enforces it too.
+  const access = useAccess()
+  const locked = access.required && !access.unlocked
+  const [code, setCode] = useState('')
+  const [accessError, setAccessError] = useState('')
+  const [unlocking, setUnlocking] = useState(false)
 
   const transcript = useRef<HTMLDivElement>(null)
   const composer = useRef<HTMLInputElement>(null)
@@ -156,6 +164,28 @@ export function ChatWidget() {
     shareDetails: (details) => void shareDetails(details),
     busy: handoverBusy,
     failed: handoverFailed,
+  }
+
+  async function submitCode() {
+    if (!code.trim() || unlocking) {
+      return
+    }
+    setUnlocking(true)
+    const result = await access.unlock(code)
+    setUnlocking(false)
+    setCode('')
+    if (result === 'unlocked') {
+      setAccessError('')
+      composer.current?.focus()
+      return
+    }
+    setAccessError(
+      result === 'rejected'
+        ? chrome.accessRejected
+        : result === 'locked'
+          ? chrome.accessLocked
+          : chrome.accessFailed,
+    )
   }
 
   function submitQuickReply(id: string, label: string) {
@@ -265,7 +295,7 @@ export function ChatWidget() {
         </div>
       )}
 
-      {!state.call && quickReplies.length > 0 && (
+      {!state.call && !locked && quickReplies.length > 0 && (
         <div className="flex flex-shrink-0 flex-wrap gap-2 bg-[#faf9f6] px-4 pt-2 pb-1">
           {quickReplies.map((quick) => (
             <button
@@ -281,10 +311,45 @@ export function ChatWidget() {
         </div>
       )}
 
+      {locked && !state.call && (
+        <form
+          className="flex flex-shrink-0 flex-col gap-2 border-t border-[#eee] bg-white px-4 py-3"
+          onSubmit={(event) => {
+            event.preventDefault()
+            void submitCode()
+          }}
+        >
+          <p className="text-[12.5px] leading-snug text-[#4c4c4c]">{chrome.accessPrompt}</p>
+          <div className="flex items-center gap-2.5">
+            <input
+              type="password"
+              autoComplete="off"
+              aria-label={chrome.accessPlaceholder}
+              placeholder={chrome.accessPlaceholder}
+              value={code}
+              onChange={(event) => setCode(event.target.value)}
+              className="min-w-0 flex-1 rounded-[48px] border border-[#e5e5e5] px-3.5 py-2 text-[14px] text-[#0c0407] outline-none placeholder:text-[#999] focus:border-[#db4545]"
+            />
+            <button
+              type="submit"
+              disabled={!code.trim() || unlocking}
+              className={`flex-shrink-0 rounded-[48px] px-4 py-2 text-[12.5px] font-semibold text-white ${code.trim() && !unlocking ? 'bg-[#db4545]' : 'bg-[#ccc]'}`}
+            >
+              {chrome.accessUnlock}
+            </button>
+          </div>
+          {accessError && (
+            <p role="alert" className="text-[12px] text-[#db4545]">
+              {accessError}
+            </p>
+          )}
+        </form>
+      )}
+
       {/* Daily's own controls are the only ones on screen during a call, so the composer
           steps aside: a Visitor mid-call is talking, not typing. */}
       <form
-        className={`flex-shrink-0 items-center gap-2.5 border-t border-[#eee] bg-white px-4 py-3 ${state.call ? 'hidden' : 'flex'}`}
+        className={`flex-shrink-0 items-center gap-2.5 border-t border-[#eee] bg-white px-4 py-3 ${state.call || locked ? 'hidden' : 'flex'}`}
         onSubmit={(event) => {
           event.preventDefault()
           if (canSend) {

@@ -29,6 +29,12 @@ export interface Chrome {
   typing: string
   nextStep: string
   connectionError: string
+  accessPrompt: string
+  accessPlaceholder: string
+  accessUnlock: string
+  accessRejected: string
+  accessLocked: string
+  accessFailed: string
   feedbackPrompt: string
   feedbackUp: string
   feedbackDown: string
@@ -91,6 +97,14 @@ const EN: Chrome = {
   connectionError:
     'I lost the connection before I could answer. Please try again — or reach the team at ' +
     'hello@gocadre.ai or (619) 324-3223.',
+  // The gate on a metered model key (ticket 21). The copy says why, because a Visitor who
+  // meets a code on a support chat otherwise assumes it is broken.
+  accessPrompt: 'This demo runs on a metered model key. Enter the access code from your review pack.',
+  accessPlaceholder: 'Access code',
+  accessUnlock: 'Unlock',
+  accessRejected: 'That code was not accepted.',
+  accessLocked: 'Too many attempts. Start a new conversation to try again.',
+  accessFailed: 'The code could not be checked. Please try again.',
   // The artboard asks "How was your conversation with {Strategist}?" on the card that closes a
   // call. Inline after a single answer there is no Strategist and no conversation to sum up,
   // so the same question is asked about the answer the thumbs sit under.
@@ -154,6 +168,12 @@ const ES: Chrome = {
   connectionError:
     'Perdí la conexión antes de poder responder. Inténtalo de nuevo — o escribe a ' +
     'hello@gocadre.ai o llama al (619) 324-3223.',
+  accessPrompt: 'Esta demo usa una clave de modelo con crédito limitado. Ingresa el código de acceso de tu paquete de revisión.',
+  accessPlaceholder: 'Código de acceso',
+  accessUnlock: 'Desbloquear',
+  accessRejected: 'Ese código no fue aceptado.',
+  accessLocked: 'Demasiados intentos. Inicia una nueva conversación para volver a intentarlo.',
+  accessFailed: 'No se pudo verificar el código. Inténtalo de nuevo.',
   feedbackPrompt: '¿Cómo estuvo esa respuesta?',
   feedbackUp: 'Esa respuesta ayudó',
   feedbackDown: 'Esa respuesta no ayudó',
