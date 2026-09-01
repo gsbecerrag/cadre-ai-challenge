@@ -69,7 +69,7 @@ help:
 	@echo "rules      render ADMIN_ALLOWED_EMAILS into firestore.rules"
 	@echo "deploy-rules  deploy firestore.rules and the indexes to Firebase"
 	@echo "deploy-functions  copy core/ and knowledge/ into functions/ and deploy the Triage Agent"
-	@echo "check-openrouter-key   is the deployed OpenRouter key alive, and how much credit is left"
+	@echo "check-openrouter-key   is the deployed OpenRouter key alive, how much credit is left, when it expires"
 	@echo "rotate-openrouter-key  replace the deployed OpenRouter key: both secrets, Cloud Run, the Function (.env only with UPDATE_ENV=1)"
 	@echo "set-chat-access-code   set or change the Access Code the deployed chat asks for (hidden prompt)"
 	@echo "unset-chat-access-code remove the Access Code gate from the deployed chat"

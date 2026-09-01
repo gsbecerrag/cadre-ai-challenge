@@ -39,7 +39,7 @@ Run through this list once, ten minutes before the call.
    make check-openrouter-key
    ```
    It reads the very secret version Cloud Run is bound to and prints the key's label, usage,
-   limit and what remains — never the value. A dead key is the one failure that stops the whole
+   limit, what remains and when it expires — never the value. A dead key is the one failure that stops the whole
    demo: every answer becomes the user-safe error event.
 
    **Budget.** The platform key holds $5. A Turn costs about 1¢ on a warm prompt cache and about

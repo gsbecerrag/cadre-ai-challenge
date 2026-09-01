@@ -306,7 +306,7 @@ run dry at any moment, including the hour before the review, so switching betwee
 one-minute event rather than a code change:
 
 ```bash
-make check-openrouter-key   # is the key Cloud Run is bound to alive, and how much credit is left
+make check-openrouter-key   # is the key Cloud Run is bound to alive, how much credit is left, when it expires
 make rotate-openrouter-key  # paste a new key (input hidden) and it is live everywhere
 ```
 
