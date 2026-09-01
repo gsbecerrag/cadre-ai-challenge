@@ -206,9 +206,10 @@ deploy-functions:
 	  firebase deploy --only functions --project $(PROJECT); \
 	fi
 
-# The OpenRouter key in Secret Manager is whichever one the operator put there — a personal key
-# today, the one Cadre issued held in reserve — and any key can be revoked, capped or run dry at
-# any moment, so swapping it must be one command and no code change. Rotation is three moves:
+# The OpenRouter key in Secret Manager is whichever one the operator put there — the platform
+# ships on the key Cadre issued, the operator's own key is the spare — and any key can be revoked,
+# capped or run dry at any moment, so swapping it must be one command and no code change.
+# Rotation is three moves:
 #   1. add the new key as a version of BOTH secrets — Cloud Run binds `openrouter-api-key`, the
 #      Triage Agent function binds the copy `OPENROUTER_API_KEY` (see FUNCTION_SECRET_PAIRS);
 #   2. roll the Cloud Run service — it binds `:latest`, but an instance resolves the version when

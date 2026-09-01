@@ -277,10 +277,10 @@ on `*.run.app` before the request reaches the container, so probe the deployed s
 
 ### Swap the OpenRouter key
 
-The deployed app answers with whichever key is in Secret Manager — the operator's own key
-today, with the one Cadre issued for this platform held in reserve. A key can be revoked,
-capped or run dry at any moment, including the hour before the review, so switching between
-them is a one-minute event rather than a code change:
+The deployed app answers with whichever key is in Secret Manager. The platform ships on the
+key Cadre issued for it; the operator's own key is the spare. A key can be revoked, capped or
+run dry at any moment, including the hour before the review, so switching between them is a
+one-minute event rather than a code change:
 
 ```bash
 make check-openrouter-key   # is the key Cloud Run is bound to alive, and how much credit is left
@@ -304,8 +304,9 @@ makes the three moves a rotation actually needs — the ones that are easy to fo
 It also replaces `OPENROUTER_API_KEY` in your `.env`, so local runs and `make eval` follow. The
 key is read from the terminal with echo off — or piped in, `printf '%s' "$KEY" | make
 rotate-openrouter-key` — is never passed on a command line, and is never printed. Keep the
-spare key to hand, and rehearse once: rotating to the *same* value is harmless and proves the
-whole path.
+spare key to hand. The first real rotation — the operator's key out, Cadre's in — is also the
+rehearsal; rotating back is the same command with the other key, and rotating to the *same*
+value is harmless if you only want to prove the path.
 
 ```bash
 gcloud secrets versions access latest --secret=openrouter-api-key --project cadre-ai-challenge \
