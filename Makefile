@@ -1,8 +1,6 @@
 SHELL := /bin/bash
 
 SERVICE := cadre-support-agent
-# The Triage Agent function is a gen2 Firebase Function, which is a Cloud Run service underneath.
-FUNCTION_SERVICE := triage-on-feedback-written
 PROJECT := cadre-ai-challenge
 REGION  := us-central1
 
@@ -70,7 +68,7 @@ help:
 	@echo "deploy-rules  deploy firestore.rules and the indexes to Firebase"
 	@echo "deploy-functions  copy core/ and knowledge/ into functions/ and deploy the Triage Agent"
 	@echo "check-openrouter-key   is the deployed OpenRouter key alive, how much credit is left, when it expires"
-	@echo "rotate-openrouter-key  replace the deployed OpenRouter key: both secrets, Cloud Run, the Function (.env only with UPDATE_ENV=1)"
+	@echo "rotate-openrouter-key  replace the deployed OpenRouter key: both secrets, Cloud Run, then the Function redeployed (.env only with UPDATE_ENV=1)"
 	@echo "set-chat-access-code   set or change the Access Code the deployed chat asks for (hidden prompt)"
 	@echo "unset-chat-access-code remove the Access Code gate from the deployed chat"
 
@@ -225,9 +223,13 @@ deploy-functions:
 #      Triage Agent function binds the copy `OPENROUTER_API_KEY` (see FUNCTION_SECRET_PAIRS);
 #   2. roll the Cloud Run service — it binds `:latest`, but an instance resolves the version when
 #      it starts, so only a new revision (no rebuild, ~30 s) makes every instance read the new one;
-#   3. re-bind the function's own Cloud Run service to `:latest` — `firebase deploy` pins the
-#      version number that was current at deploy time, so without this step the Triage Agent
-#      would keep the dead key until the next `make deploy-functions`.
+#   3. redeploy the Triage Agent function — `firebase deploy` pins the version number that was
+#      current at deploy time, and its Cloud Run service cannot be re-bound in place (gcloud
+#      cannot parse the secrets annotation Firebase writes: "Invalid secret path … in
+#      annotation"), so the only way the Function follows is a deploy. The chat is back on the
+#      new key after step 2, about a minute in; the Function follows a few minutes later.
+#      (A literal `make`, not `$(MAKE)`: GNU make runs `$(MAKE)` lines even under -n, and a
+#      dry run of a rotation must not deploy anything.)
 # The key is read from the terminal with echo off (or from stdin when piped in), verified with
 # OpenRouter before anything is written, and never appears on a command line or in the output.
 # The developer's .env is a separate budget and is left alone unless UPDATE_ENV=1: `make eval`
@@ -246,18 +248,16 @@ rotate-openrouter-key:
 	gcloud run services update $(SERVICE) --project $(PROJECT) --region $(REGION) --quiet \
 	  --update-secrets OPENROUTER_API_KEY=$(OPENROUTER_SECRET):latest \
 	  --update-env-vars OPENROUTER_KEY_ROTATED_AT=$$(date -u +%Y-%m-%dT%H:%M:%SZ) >/dev/null; \
-	echo "Re-binding $(FUNCTION_SERVICE) to the latest version of OPENROUTER_API_KEY"; \
-	gcloud run services update $(FUNCTION_SERVICE) --project $(PROJECT) --region $(REGION) --quiet \
-	  --update-secrets OPENROUTER_API_KEY=OPENROUTER_API_KEY:latest >/dev/null \
-	  || echo "Could not update $(FUNCTION_SERVICE) in place — run: make deploy-functions"; \
+	url=$$(gcloud run services describe $(SERVICE) --project $(PROJECT) --region $(REGION) --format='value(status.url)'); \
+	printf 'Health: '; curl -sS "$$url/api/healthz"; echo; \
+	echo "The chat is on the new key. Redeploying the Triage Agent function so it follows (a few minutes)"; \
+	make deploy-functions || echo "The Function deploy failed — the Triage Agent keeps the previous key until: make deploy-functions"; \
 	if [ -n "$(UPDATE_ENV)" ] && [ -f .env ]; then \
 	  NEW_KEY="$$key" perl -pi -e 's/^OPENROUTER_API_KEY=.*/OPENROUTER_API_KEY=$$ENV{NEW_KEY}/' .env; \
 	  echo ".env: OPENROUTER_API_KEY replaced — local runs and make eval now spend this key"; \
 	else \
 	  echo ".env left alone: local runs and make eval keep the key already there (UPDATE_ENV=1 replaces it)"; \
 	fi; \
-	url=$$(gcloud run services describe $(SERVICE) --project $(PROJECT) --region $(REGION) --format='value(status.url)'); \
-	printf 'Health: '; curl -sS "$$url/api/healthz"; echo; \
 	echo "Rotated. Send one message on the live app to confirm the model answers."
 
 # The pre-demo question — "is the key still alive, and how much is left on it?" — asked of the
