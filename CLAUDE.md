@@ -76,7 +76,7 @@ make eval       # all 50 Eval Cases against the real provider + Haiku judge; sco
 make eval-stub  # the 30 deterministic Eval Cases against the stub provider — free, no key; CI runs this after make check
 make build-web  # build web/dist so the API can serve it
 make deploy     # gcloud run deploy --source . to cadre-support-agent in us-central1, then curl the health endpoint
-make check-openrouter-key   # is the deployed OpenRouter key alive, and how much credit is left (value never printed)
+make check-openrouter-key   # is the deployed OpenRouter key alive, how much credit is left, when it expires (value never printed)
 make rotate-openrouter-key  # new key → both secrets, a new Cloud Run revision, the Function re-bound; .env only with UPDATE_ENV=1
 make set-chat-access-code   # the Access Code the deployed chat asks for (hidden prompt → Secret Manager → new revision); unset-chat-access-code removes it
 ```

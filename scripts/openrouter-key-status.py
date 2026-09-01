@@ -3,9 +3,10 @@
 
 The key is read from stdin — never from an argument — so it appears in no shell history and
 no process list. Prints one line per fact OpenRouter reports about the key (label, usage,
-limit, what remains) and exits 0 when the key is accepted, 1 when OpenRouter rejects it, 2
-when nothing was given. The Makefile's `check-openrouter-key` pipes the deployed secret in;
-`rotate-openrouter-key` pipes the candidate key in before writing it anywhere.
+limit, what remains, when the limit resets, when the key expires) and exits 0 when the key is
+accepted, 1 when OpenRouter rejects it, 2 when nothing was given. The Makefile's
+`check-openrouter-key` pipes the deployed secret in; `rotate-openrouter-key` pipes the
+candidate key in before writing it anywhere.
 """
 
 from __future__ import annotations
@@ -14,8 +15,22 @@ import json
 import sys
 import urllib.error
 import urllib.request
+from datetime import UTC, datetime
 
 KEY_ENDPOINT = "https://openrouter.ai/api/v1/key"
+
+
+def describe_expiry(expires_at: str | None) -> str:
+    """OpenRouter's ISO timestamp as a date and a countdown, or "never" when there is none."""
+    if not expires_at:
+        return "never"
+    expiry = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
+    remaining = expiry - datetime.now(UTC)
+    days = remaining.days
+    when = expiry.strftime("%Y-%m-%d %H:%M UTC")
+    if remaining.total_seconds() <= 0:
+        return f"{when} — EXPIRED"
+    return f"{when} — in {days} day{'s' if days != 1 else ''}"
 
 
 def say(line: str) -> None:
@@ -45,6 +60,8 @@ def main() -> int:
     say(f"limit:            {'none' if limit is None else f'${float(limit):.2f}'}")
     say(f"remaining:        {'unlimited' if remaining is None else f'${float(remaining):.2f}'}")
     say(f"free tier:        {'yes' if data.get('is_free_tier') else 'no'}")
+    say(f"limit resets:     {data.get('limit_reset') or 'never (a lifetime cap)'}")
+    say(f"expires:          {describe_expiry(data.get('expires_at'))}")
     return 0
 
 
