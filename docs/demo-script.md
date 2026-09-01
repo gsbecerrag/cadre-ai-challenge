@@ -42,6 +42,12 @@ Run through this list once, ten minutes before the call.
    limit and what remains — never the value. A dead key is the one failure that stops the whole
    demo: every answer becomes the user-safe error event.
 
+   **Budget.** The platform key holds $5. A Turn costs about 1¢ on a warm prompt cache and about
+   6¢ on a cold one (the first Turn after an hour of quiet); a thumbs-down triage is about 3¢;
+   the whole walkthrough is under $1. `make eval` is $0.60 a run and spends the key in `.env` —
+   keep the spare there, never the platform's. If `remaining` is under $1.50, rotate to the
+   spare before the call rather than during it.
+
 3. **Screen 2 is signed in.** Open `/console`, sign in, and set **Availability** to **Online**.
    Sign in with Google if the address is on the allowlist, or with the demo account
    `strategist@cadre-demo.example` — its password lives in Secret Manager under
