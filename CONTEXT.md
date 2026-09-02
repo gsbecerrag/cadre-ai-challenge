@@ -100,6 +100,24 @@ _Avoid_: lead score, rating, grade
 A Lead whose Qualification Score meets the configured threshold, which unlocks the offer of a Live Hand-over.
 _Avoid_: hot lead, MQL, SQL
 
+### Research
+
+**Research Agent**:
+The independent process a Strategist runs on one Qualified Lead from the Console; it reads public information about the Lead's company and person and writes a Lead Brief.
+_Avoid_: copilot, enrichment bot, scraper, researcher
+
+**Lead Brief**:
+The Research Agent's structured account of one Qualified Lead — a company snapshot, a person snapshot, talking points for the first call, one note per Qualification Signal, and the Research Findings it rests on. Advisory: it never changes the Qualification Score.
+_Avoid_: enrichment, dossier, profile, research report
+
+**Research Source**:
+Where the Research Agent reads public information about a company or a person.
+_Avoid_: search API, scraper, crawler, enrichment provider
+
+**Research Finding**:
+One item a Research Source returned — a title, a link, a snippet, and the query that found it. A Lead Brief rests on its Findings the way a Grounded Answer rests on KB Sections.
+_Avoid_: hit, search result, document
+
 ### Guidance
 
 **Walkthrough Card**:
